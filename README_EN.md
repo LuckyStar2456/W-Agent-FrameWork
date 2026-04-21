@@ -6,7 +6,7 @@ Python Enterprise Agent Framework, Complete Technical Architecture Solution.
 
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/LuckyStar2456/W-Agent-FrameWork?style=social)](https://github.com/LuckyStar2456/W-Agent-FrameWork/stargazers)
+[![Stars](https://img.shields.io/github/stars/LuckyStar2456/W-Agent-FrameWork?style=social)](https://github.com/LuckyStar2456/W-Agent-FrameWork)
 
 ## 📚 Table of Contents
 
@@ -37,11 +37,14 @@ Python Enterprise Agent Framework, Complete Technical Architecture Solution.
 ### Installation
 
 ```bash
-# Basic installation
-pip install -e .
+# Install from PyPI
+pip install wagent-framework
 
 # Install optional dependencies
-pip install -e .[fastapi,langchain,redis]
+pip install wagent-framework[fastapi,langchain,redis,opentelemetry]
+
+# Install from source
+pip install -e .
 ```
 
 ### Create Your First Agent
@@ -247,3 +250,10 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 If you find this project helpful, please give us a ⭐!
+
+## 📦 PyPI Package
+
+- **Package Name**: `wagent-framework`
+- **Version**: 1.4.0
+- **Installation**: `pip install wagent-framework`
+- **PyPI URL**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)

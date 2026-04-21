@@ -6,7 +6,7 @@ Python 企业级智能体框架，完整技术架构方案。
 
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/LuckyStar2456/W-Agent-FrameWork?style=social)](https://github.com/LuckyStar2456/W-Agent-FrameWork/stargazers)
+[![Stars](https://img.shields.io/github/stars/LuckyStar2456/W-Agent-FrameWork?style=social)](https://github.com/LuckyStar2456/W-Agent-FrameWork)
 
 ## 📚 目录
 
@@ -37,11 +37,14 @@ Python 企业级智能体框架，完整技术架构方案。
 ### 安装
 
 ```bash
-# 基础安装
-pip install -e .
+# 从 PyPI 安装
+pip install wagent-framework
 
 # 安装可选依赖
-pip install -e .[fastapi,langchain,redis]
+pip install wagent-framework[fastapi,langchain,redis,opentelemetry]
+
+# 从源码安装
+pip install -e .
 ```
 
 ### 创建你的第一个 Agent
@@ -247,3 +250,10 @@ export W_AGENT_CONTAINER_SCAN_PATHS=src,components
 ---
 
 如果这个项目对你有帮助，请给我们一个 ⭐！
+
+## 📦 PyPI 包
+
+- **包名**: `wagent-framework`
+- **版本**: 1.4.0
+- **安装**: `pip install wagent-framework`
+- **PyPI 地址**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
