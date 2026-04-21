@@ -1,0 +1,48 @@
+{
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "output": "stdout"
+  },
+  "llm": {
+    "api_key": "",
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "max_tokens": 1000,
+    "timeout": 30
+  },
+  "system": {
+    "name": "Chat Agent",
+    "version": "1.0.0",
+    "description": "示例聊天对话智能体",
+    "max_history": 50
+  },
+  "skills": {
+    "path": "./src/skills",
+    "load_level": 3
+  },
+  "security": {
+    "rate_limit": 60,
+    "max_input_length": 1000
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "password": ""
+  },
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "",
+    "database": "chat_agent"
+  },
+  "rag": {
+    "embedding_model": "text-embedding-ada-002",
+    "vector_store": "redis",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "top_k": 5
+  }
+}
