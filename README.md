@@ -1,4 +1,4 @@
-# W-Agent v1.4.0
+# W-Agent v1.4.1
 
 [English](./README_EN.md) | 简体中文
 
@@ -254,6 +254,22 @@ export W_AGENT_CONTAINER_SCAN_PATHS=src,components
 ## 📦 PyPI 包
 
 - **包名**: `wagent-framework`
-- **版本**: 1.4.0
+- **版本**: 1.4.1
 - **安装**: `pip install wagent-framework`
 - **PyPI 地址**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
+
+## 📝 更新日志
+
+### v1.4.1 (2026-04-22)
+- **修复包结构**: 添加了缺失的 `__init__.py` 文件，确保包可以正常导入
+- **修复导入错误**: 修正了 `w_agent/__init__.py` 中的导入错误
+- **版本更新**: 从 1.4.0 更新到 1.4.1
+- **上传到 PyPI**: 成功发布到 PyPI
+- **更新 GitHub**: 同步更新了 GitHub 仓库
+
+### v1.4.0 (2026-04-21)
+- **核心功能**: AOP、IOC、沙箱安全、弹性模式、可观测性、RAG 集成
+- **配置管理**: 动态配置热更新
+- **事件总线**: 支持事件发布/订阅
+- **生命周期管理**: 支持组件生命周期
+- **CLI 工具**: 提供命令行工具

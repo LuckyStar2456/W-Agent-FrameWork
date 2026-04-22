@@ -1,4 +1,4 @@
-# W-Agent v1.4.0
+# W-Agent v1.4.1
 
 [English](./README_EN.md) | [简体中文](./README.md)
 
@@ -254,6 +254,6 @@ If you find this project helpful, please give us a ⭐!
 ## 📦 PyPI Package
 
 - **Package Name**: `wagent-framework`
-- **Version**: 1.4.0
+- **Version**: 1.4.1
 - **Installation**: `pip install wagent-framework`
 - **PyPI URL**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
