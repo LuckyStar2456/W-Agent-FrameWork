@@ -20,21 +20,21 @@ async def main():
     # 创建配置管理器
     config_manager = DynamicConfigManager()
     config_manager.set("agent.name", "default")
-    
+
     # 创建Bean工厂
     bean_factory = BeanFactory()
-    
+
     # 创建并注册默认Agent
     agent = DefaultAgent()
     bean_factory._singleton_objects["default_agent"] = agent
-    
+
     # 处理命令行参数
     if len(sys.argv) > 1:
         prompt = " ".join(sys.argv[1:])
         result = await agent.arun(prompt)
         print(result)
     else:
-        print("W-Agent v1.4.0")
+        print("W-Agent v1.4.4")
         print("Usage: python -m w_agent <prompt>")
 
 if __name__ == "__main__":

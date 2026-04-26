@@ -15,8 +15,15 @@ class EventBus:
         self._listeners: Dict[str, List[Callable]] = {}
         self._dead_letter_queue: List[Event] = []
     
-    def on(self, event_name: str, listener: Callable):
-        self._listeners.setdefault(event_name, []).append(listener)
+    def on(self, event_name: str, listener: Optional[Callable] = None):
+        if listener is not None:
+            self._listeners.setdefault(event_name, []).append(listener)
+            return listener
+        else:
+            def decorator(func):
+                self._listeners.setdefault(event_name, []).append(func)
+                return func
+            return decorator
     
     async def emit(self, event: Event):
         for listener in self._listeners.get(event.name, []):

@@ -2,8 +2,7 @@
 """
 示例MySQL服务
 """
-from w_agent.core.decorators import PostConstruct, PreDestroy
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import PostConstruct, PreDestroy, DynamicConfigManager
 import asyncio
 
 # 尝试导入mysql.connector模块

@@ -2,9 +2,7 @@
 """
 技能服务
 """
-from w_agent.core.decorators import PostConstruct, PreDestroy
-from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
-from w_agent.skills.skill import Skill
+from w_agent import PostConstruct, PreDestroy, WasmSkillSandbox, Skill
 from pathlib import Path
 import importlib.util
 import sys

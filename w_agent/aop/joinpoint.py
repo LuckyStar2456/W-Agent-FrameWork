@@ -32,6 +32,8 @@ class JoinPoint:
                     return self.method(*self.args, **self.kwargs)
         advice = self._chain[self._current_index]
         self._current_index += 1
+        
+        # 执行通知
         return await advice(self, self._proceed_next)
     
     async def _proceed_next(self):

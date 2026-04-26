@@ -2,9 +2,7 @@
 """
 示例聊天Agent
 """
-from w_agent.core.agent import BaseAgent
-from w_agent.core.decorators import PostConstruct, PreDestroy
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import BaseAgent, PostConstruct, PreDestroy, DynamicConfigManager
 import json
 
 

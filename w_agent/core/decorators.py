@@ -1,6 +1,7 @@
 """W-Agent 组件装饰器"""
 
 from typing import Optional, Dict, Any
+import functools
 
 class Component:
     """组件装饰器基类"""
@@ -45,7 +46,15 @@ class PostConstruct:
         # 直接在函数上设置属性
         func.__post_construct__ = True
         func.__post_construct_order__ = self.order
-        return func
+        # 定义一个包装函数，调用被装饰的函数
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        # 在包装函数上也设置相应的属性
+        wrapper.__post_construct__ = True
+        wrapper.__post_construct_order__ = self.order
+        # 返回包装函数
+        return wrapper
 
 class PreDestroy:
     """销毁前执行装饰器"""
@@ -56,7 +65,15 @@ class PreDestroy:
         # 直接在函数上设置属性
         func.__pre_destroy__ = True
         func.__pre_destroy_order__ = self.order
-        return func
+        # 定义一个包装函数，调用被装饰的函数
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        # 在包装函数上也设置相应的属性
+        wrapper.__pre_destroy__ = True
+        wrapper.__pre_destroy_order__ = self.order
+        # 返回包装函数
+        return wrapper
 
 class Value:
     """配置值注入装饰器"""

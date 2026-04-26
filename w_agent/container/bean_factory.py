@@ -3,6 +3,7 @@ from pathlib import Path
 from w_agent.lifecycle.manager import LifecycleManager
 from w_agent.container.reflection_cache import _reflection_cache
 from w_agent.observability.tracing import global_tracer
+from w_agent.exceptions.framework_errors import BeanNotFoundError, InjectionError, CircularDependencyError
 import asyncio
 import inspect
 
@@ -62,7 +63,7 @@ class BeanFactory:
                 return self._early_singleton_objects[name]
             
             # 检查Bean定义是否存在
-            if name not in self._bean_definitions:
+            if name not in self._bean_definitions and name not in self._singleton_objects:
                 raise BeanNotFoundError(name)
             
             definition = self._bean_definitions[name]
@@ -150,11 +151,13 @@ class BeanFactory:
                                 if bean_name:
                                     bean_instance = await self.get_bean(bean_name)
                                     setattr(instance, field_name, bean_instance)
+                                else:
+                                    raise InjectionError(f"No bean found for field {field_name} of type {field_type}")
             
             # 执行setter注入
             await self._inject_setters(instance)
         except Exception as e:
-            print(f"Field injection failed: {e}")
+            raise InjectionError(f"Field injection failed for {type(instance).__name__}: {str(e)}")
     
     async def _inject_setters(self, instance: Any):
         """执行setter注入"""
@@ -179,8 +182,10 @@ class BeanFactory:
                                         await method(bean_instance)
                                     else:
                                         method(bean_instance)
+                                else:
+                                    raise InjectionError(f"No bean found for setter method {method_name} parameter of type {param_type}")
         except Exception as e:
-            print(f"Setter injection failed: {e}")
+            raise InjectionError(f"Setter injection failed for {type(instance).__name__}: {str(e)}")
     
     async def _resolve_constructor_args(self, bean_type: Type) -> Dict[str, Any]:
         """解析构造器参数"""
@@ -332,14 +337,22 @@ class BeanFactory:
         return factory
     
     async def pre_destroy_single(self, instance: Any):
-        # 执行单个实例的销毁方法
-        for name in dir(instance):
-            attr = getattr(instance, name)
-            if hasattr(attr, "__pre_destroy__"):
-                if asyncio.iscoroutinefunction(attr):
-                    await attr(instance)
-                else:
-                    attr(instance)
+        """执行单个实例的销毁方法"""
+        try:
+            # 执行单个实例的销毁方法
+            for name in dir(instance):
+                attr = getattr(instance, name)
+                if hasattr(attr, "__pre_destroy__"):
+                    if asyncio.iscoroutinefunction(attr):
+                        await attr()
+                    else:
+                        attr()
+        except Exception as e:
+            raise InjectionError(f"Pre-destroy failed for {type(instance).__name__}: {str(e)}")
+    
+    async def post_construct_all(self):
+        """执行所有Bean的post_construct方法"""
+        await self._lifecycle.post_construct_all()
 
 class DependencyGraph:
     def __init__(self):
@@ -373,15 +386,3 @@ class DependencyGraph:
             result.reverse()
         return result
 
-class CircularDependencyError(Exception):
-    def __init__(self, cycle: List[str]):
-        self.cycle = cycle
-        super().__init__(f"Circular dependency detected: {' -> '.join(cycle)}")
-
-class BeanNotFoundError(Exception):
-    def __init__(self, bean_name: str):
-        super().__init__(f"Bean not found: {bean_name}")
-
-class InjectionError(Exception):
-    def __init__(self, message: str):
-        super().__init__(message)

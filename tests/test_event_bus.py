@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from w_agent.core.event_bus import EventBus, Event, ConfigChangedEvent
+from w_agent import EventBus, Event, ConfigChangedEvent
 
 class TestEventBus:
     """测试事件总线模块"""

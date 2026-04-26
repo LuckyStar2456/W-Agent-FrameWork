@@ -2,9 +2,7 @@ import asyncio
 import pytest
 from pathlib import Path
 import tempfile
-from w_agent.skills.sandbox.nsjail_sandbox import NsJailSkillSandbox
-from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
-from w_agent.skills.skill import Skill
+from w_agent import NsJailSkillSandbox, WasmSkillSandbox, Skill
 
 class TestSandbox:
     """测试沙箱模块"""
@@ -19,7 +17,7 @@ class TestSandbox:
         (self.skill_dir_path / "SKILL.md").write_text("# Test Skill\nDescription: A test skill")
         
         # 创建测试脚本
-        (self.skill_dir_path / "test.py").write_text("result = f'Hello, {args.get("name", "world")}!'")
+        (self.skill_dir_path / "test.py").write_text('result = f"Hello, {args.get("name", "world")}!"')
         
         # 创建Skill对象
         self.skill = Skill(

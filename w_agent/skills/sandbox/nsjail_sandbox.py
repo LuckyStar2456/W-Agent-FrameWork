@@ -23,6 +23,14 @@ class NsJailSkillSandbox(SkillSandbox):
     async def execute(self, skill: Any, script_name: str, args: Dict) -> Any:
         sandbox_root = None
         try:
+            # 输入验证
+            if not skill or not script_name or not args:
+                return {"result": "Error", "error": "Invalid input"}
+            
+            # 验证args类型
+            if not isinstance(args, dict):
+                return {"result": "Error", "error": "args must be a dictionary"}
+            
             # 设置资源限制
             self._set_limits()
             
@@ -36,15 +44,22 @@ class NsJailSkillSandbox(SkillSandbox):
             # 2. 创建执行脚本
             exec_script = os.path.join(sandbox_root.name, "execute.py")
             with open(exec_script, 'w', encoding='utf-8') as f:
-                f.write(f"""
+                script_content = """
 import json
 import sys
+import builtins
+
+# 安全措施：禁用危险函数
+builtins.__import__ = None
+builtins.eval = None
+builtins.exec = None
+builtins.__builtins__ = None
 
 # 读取参数
 args = json.loads(sys.argv[1])
 
 # 执行技能代码
-with open('{script_name}', 'r') as f:
+with open('SCRIPT_NAME', 'r') as f:
     code = f.read()
 
 exec_globals = dict()
@@ -57,7 +72,9 @@ except Exception as e:
 
 # 输出结果
 print(json.dumps({"result": result}))
-""".format(script_name=script_name))
+"""
+                script_content = script_content.replace('SCRIPT_NAME', script_name)
+                f.write(script_content)
             
             # 3. 执行代码
             if self.nsjail_available:
@@ -146,6 +163,12 @@ print(json.dumps({"result": result}))
     
     def _set_limits(self):
         """设置资源限制"""
-        import resource
-        resource.setrlimit(resource.RLIMIT_CPU, (self.max_cpu_seconds, self.max_cpu_seconds))
-        resource.setrlimit(resource.RLIMIT_AS, (self.max_memory_bytes, self.max_memory_bytes))
+        import sys
+        if sys.platform != 'win32':
+            try:
+                import resource
+                resource.setrlimit(resource.RLIMIT_CPU, (self.max_cpu_seconds, self.max_cpu_seconds))
+                resource.setrlimit(resource.RLIMIT_AS, (self.max_memory_bytes, self.max_memory_bytes))
+            except ImportError:
+                # 某些平台可能没有resource模块
+                pass

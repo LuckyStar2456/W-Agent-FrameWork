@@ -2,45 +2,40 @@
 """
 示例Redis服务
 """
-from w_agent.core.decorators import PostConstruct, PreDestroy
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import PostConstruct, PreDestroy, DynamicConfigManager
+import redis
 import asyncio
-
-# 尝试导入redis模块
-try:
-    import redis
-except ImportError:
-    redis = None
 
 
 class RedisService:
     """示例Redis服务"""
+
     
     def __init__(self, config_manager):
         """初始化"""
         self.config_manager = config_manager
         self.host = None
         self.port = None
-        self.db = None
         self.password = None
+        self.db = None
+        self.client = None
         
         # 绑定配置
         self.config_manager.bind("redis.host", self, "host")
         self.config_manager.bind("redis.port", self, "port")
-        self.config_manager.bind("redis.db", self, "db")
         self.config_manager.bind("redis.password", self, "password")
-        
-        self.client = None
+        self.config_manager.bind("redis.db", self, "db")
     
     @PostConstruct(order=1)
     def init(self):
         """初始化后执行"""
         try:
+            # 创建Redis客户端
             self.client = redis.Redis(
-                host=self.host,
-                port=self.port,
-                db=self.db,
-                password=self.password,
+                host=self.host or "localhost",
+                port=self.port or 6379,
+                password=self.password or None,
+                db=self.db or 0,
                 decode_responses=True
             )
             # 测试连接
@@ -54,24 +49,21 @@ class RedisService:
     def destroy(self):
         """销毁前执行"""
         if self.client:
-            try:
-                self.client.close()
-            except Exception as e:
-                print(f"Failed to close Redis client: {e}")
-        print("RedisService destroyed")
+            self.client.close()
+            print("RedisService destroyed")
     
-    def get(self, key):
-        """获取缓存"""
+    async def get(self, key):
+        """获取值"""
         if not self.client:
             return None
         try:
             return self.client.get(key)
         except Exception as e:
-            print(f"Redis get failed: {e}")
+            print(f"Redis get error: {e}")
             return None
     
-    def set(self, key, value, expire=None):
-        """设置缓存"""
+    async def set(self, key, value, expire=None):
+        """设置值"""
         if not self.client:
             return False
         try:
@@ -81,26 +73,107 @@ class RedisService:
                 self.client.set(key, value)
             return True
         except Exception as e:
-            print(f"Redis set failed: {e}")
+            print(f"Redis set error: {e}")
             return False
     
-    def delete(self, key):
-        """删除缓存"""
+    async def delete(self, key):
+        """删除键"""
         if not self.client:
             return False
         try:
             self.client.delete(key)
             return True
         except Exception as e:
-            print(f"Redis delete failed: {e}")
+            print(f"Redis delete error: {e}")
             return False
     
-    def exists(self, key):
+    async def exists(self, key):
         """检查键是否存在"""
         if not self.client:
             return False
         try:
-            return self.client.exists(key) > 0
+            return bool(self.client.exists(key))
         except Exception as e:
-            print(f"Redis exists failed: {e}")
+            print(f"Redis exists error: {e}")
             return False
+    
+    async def increment(self, key, amount=1):
+        """递增键值"""
+        if not self.client:
+            return None
+        try:
+            return self.client.incrby(key, amount)
+        except Exception as e:
+            print(f"Redis increment error: {e}")
+            return None
+    
+    async def decrement(self, key, amount=1):
+        """递减键值"""
+        if not self.client:
+            return None
+        try:
+            return self.client.decrby(key, amount)
+        except Exception as e:
+            print(f"Redis decrement error: {e}")
+            return None
+    
+    async def hget(self, key, field):
+        """获取哈希字段值"""
+        if not self.client:
+            return None
+        try:
+            return self.client.hget(key, field)
+        except Exception as e:
+            print(f"Redis hget error: {e}")
+            return None
+    
+    async def hset(self, key, field, value):
+        """设置哈希字段值"""
+        if not self.client:
+            return False
+        try:
+            self.client.hset(key, field, value)
+            return True
+        except Exception as e:
+            print(f"Redis hset error: {e}")
+            return False
+    
+    async def hgetall(self, key):
+        """获取哈希所有字段"""
+        if not self.client:
+            return {}
+        try:
+            return self.client.hgetall(key)
+        except Exception as e:
+            print(f"Redis hgetall error: {e}")
+            return {}
+    
+    async def lpush(self, key, *values):
+        """左侧推入列表"""
+        if not self.client:
+            return 0
+        try:
+            return self.client.lpush(key, *values)
+        except Exception as e:
+            print(f"Redis lpush error: {e}")
+            return 0
+    
+    async def rpush(self, key, *values):
+        """右侧推入列表"""
+        if not self.client:
+            return 0
+        try:
+            return self.client.rpush(key, *values)
+        except Exception as e:
+            print(f"Redis rpush error: {e}")
+            return 0
+    
+    async def lrange(self, key, start, stop):
+        """获取列表范围"""
+        if not self.client:
+            return []
+        try:
+            return self.client.lrange(key, start, stop)
+        except Exception as e:
+            print(f"Redis lrange error: {e}")
+            return []

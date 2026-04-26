@@ -1,7 +1,6 @@
 import asyncio
 import pytest
-from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
-from w_agent.exceptions.framework_errors import BeanNotFoundError, InjectionError
+from w_agent import BeanFactory, BeanDefinition, Scope, BeanNotFoundError, InjectionError
 
 class TestBeanFactory:
     """测试BeanFactory"""

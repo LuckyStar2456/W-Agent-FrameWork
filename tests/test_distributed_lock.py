@@ -1,7 +1,6 @@
 import asyncio
 import pytest
-from w_agent.distributed.lock import RedisDistributedLock
-from w_agent.distributed.lock_pool import LockRenewalPool
+from w_agent import RedisDistributedLock, LockRenewalPool
 
 class MockRedis:
     """模拟Redis客户端"""

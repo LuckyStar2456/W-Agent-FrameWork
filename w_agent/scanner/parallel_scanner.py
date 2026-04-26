@@ -46,14 +46,16 @@ class ParallelASTScanner:
             "ControllerComponent"
         ]
     
-    def scan_package(self, package_path: Path, workers: int = os.cpu_count()) -> ScanResult:
+    def scan_package(self, package_path: Path, workers: int = 1) -> ScanResult:
         files = list(package_path.rglob("*.py"))
-        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(self._scan_single_file, f): f for f in files}
-            all_components = []
-            for future in concurrent.futures.as_completed(futures):
-                all_components.extend(future.result())
+        print(f"Scanning files: {files}")
+        all_components = []
+        for file_path in files:
+            components = self._scan_single_file(file_path)
+            print(f"Found components in {file_path}: {components}")
+            all_components.extend(components)
         # 合并结果
+        print(f"Total components found: {len(all_components)}")
         return ScanResult(components=all_components)
     
     def _scan_single_file(self, file_path: Path) -> List[ComponentDef]:
@@ -63,20 +65,29 @@ class ParallelASTScanner:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
+            print(f"File content:\n{content}")
+            
             tree = ast.parse(content, filename=str(file_path))
             
             # 扫描类定义
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
+                    print(f"Found class: {node.name}")
+                    print(f"Decorators: {[self._get_decorator_name(d) for d in node.decorator_list]}")
                     component = self._process_class_def(node, file_path)
                     if component:
                         components.append(component)
+                        print(f"Found component: {component.name}")
                 elif isinstance(node, ast.FunctionDef):
+                    print(f"Found function: {node.name}")
+                    print(f"Decorators: {[self._get_decorator_name(d) for d in node.decorator_list]}")
                     component = self._process_function_def(node, file_path)
                     if component:
                         components.append(component)
+                        print(f"Found component: {component.name}")
         except Exception as e:
             # 忽略解析错误，继续扫描其他文件
+            print(f"Error scanning file {file_path}: {e}")
             pass
         
         return components
@@ -129,6 +140,12 @@ class ParallelASTScanner:
             return decorator.id
         elif isinstance(decorator, ast.Attribute):
             return decorator.attr
+        elif isinstance(decorator, ast.Call):
+            # 处理带参数的装饰器，如 @AgentComponent(name="test_agent")
+            if isinstance(decorator.func, ast.Name):
+                return decorator.func.id
+            elif isinstance(decorator.func, ast.Attribute):
+                return decorator.func.attr
         return ""
     
     def _extract_annotations(self, decorator: ast.AST) -> Dict[str, Any]:

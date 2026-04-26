@@ -13,7 +13,7 @@ class SkillSandbox:
 
 class WasmSkillSandbox(SkillSandbox):
     def __init__(self, precompiled_path: Path = None):
-        self.forbidden_modules = ["os", "sys", "subprocess", "shutil", "ctypes"]
+        self.forbidden_modules = ["os", "subprocess", "ctypes"]
         self.cache_dir = Path(tempfile.gettempdir()) / "w_agent_wasm_cache"
         self.cache_dir.mkdir(exist_ok=True)
         self.precompiled_path = precompiled_path
@@ -36,6 +36,14 @@ class WasmSkillSandbox(SkillSandbox):
     async def execute(self, skill: Any, script_name: str, args: Dict) -> Any:
         wasm_path = None
         try:
+            # 输入验证
+            if not skill or not script_name or not args:
+                return {"result": "Error", "error": "Invalid input"}
+            
+            # 验证args类型
+            if not isinstance(args, dict):
+                return {"result": "Error", "error": "args must be a dictionary"}
+            
             # 保存当前技能代码，用于fallback执行
             self.current_script_content = skill.scripts[script_name].read_text(encoding='utf-8')
             

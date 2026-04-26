@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import DynamicConfigManager
 
 class TestConfigManager:
     """测试配置管理"""

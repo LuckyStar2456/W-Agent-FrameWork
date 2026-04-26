@@ -8,7 +8,7 @@ with open(os.path.join(here, 'README.md'), 'r', encoding='utf-8') as f:
 
 setup(
     name="wagent-framework",
-    version="1.4.1",
+    version="1.4.4",
     description="Python enterprise agent framework with AOP, IOC, and sandbox security",
     long_description=long_description,
     long_description_content_type="text/markdown",

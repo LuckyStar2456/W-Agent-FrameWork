@@ -4,6 +4,7 @@
 """
 from w_agent.core.decorators import PostConstruct, PreDestroy
 from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent.observability.logging import LogEnable
 import openai
 import asyncio
 
@@ -23,6 +24,11 @@ class RAGService:
         self.chunk_overlap = None
         self.top_k = None
         
+        # 嵌入向量缓存
+        self._embedding_cache = {}
+        # 文档缓存
+        self._document_cache = {}
+        
         # 绑定配置
         self.config_manager.bind("rag.embedding_model", self, "embedding_model")
         self.config_manager.bind("rag.vector_store", self, "vector_store")
@@ -40,8 +46,13 @@ class RAGService:
         """销毁前执行"""
         print("RAGService destroyed")
     
+    @LogEnable(log_args=True, log_result=False, log_duration=True)
     async def embed_text(self, text):
         """生成文本嵌入"""
+        # 检查缓存
+        if text in self._embedding_cache:
+            return self._embedding_cache[text]
+            
         if not self.llm_service.client:
             return None
         try:
@@ -50,14 +61,22 @@ class RAGService:
                 input=text,
                 model=self.embedding_model
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            # 缓存结果
+            self._embedding_cache[text] = embedding
+            return embedding
         except Exception as e:
             print(f"Embed text failed: {e}")
             return None
     
+    @LogEnable(log_args=True, log_result=True, log_duration=True)
     async def store_document(self, document_id, text, metadata=None):
         """存储文档"""
         try:
+            # 检查缓存
+            if document_id in self._document_cache:
+                return True
+            
             # 生成嵌入
             embedding = await self.embed_text(text)
             if not embedding:
@@ -72,7 +91,11 @@ class RAGService:
                     "embedding": str(embedding),
                     "metadata": metadata or {}
                 }
-                return self.redis_service.set(key, str(data))
+                success = self.redis_service.set(key, str(data))
+                if success:
+                    # 缓存文档
+                    self._document_cache[document_id] = data
+                return success
             else:
                 print(f"Unsupported vector store: {self.vector_store}")
                 return False
@@ -80,6 +103,7 @@ class RAGService:
             print(f"Store document failed: {e}")
             return False
     
+    @LogEnable(log_args=True, log_result=False, log_duration=True)
     async def retrieve_documents(self, query, top_k=None):
         """检索相关文档"""
         try:
@@ -88,18 +112,25 @@ class RAGService:
             if not query_embedding:
                 return []
             
+            # 检查缓存
+            cache_key = f"query:{query}:{top_k or self.top_k}"
+            if cache_key in self._document_cache:
+                return self._document_cache[cache_key]
+            
             # 从向量存储中检索
             if self.vector_store == "redis" and self.redis_service.client:
                 # 使用Redis的向量搜索功能
                 documents = await self._retrieve_from_redis(query_embedding, top_k or self.top_k)
-                return documents
             elif self.vector_store == "memory":
                 # 使用内存存储（用于测试）
                 documents = await self._retrieve_from_memory(query_embedding, top_k or self.top_k)
-                return documents
             else:
                 print(f"Unsupported vector store: {self.vector_store}")
                 return []
+            
+            # 缓存结果
+            self._document_cache[cache_key] = documents
+            return documents
         except Exception as e:
             print(f"Retrieve documents failed: {e}")
             return []
@@ -122,11 +153,12 @@ class RAGService:
                 def cosine_similarity(a, b):
                     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
                 
+                # 批量获取文档数据
+                data_strs = self.redis_service.client.mget(keys)
+                
                 # 遍历所有文档并计算相似度
-                for key in keys:
+                for key, data_str in zip(keys, data_strs):
                     try:
-                        # 获取文档数据
-                        data_str = self.redis_service.client.get(key)
                         if data_str:
                             import ast
                             data = ast.literal_eval(data_str)
@@ -191,6 +223,7 @@ class RAGService:
             print(f"Retrieve from memory failed: {e}")
             return []
     
+    @LogEnable(log_args=True, log_result=False, log_duration=True)
     async def generate_with_rag(self, query, context=None):
         """使用RAG生成回复"""
         try:

@@ -6,10 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from w_agent.core.doctor import Doctor
-from w_agent.container.bean_factory import BeanFactory
-from w_agent.config.dynamic_config import DynamicConfigManager
-from w_agent.lifecycle.manager import LifecycleManager
+from w_agent import Doctor, BeanFactory, DynamicConfigManager, LifecycleManager
 
 from src.services.llm_service import LLMService
 from src.services.skill_service import SkillService

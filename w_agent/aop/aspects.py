@@ -48,9 +48,12 @@ class RetryAspect:
                                 ))
                             # 尝试调用fallback方法
                             if fallback_method and hasattr(joinpoint.target, fallback_method):
-                                fallback = getattr(joinpoint.target, fallback_method)
-                                return fallback(*joinpoint.args, **joinpoint.kwargs)
-                            raise
+                                try:
+                                    fallback = getattr(joinpoint.target, fallback_method)
+                                    return fallback(*joinpoint.args, **joinpoint.kwargs)
+                                except Exception as fallback_error:
+                                    raise Exception(f"Retry failed after {max_attempts} attempts, and fallback method {fallback_method} also failed: {str(fallback_error)}") from e
+                            raise Exception(f"Retry failed after {max_attempts} attempts: {str(e)}") from e
                         
                         if self.event_bus:
                             await self.event_bus.emit(Event(
@@ -110,9 +113,12 @@ class CircuitBreakerAspect:
                                 payload={"function": func_key}
                             ))
                         if fallback_method and hasattr(joinpoint.target, fallback_method):
-                            fallback = getattr(joinpoint.target, fallback_method)
-                            return fallback(*joinpoint.args, **joinpoint.kwargs)
-                        raise Exception("Circuit breaker is open")
+                            try:
+                                fallback = getattr(joinpoint.target, fallback_method)
+                                return fallback(*joinpoint.args, **joinpoint.kwargs)
+                            except Exception as fallback_error:
+                                raise Exception(f"Circuit breaker is open, and fallback method {fallback_method} also failed: {str(fallback_error)}")
+                        raise Exception(f"Circuit breaker is open for {func_key}")
                 
                 try:
                     sub_span = global_tracer.start_span("aop.circuit_breaker.execute")
