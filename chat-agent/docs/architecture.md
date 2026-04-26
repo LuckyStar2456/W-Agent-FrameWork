@@ -125,7 +125,7 @@
 
 ## 技术栈
 
-- **Python 3.8+**：主要开发语言
+- **Python 3.9+**：主要开发语言
 - **W-Agent**：核心框架
 - **OpenAI SDK**：LLM API客户端
 - **asyncio**：异步IO

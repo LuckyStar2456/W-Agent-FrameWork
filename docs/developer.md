@@ -798,9 +798,8 @@ def lambda_handler(event, context):
 ### 3. FastAPI 集成
 
 ```python
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from w_agent import BeanFactory, LifecycleManager
-from w_agent.deployment.fastapi_depends import get_bean
 from src.agents.my_agent import MyAgent
 from src.services.user_service import UserService
 
@@ -840,7 +839,8 @@ async def shutdown():
         await lifecycle_manager.pre_destroy_all()
 
 @app.post("/chat")
-async def chat(prompt: str, agent: MyAgent = Depends(get_bean("my_agent"))):
+async def chat(prompt: str):
+    agent = await bean_factory.get_bean("my_agent")
     result = await agent.arun(prompt)
     return {"response": result}
 ```

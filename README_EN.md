@@ -55,9 +55,7 @@ pip install -e .
 
 ```python
 import asyncio
-from w_agent.core.agent import BaseAgent
-from w_agent.container.bean_factory import BeanFactory
-from w_agent.core.decorators import AgentComponent
+from w_agent import BaseAgent, BeanFactory, AgentComponent
 
 @AgentComponent(name="hello_agent")
 class HelloAgent(BaseAgent):
@@ -84,7 +82,7 @@ asyncio.run(main())
 
 ```python
 import asyncio
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import DynamicConfigManager
 
 async def main():
     config_manager = DynamicConfigManager()

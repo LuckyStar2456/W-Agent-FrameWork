@@ -12,9 +12,7 @@ pip install -e .
 
 ```python
 import asyncio
-from w_agent.core.agent import BaseAgent
-from w_agent.container.bean_factory import BeanFactory
-from w_agent.core.decorators import AgentComponent
+from w_agent import BaseAgent, BeanFactory, AgentComponent
 
 @AgentComponent(name="hello_agent")
 class HelloAgent(BaseAgent):
@@ -38,7 +36,7 @@ asyncio.run(main())
 ### 2.1 构造器注入
 
 ```python
-from w_agent.container.bean_factory import BeanFactory, BeanDefinition
+from w_agent import BeanFactory, BeanDefinition
 
 class UserService:
     def __init__(self, db_connection):
@@ -55,7 +53,7 @@ bean_factory.register_bean_definition("user_service", BeanDefinition(
 ### 2.2 字段注入
 
 ```python
-from w_agent.core.decorators import Autowired
+from w_agent import Autowired
 
 class UserService:
     @Autowired(name="redis_client")
@@ -65,7 +63,7 @@ class UserService:
 ### 2.3 Setter 注入
 
 ```python
-from w_agent.core.decorators import Qualifier
+from w_agent import Qualifier
 
 class UserService:
     @Qualifier(name="cache_client")
@@ -78,7 +76,7 @@ class UserService:
 ### 3.1 使用重试装饰器
 
 ```python
-from w_agent.core.decorators import Retry
+from w_agent import Retry
 
 @Retry(max_attempts=3, delay=1.0, backoff=2.0)
 async def unreliable_api_call():
@@ -89,7 +87,7 @@ async def unreliable_api_call():
 ### 3.2 使用断路器
 
 ```python
-from w_agent.core.decorators import CircuitBreaker
+from w_agent import CircuitBreaker
 
 @CircuitBreaker(failure_threshold=5, recovery_timeout=30.0)
 async def protected_operation():
@@ -100,7 +98,7 @@ async def protected_operation():
 ### 3.3 自定义切点
 
 ```python
-from w_agent.aop.pointcut import AspectJPointcut
+from w_agent import AspectJPointcut
 
 # 匹配 com.example 包下所有类的所有方法
 pointcut = AspectJPointcut("within(com.example..*)")
@@ -114,7 +112,7 @@ if pointcut.matches(method, target_class, "bean_name"):
 ### 4.1 基础配置
 
 ```python
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import DynamicConfigManager
 
 config = DynamicConfigManager()
 
@@ -160,7 +158,7 @@ class MyService:
 ### 5.1 发布订阅
 
 ```python
-from w_agent.core.event_bus import EventBus, Event
+from w_agent import EventBus, Event
 
 event_bus = EventBus()
 
@@ -188,9 +186,9 @@ await event_bus.process_dead_letter_queue()
 ### 6.1 基本使用
 
 ```python
-from w_agent.distributed.lock import DistributedLock
+from w_agent import RedisDistributedLock
 
-lock = DistributedLock(redis_client, "my_resource", ttl=30)
+lock = RedisDistributedLock(redis_client, "my_resource", ttl=30)
 
 async with lock.acquire():
     # 临界区操作
@@ -200,7 +198,7 @@ async with lock.acquire():
 ### 6.2 锁续期
 
 ```python
-from w_agent.distributed.lock_pool import LockRenewalPool
+from w_agent import LockRenewalPool
 
 pool = LockRenewalPool(redis_client)
 pool.start()
@@ -218,7 +216,7 @@ pool.stop()
 ### 7.1 Wasm 沙箱
 
 ```python
-from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
+from w_agent import WasmSkillSandbox
 from pathlib import Path
 
 sandbox = WasmSkillSandbox(precompiled_path=Path("./wasm"))
@@ -229,7 +227,7 @@ result = await sandbox.execute(skill, "script_name", {"arg": "value"})
 ### 7.2 NsJail 沙箱
 
 ```python
-from w_agent.skills.sandbox.nsjail_sandbox import NsJailSkillSandbox
+from w_agent import NsJailSkillSandbox
 
 sandbox = NsJailSkillSandbox(
     max_cpu_seconds=5,
@@ -244,7 +242,7 @@ result = await sandbox.execute(skill, "script_name", {"arg": "value"})
 ### 8.1 链路追踪
 
 ```python
-from w_agent.observability.tracing import global_tracer
+from w_agent import global_tracer
 
 with global_tracer.start_span("my_operation") as span:
     span.set_attribute("key", "value")
@@ -257,9 +255,9 @@ with global_tracer.start_span("my_operation") as span:
 ### 8.2 健康检查
 
 ```python
-from w_agent.observability.health import HealthCheck
+from w_agent import CompositeHealthIndicator, HealthIndicator
 
-health = HealthCheck()
+health = CompositeHealthIndicator()
 
 health.add_check("database", check_database_connection)
 health.add_check("redis", check_redis_connection)
@@ -288,7 +286,7 @@ my_project/
 ### 9.2 组件扫描
 
 ```python
-from w_agent.scanner.parallel_scanner import ParallelASTScanner
+from w_agent import ParallelASTScanner
 
 scanner = ParallelASTScanner(
     scan_paths=["src"],
@@ -301,9 +299,9 @@ components = await scanner.scan()
 ### 9.3 优雅关闭
 
 ```python
-from w_agent.lifecycle.graceful_shutdown import GracefulShutdown
+from w_agent import GracefulShutdownManager
 
-shutdown = GracefulShutdown(timeout=30)
+shutdown = GracefulShutdownManager(timeout=30)
 
 @shutdown.on_shutdown
 async def cleanup():
@@ -332,7 +330,7 @@ export W_AGENT_LOGGING_LEVEL=WARNING
 A: 继承框架基类并使用组件装饰器：
 
 ```python
-from w_agent.core.decorators import Component
+from w_agent import Component
 
 @Component(name="custom")
 class CustomComponent:

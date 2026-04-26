@@ -10,7 +10,7 @@ from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.core.decorators import (
     AgentComponent, ServiceComponent, ToolComponent,
-    RepositoryComponent, ControllerComponent,
+    RepositoryComponent, ControllerComponent, Component,
     PostConstruct, PreDestroy, Autowired, Qualifier,
     Retry, CircuitBreaker
 )
@@ -31,6 +31,9 @@ from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
 from w_agent.skills.sandbox.nsjail_sandbox import NsJailSkillSandbox
 from w_agent.skills.skill import Skill
 from w_agent.exceptions.framework_errors import BeanNotFoundError, InjectionError
+from w_agent.scanner.parallel_scanner import ParallelASTScanner
+from w_agent.lifecycle.graceful_shutdown import GracefulShutdownManager
+from w_agent.tools.langchain_adapter import LangChainToolAdapter
 
 __all__ = [
     "BaseAgent",
@@ -43,6 +46,7 @@ __all__ = [
     "ToolComponent",
     "RepositoryComponent",
     "ControllerComponent",
+    "Component",
     "PostConstruct",
     "PreDestroy",
     "Autowired",
@@ -55,6 +59,7 @@ __all__ = [
     "Doctor",
     "LifecycleManager",
     "LifecycleOrder",
+    "GracefulShutdownManager",
     "ResilienceManager",
     "AspectJPointcut",
     "BeforeAdvice",
@@ -74,5 +79,7 @@ __all__ = [
     "NsJailSkillSandbox",
     "Skill",
     "BeanNotFoundError",
-    "InjectionError"
+    "InjectionError",
+    "ParallelASTScanner",
+    "LangChainToolAdapter"
 ]

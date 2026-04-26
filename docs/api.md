@@ -9,7 +9,7 @@
 Agent 基类，所有 Agent 需要继承此类。
 
 ```python
-from w_agent.core.agent import BaseAgent
+from w_agent import BaseAgent
 
 class MyAgent(BaseAgent):
     async def arun(self, prompt: str) -> str:
@@ -26,7 +26,7 @@ class MyAgent(BaseAgent):
 Bean 工厂类，负责 Bean 的创建和管理。
 
 ```python
-from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
+from w_agent import BeanFactory, BeanDefinition, Scope
 
 bean_factory = BeanFactory()
 
@@ -63,7 +63,7 @@ definition = BeanDefinition(
 #### 组件装饰器
 
 ```python
-from w_agent.core.decorators import (
+from w_agent import (
     AgentComponent, ServiceComponent, ToolComponent,
     RepositoryComponent, ControllerComponent
 )
@@ -80,7 +80,7 @@ class MyService:
 #### 生命周期装饰器
 
 ```python
-from w_agent.core.decorators import PostConstruct, PreDestroy
+from w_agent import PostConstruct, PreDestroy
 
 class MyService:
     @PostConstruct(order=1)
@@ -95,7 +95,7 @@ class MyService:
 #### 弹性装饰器
 
 ```python
-from w_agent.core.decorators import Retry, CircuitBreaker
+from w_agent import Retry, CircuitBreaker
 
 @Retry(max_attempts=3, delay=0.1, backoff=2.0)
 async def unreliable_operation():
@@ -109,7 +109,7 @@ async def protected_operation():
 #### 依赖注入装饰器
 
 ```python
-from w_agent.core.decorators import Autowired, Qualifier
+from w_agent import Autowired, Qualifier
 
 class UserService:
     @Qualifier(name="redis_client")
@@ -124,7 +124,7 @@ class UserService:
 动态配置管理器。
 
 ```python
-from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent import DynamicConfigManager
 
 config = DynamicConfigManager()
 
@@ -155,7 +155,7 @@ config.on_change(lambda key, old, new: print(f"{key} changed"))
 事件总线，支持重试和死信队列。
 
 ```python
-from w_agent.core.event_bus import EventBus, Event
+from w_agent import EventBus, Event
 
 event_bus = EventBus()
 
@@ -188,7 +188,7 @@ event = Event(
 切点表达式解析器。
 
 ```python
-from w_agent.aop.pointcut import AspectJPointcut
+from w_agent import AspectJPointcut
 
 # 创建切点
 pointcut = AspectJPointcut("execution(* com.example.*.*(..))")
@@ -200,7 +200,7 @@ matches = pointcut.matches(method, target_class, "bean_name")
 #### 通知类
 
 ```python
-from w_agent.aop.pointcut import BeforeAdvice, AfterAdvice, AroundAdvice
+from w_agent import BeforeAdvice, AfterAdvice, AroundAdvice
 
 # 前置通知
 before_advice = BeforeAdvice(lambda jp: print("Before"))
@@ -219,9 +219,9 @@ around_advice = AroundAdvice(lambda jp, proceed: proceed())
 分布式锁。
 
 ```python
-from w_agent.distributed.lock import DistributedLock
+from w_agent import RedisDistributedLock
 
-lock = DistributedLock(redis_client, "my_lock", ttl=30)
+lock = RedisDistributedLock(redis_client, "my_lock", ttl=30)
 
 async with lock.acquire():
     # 临界区操作
@@ -238,7 +238,7 @@ async with lock.acquire():
 #### 全局追踪器
 
 ```python
-from w_agent.observability.tracing import global_tracer
+from w_agent import global_tracer
 
 # 创建_span
 with global_tracer.start_span("operation") as span:
@@ -249,9 +249,9 @@ with global_tracer.start_span("operation") as span:
 #### 健康检查
 
 ```python
-from w_agent.observability.health import HealthCheck
+from w_agent import CompositeHealthIndicator, HealthIndicator
 
-health = HealthCheck()
+health = CompositeHealthIndicator()
 
 # 添加检查项
 health.add_check("database", lambda: check_db())
@@ -267,7 +267,7 @@ status = await health.check()
 Wasm 沙箱。
 
 ```python
-from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
+from w_agent import WasmSkillSandbox
 
 sandbox = WasmSkillSandbox(precompiled_path=Path("./wasm"))
 
@@ -279,7 +279,7 @@ result = await sandbox.execute(skill, "script_name", {"arg": "value"})
 NsJail 沙箱。
 
 ```python
-from w_agent.skills.sandbox.nsjail_sandbox import NsJailSkillSandbox
+from w_agent import NsJailSkillSandbox
 
 sandbox = NsJailSkillSandbox(
     max_cpu_seconds=5,
@@ -304,6 +304,4 @@ from w_agent.exceptions.framework_errors import (
 
 ### 分布式异常
 
-```python
-from w_agent.distributed.lock import LockAcquisitionError, LockRenewalError
-```
+分布式锁相关的异常已包含在上方的框架异常中。
