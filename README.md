@@ -1,4 +1,4 @@
-# W-Agent v1.4.4
+# W-Agent v1.4.5
 
 [English](./README_EN.md) | 简体中文
 
@@ -610,7 +610,7 @@ export W_AGENT_RESILIENCE_RETRY_MAX_ATTEMPTS=5
 ## 📦 PyPI 包
 
 - **包名**: `wagent-framework`
-- **版本**: 1.4.4
+- **版本**: 1.5.0
 - **安装**: `pip install wagent-framework`
 - **PyPI 地址**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
 

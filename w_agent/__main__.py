@@ -34,7 +34,7 @@ async def main():
         result = await agent.arun(prompt)
         print(result)
     else:
-        print("W-Agent v1.4.4")
+        print("W-Agent v1.5.0")
         print("Usage: python -m w_agent <prompt>")
 
 if __name__ == "__main__":

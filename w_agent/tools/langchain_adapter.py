@@ -1,4 +1,4 @@
-from typing import Callable, Any, List, Dict
+from typing import Callable, Any, List, Dict, Optional, TYPE_CHECKING
 from w_agent.core.decorators import ToolComponent
 from w_agent.core.event_bus import EventBus, Event
 
@@ -10,6 +10,13 @@ try:
     _langchain_available = True
 except ImportError:
     _langchain_available = False
+    # 定义占位符类
+    class BaseTool:
+        pass
+    class AsyncCallbackHandler:
+        pass
+    class BaseModel:
+        pass
 
 class ToolMetadata:
     """工具元数据"""
@@ -41,6 +48,9 @@ class LangChainToolAdapter(BaseTool):
 class WAgentCallbackHandler(AsyncCallbackHandler):
     """W-Agent 回调处理器"""
     def __init__(self, event_bus: EventBus):
+        if not _langchain_available:
+            raise ImportError("LangChain is not installed. Please install with: pip install w-agent[langchain]")
+        super().__init__()
         self.event_bus = event_bus
     
     async def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs):
@@ -67,7 +77,7 @@ class WAgentCallbackHandler(AsyncCallbackHandler):
         )
         await self.event_bus.emit(event)
 
-def to_langchain_tools(tool_components: List[Callable]) -> List[BaseTool]:
+def to_langchain_tools(tool_components: List[Callable]) -> List:
     """将 W-Agent ToolComponent 转换为 LangChain Tool 列表"""
     if not _langchain_available:
         return []

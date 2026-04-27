@@ -24,15 +24,12 @@ class LifecycleManager:
                     # 处理装饰器对象的情况
                     actual_func = value
                     
-                    # 特殊处理：如果是post_construct或pre_destroy方法，直接从实例中获取
-                    if name == 'post_construct' or name == 'pre_destroy':
-                        actual_func = getattr(instance, name)
-                    elif hasattr(value, 'func'):
-                        actual_func = value.func
+                    # 对于所有情况，都从实例中获取绑定的方法
+                    actual_func = getattr(instance, name)
                     
                     # 检查是否有生命周期装饰器标记
-                    has_post = hasattr(actual_func, '__post_construct__')
-                    has_pre = hasattr(actual_func, '__pre_destroy__')
+                    has_post = hasattr(actual_func, '__post_construct__') or hasattr(value, '__post_construct__')
+                    has_pre = hasattr(actual_func, '__pre_destroy__') or hasattr(value, '__pre_destroy__')
                     
                     # 特殊处理：直接检查方法名
                     if name == 'post_construct':

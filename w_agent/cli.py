@@ -101,7 +101,7 @@ def show_version():
         from importlib.metadata import version
         ver = version("w-agent")
     except Exception:
-        ver = "1.4.0"
+        ver = "1.5.0"
     print(f"W-Agent version {ver}")
 
 if __name__ == '__main__':
