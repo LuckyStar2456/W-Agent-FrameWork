@@ -615,6 +615,13 @@ If you find this project helpful, please give us a ⭐!
 
 ## 📝 Changelog
 
+### v1.5.0 (2026-04-27)
+- **Version Update**: Bumped version to 1.5.0
+- **Bug Fixes**: Fixed LangChain adapter import error when LangChain is not installed
+- **Bug Fixes**: Fixed lifecycle method binding issue with decorated methods
+- **Documentation**: Updated all documentation with unified import paths
+- **Documentation**: Fixed Python version requirement in chat-agent docs
+
 ### v1.4.4 (2026-04-26)
 - **Framework Optimization**: Improved stability and performance of core features
 - **Code Quality**: Enhanced code maintainability and readability
