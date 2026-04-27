@@ -1,4 +1,4 @@
-# W-Agent v1.4.5
+# W-Agent v1.5.0
 
 [English](./README_EN.md) | 简体中文
 
