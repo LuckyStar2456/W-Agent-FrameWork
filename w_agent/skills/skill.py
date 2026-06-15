@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from w_agent.exceptions.framework_errors import SkillLoadError
 
 class Skill:
     """技能类"""
@@ -34,7 +35,7 @@ class SkillLoader:
         # 读取SKILL.md文件获取元数据
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.exists():
-            raise ValueError(f"SKILL.md not found in {skill_dir}")
+            raise SkillLoadError(f"SKILL.md not found in {skill_dir}")
         
         # 解析SKILL.md
         name = skill_dir.name

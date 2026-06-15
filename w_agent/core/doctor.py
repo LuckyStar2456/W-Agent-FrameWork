@@ -86,8 +86,10 @@ class Doctor:
             return True, "RedisDistributedLock initialized successfully"
         except ImportError:
             return False, "RedisDistributedLock initialization failed: redis module not installed"
-        except ConnectionError:
+        except redis.ConnectionError:
             return False, "RedisDistributedLock initialization failed: Redis server not available"
+        except redis.RedisError as e:
+            return False, f"RedisDistributedLock initialization failed: Redis error - {e}"
         except Exception as e:
             return False, f"RedisDistributedLock initialization failed: {e}"
     

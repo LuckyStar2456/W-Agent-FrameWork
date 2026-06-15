@@ -610,11 +610,17 @@ export W_AGENT_RESILIENCE_RETRY_MAX_ATTEMPTS=5
 ## 📦 PyPI 包
 
 - **包名**: `wagent-framework`
-- **版本**: 1.5.0
+- **版本**: 1.5.1
 - **安装**: `pip install wagent-framework`
 - **PyPI 地址**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
 
 ## 📝 更新日志
+
+### v1.5.1 (2026-04-27)
+- **版本更新**: 版本号更新至 1.5.1
+- **文档更新**: 完善了更新日志内容
+- **Bug 修复**: 修复了 LangChain 适配器在未安装 LangChain 时的导入错误
+- **Bug 修复**: 修复了生命周期方法绑定问题
 
 ### v1.5.0 (2026-04-27)
 - **版本更新**: 版本号更新至 1.5.0

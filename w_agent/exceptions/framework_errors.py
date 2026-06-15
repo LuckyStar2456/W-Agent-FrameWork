@@ -28,3 +28,11 @@ class SkillSandboxError(SecurityError):
 class LLMTimeoutError(WAgentError):
     def __init__(self, message: str):
         super().__init__(message)
+
+class SkillError(WAgentError):
+    """技能相关错误"""
+    pass
+
+class SkillLoadError(SkillError):
+    def __init__(self, message: str):
+        super().__init__(message)

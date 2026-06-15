@@ -1,7 +1,10 @@
+import logging
 from typing import Dict, List, Callable, Any, Optional
 from dataclasses import dataclass
 import asyncio
 import time
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Event:
@@ -42,12 +45,12 @@ class EventBus:
                     listener(event)
                 return  # 执行成功，退出
             except Exception as e:
-                print(f"Error in event listener: {e}")
+                logger.warning(f"Error in event listener for {event.name}: {e}")
                 retries += 1
                 if retries > max_retries:
                     # 添加到死信队列
                     self._dead_letter_queue.append(event)
-                    print(f"Event {event.name} added to dead letter queue after {max_retries} retries")
+                    logger.error(f"Event {event.name} added to dead letter queue after {max_retries} retries")
                     return
                 # 指数退避重试
                 await asyncio.sleep(0.1 * (2 ** (retries - 1)))
@@ -60,7 +63,7 @@ class EventBus:
         """处理死信队列"""
         while self._dead_letter_queue:
             event = self._dead_letter_queue.pop(0)
-            print(f"Processing event {event.name} from dead letter queue")
+            logger.info(f"Processing event {event.name} from dead letter queue")
             await self.emit(event)
 
 class ConfigChangedEvent(Event):

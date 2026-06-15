@@ -1,7 +1,10 @@
+import logging
 from typing import Dict, List, Tuple, Any, Callable
 from w_agent.lifecycle.order import LifecycleOrder
 import asyncio
 import inspect
+
+logger = logging.getLogger(__name__)
 
 class LifecycleManager:
     def __init__(self):
@@ -61,7 +64,7 @@ class LifecycleManager:
                                 (method_order, instance, bound_method)
                             )
             except Exception as e:
-                pass
+                logger.debug(f"Error registering lifecycle method '{name}' for {type(instance).__name__}: {e}")
 
     async def post_construct_all(self):
         # 收集所有方法（按 lifecycle order 排序）

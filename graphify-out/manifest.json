@@ -1,0 +1,277 @@
+{
+  "w_agent/__init__.py": {
+    "mtime": 1778304633.8563886,
+    "ast_hash": "4acaeeb88f7de78d985dbd531195ed2f",
+    "semantic_hash": ""
+  },
+  "w_agent/__main__.py": {
+    "mtime": 1777269773.463895,
+    "ast_hash": "d3afa43670c59663ee51c83486f470cf",
+    "semantic_hash": ""
+  },
+  "w_agent/aop/__init__.py": {
+    "mtime": 1777269773.4674573,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/aop/aspects.py": {
+    "mtime": 1777269773.4709325,
+    "ast_hash": "3c3403924f0982097b8aed94dd90f895",
+    "semantic_hash": ""
+  },
+  "w_agent/aop/joinpoint.py": {
+    "mtime": 1777269773.4709325,
+    "ast_hash": "95300afee3032cb4534448d051b9f74b",
+    "semantic_hash": ""
+  },
+  "w_agent/aop/pointcut.py": {
+    "mtime": 1777269773.4737117,
+    "ast_hash": "f92066bfea4679a43ea8d827d34138ea",
+    "semantic_hash": ""
+  },
+  "w_agent/aop/proxy_factory.py": {
+    "mtime": 1777269773.47601,
+    "ast_hash": "9c561006de866830c97046b4e8813437",
+    "semantic_hash": ""
+  },
+  "w_agent/cli.py": {
+    "mtime": 1777269773.47601,
+    "ast_hash": "aafdc9960a14693554205df8b7479779",
+    "semantic_hash": ""
+  },
+  "w_agent/config/__init__.py": {
+    "mtime": 1777269773.4816706,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/config/dynamic_config.py": {
+    "mtime": 1777269773.4876122,
+    "ast_hash": "e74241dfb605f6a091287f5360b57c92",
+    "semantic_hash": ""
+  },
+  "w_agent/container/__init__.py": {
+    "mtime": 1777269773.4876122,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/container/bean_factory.py": {
+    "mtime": 1781514650.7432103,
+    "ast_hash": "4c615df5b3f4928b8b13e20cedb0f039",
+    "semantic_hash": ""
+  },
+  "w_agent/container/reflection_cache.py": {
+    "mtime": 1777269773.4906976,
+    "ast_hash": "5cc6d91799d33237921d3e5e322e7cdc",
+    "semantic_hash": ""
+  },
+  "w_agent/core/__init__.py": {
+    "mtime": 1777269773.496148,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/core/agent.py": {
+    "mtime": 1777269773.4981425,
+    "ast_hash": "d522ded76fc5275d9ab8b7d710e6e0c7",
+    "semantic_hash": ""
+  },
+  "w_agent/core/decorators.py": {
+    "mtime": 1777269773.4981425,
+    "ast_hash": "a34eabe9fad84bc9e84f69c9f7f5752d",
+    "semantic_hash": ""
+  },
+  "w_agent/core/doctor.py": {
+    "mtime": 1781514650.7452278,
+    "ast_hash": "2128518d6d3542f1ca9137010c37371c",
+    "semantic_hash": ""
+  },
+  "w_agent/core/event_bus.py": {
+    "mtime": 1781514650.7511759,
+    "ast_hash": "fbefd3d67f03e797c78d147941c10bec",
+    "semantic_hash": ""
+  },
+  "w_agent/deployment/__init__.py": {
+    "mtime": 1777269773.5040007,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/deployment/fastapi_depends.py": {
+    "mtime": 1777269773.5040007,
+    "ast_hash": "d50580be36f48e9a993b783dc6b554f0",
+    "semantic_hash": ""
+  },
+  "w_agent/distributed/__init__.py": {
+    "mtime": 1777269773.5087163,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/distributed/lock.py": {
+    "mtime": 1777269773.5154974,
+    "ast_hash": "b2796149ec194aff1d6402868b550426",
+    "semantic_hash": ""
+  },
+  "w_agent/distributed/lock_pool.py": {
+    "mtime": 1777269773.5189316,
+    "ast_hash": "548e918387b5405e2334a757bb1b76e5",
+    "semantic_hash": ""
+  },
+  "w_agent/exceptions/__init__.py": {
+    "mtime": 1777269773.5209553,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/exceptions/framework_errors.py": {
+    "mtime": 1781514650.7457533,
+    "ast_hash": "1103a34cefd7c7b2f35f42c6900a1294",
+    "semantic_hash": ""
+  },
+  "w_agent/lifecycle/__init__.py": {
+    "mtime": 1777269773.5239978,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/lifecycle/graceful_shutdown.py": {
+    "mtime": 1777269773.5274658,
+    "ast_hash": "5a953b6141ff0ac508d2895452bf6127",
+    "semantic_hash": ""
+  },
+  "w_agent/lifecycle/manager.py": {
+    "mtime": 1781514650.7452278,
+    "ast_hash": "fbedc968d187665bd7ede8aee3b17149",
+    "semantic_hash": ""
+  },
+  "w_agent/lifecycle/order.py": {
+    "mtime": 1777269773.5330307,
+    "ast_hash": "2039d57e9ded1fca135e40438745fad0",
+    "semantic_hash": ""
+  },
+  "w_agent/logging/sensitive_filter.py": {
+    "mtime": 1777269773.5355449,
+    "ast_hash": "5ede4053908623938e2235b121ae5b1c",
+    "semantic_hash": ""
+  },
+  "w_agent/migration/__init__.py": {
+    "mtime": 1777269773.5375462,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/migration/migrate_previous.py": {
+    "mtime": 1777269773.5425756,
+    "ast_hash": "8fdc5b5d6a78095f1865da44a9dd7985",
+    "semantic_hash": ""
+  },
+  "w_agent/observability/__init__.py": {
+    "mtime": 1777269773.5471137,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/observability/health.py": {
+    "mtime": 1777269773.5542686,
+    "ast_hash": "84c9d89f61986a26b63a88e5bd5cbf57",
+    "semantic_hash": ""
+  },
+  "w_agent/observability/logging.py": {
+    "mtime": 1777269773.5555723,
+    "ast_hash": "9cc7a139368aae982b54b37f9011731a",
+    "semantic_hash": ""
+  },
+  "w_agent/observability/metrics.py": {
+    "mtime": 1777269773.5584793,
+    "ast_hash": "90fbf53b61a883b4f8a358b3f4dd4c87",
+    "semantic_hash": ""
+  },
+  "w_agent/observability/tracing.py": {
+    "mtime": 1777269773.5619073,
+    "ast_hash": "521ace440ec6e99cf44b0276b282ac6c",
+    "semantic_hash": ""
+  },
+  "w_agent/resilience/__init__.py": {
+    "mtime": 1777269773.5648859,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/resilience/bulkhead.py": {
+    "mtime": 1777269773.570956,
+    "ast_hash": "5290d87fe1fcae7ab32b87a31022833e",
+    "semantic_hash": ""
+  },
+  "w_agent/resilience/timeout.py": {
+    "mtime": 1777269773.573525,
+    "ast_hash": "e79ae70cdb438e056e229b05a6e76b3b",
+    "semantic_hash": ""
+  },
+  "w_agent/scanner/__init__.py": {
+    "mtime": 1777269773.573525,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/scanner/cache.py": {
+    "mtime": 1777269773.5836205,
+    "ast_hash": "0fa7241a4b1bbf29069f793f327fcc33",
+    "semantic_hash": ""
+  },
+  "w_agent/scanner/parallel_scanner.py": {
+    "mtime": 1781514650.7457533,
+    "ast_hash": "d6521d62881e61636f03be77b15c0bea",
+    "semantic_hash": ""
+  },
+  "w_agent/security/__init__.py": {
+    "mtime": 1777269773.588344,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/security/mcp_auth.py": {
+    "mtime": 1777269773.5908718,
+    "ast_hash": "47a29ad314806fe57848e9f0fae9f16a",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/__init__.py": {
+    "mtime": 1777269773.5918965,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/sandbox/__init__.py": {
+    "mtime": 1777269773.6090086,
+    "ast_hash": "16815053e76fa799498cab98b2e630e2",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/sandbox/nsjail_sandbox.py": {
+    "mtime": 1777269773.613934,
+    "ast_hash": "e81a71adb4106fd1c0b8150bcb0f99b3",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/sandbox/wasm_sandbox.py": {
+    "mtime": 1777269773.6169603,
+    "ast_hash": "18a8c58018225b02bbfd2fff2fbf8036",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/signature.py": {
+    "mtime": 1777269773.6189694,
+    "ast_hash": "903a278dfa082ee967f15c3563067bc2",
+    "semantic_hash": ""
+  },
+  "w_agent/skills/skill.py": {
+    "mtime": 1781514650.7432103,
+    "ast_hash": "1f094320ada46a9c021a06e6cf55b2fb",
+    "semantic_hash": ""
+  },
+  "w_agent/testing/__init__.py": {
+    "mtime": 1777269773.6214998,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/testing/mock_utils.py": {
+    "mtime": 1777269773.6240149,
+    "ast_hash": "f97bb799c037673b42b7a4a15cbd0965",
+    "semantic_hash": ""
+  },
+  "w_agent/tools/__init__.py": {
+    "mtime": 1777269773.6255486,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "w_agent/tools/langchain_adapter.py": {
+    "mtime": 1777269773.6274335,
+    "ast_hash": "e93956f5c0275b5ac0dbed6d8e1cdf91",
+    "semantic_hash": ""
+  }
+}

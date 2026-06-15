@@ -609,11 +609,17 @@ If you find this project helpful, please give us a ⭐!
 ## 📦 PyPI Package
 
 - **Package Name**: `wagent-framework`
-- **Version**: 1.5.0
+- **Version**: 1.5.1
 - **Installation**: `pip install wagent-framework`
 - **PyPI URL**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
 
 ## 📝 Changelog
+
+### v1.5.1 (2026-04-27)
+- **Version Update**: Bumped version to 1.5.1
+- **Documentation**: Improved changelog content
+- **Bug Fixes**: Fixed LangChain adapter import error when LangChain is not installed
+- **Bug Fixes**: Fixed lifecycle method binding issue with decorated methods
 
 ### v1.5.0 (2026-04-27)
 - **Version Update**: Bumped version to 1.5.0

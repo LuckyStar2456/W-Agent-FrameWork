@@ -37,10 +37,15 @@ class BeanFactory:
     
     def register_bean_definition(self, name: str, definition: BeanDefinition):
         """注册Bean定义"""
+        if not name or not isinstance(name, str):
+            raise InjectionError("Bean name must be a non-empty string")
+        
         self._bean_definitions[name] = definition
         # 添加依赖关系到依赖图
-        for dep in definition.dependencies:
-            self._graph.add_dependency(name, dep)
+        if definition.dependencies:
+            for dep in definition.dependencies:
+                if dep and isinstance(dep, str):
+                    self._graph.add_dependency(name, dep)
     
     def register_bean(self, name: str, instance: Any, scope: str = Scope.SINGLETON):
         """直接注册Bean实例"""

@@ -2,7 +2,10 @@ import concurrent.futures
 from pathlib import Path
 import os
 import ast
+import logging
 from typing import List, Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 class ComponentDef:
     """组件定义"""
@@ -46,16 +49,25 @@ class ParallelASTScanner:
             "ControllerComponent"
         ]
     
-    def scan_package(self, package_path: Path, workers: int = 1) -> ScanResult:
+    def scan_package(self, package_path: Path, workers: int = 4) -> ScanResult:
         files = list(package_path.rglob("*.py"))
-        print(f"Scanning files: {files}")
+        logger.info(f"Scanning {len(files)} files in {package_path}")
         all_components = []
-        for file_path in files:
-            components = self._scan_single_file(file_path)
-            print(f"Found components in {file_path}: {components}")
-            all_components.extend(components)
-        # 合并结果
-        print(f"Total components found: {len(all_components)}")
+        
+        if workers > 1 and len(files) > 1:
+            # 使用多线程扫描
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [executor.submit(self._scan_single_file, file_path) for file_path in files]
+                for future in concurrent.futures.as_completed(futures):
+                    components = future.result()
+                    all_components.extend(components)
+        else:
+            # 单线程扫描
+            for file_path in files:
+                components = self._scan_single_file(file_path)
+                all_components.extend(components)
+        
+        logger.info(f"Total components found: {len(all_components)}")
         return ScanResult(components=all_components)
     
     def _scan_single_file(self, file_path: Path) -> List[ComponentDef]:
@@ -65,30 +77,21 @@ class ParallelASTScanner:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            print(f"File content:\n{content}")
-            
             tree = ast.parse(content, filename=str(file_path))
             
             # 扫描类定义
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
-                    print(f"Found class: {node.name}")
-                    print(f"Decorators: {[self._get_decorator_name(d) for d in node.decorator_list]}")
                     component = self._process_class_def(node, file_path)
                     if component:
                         components.append(component)
-                        print(f"Found component: {component.name}")
                 elif isinstance(node, ast.FunctionDef):
-                    print(f"Found function: {node.name}")
-                    print(f"Decorators: {[self._get_decorator_name(d) for d in node.decorator_list]}")
                     component = self._process_function_def(node, file_path)
                     if component:
                         components.append(component)
-                        print(f"Found component: {component.name}")
         except Exception as e:
             # 忽略解析错误，继续扫描其他文件
-            print(f"Error scanning file {file_path}: {e}")
-            pass
+            logger.warning(f"Error scanning file {file_path}: {e}")
         
         return components
     
