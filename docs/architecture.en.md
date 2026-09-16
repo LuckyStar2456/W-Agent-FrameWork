@@ -6,7 +6,7 @@ English | [简体中文](./architecture.md)
 
 W-Agent is an open agent framework for local developers, not a hosted platform or a fixed harness. It provides stable protocols, lifecycle management, and default templates required for composition while leaving models, routing, agent loops, workflows, tools, state, sandboxes, and interfaces under developer control.
 
-Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The current `2.0.0a1` source implements the Phase 1 microkernel. The remainder of this document covers both that implemented kernel and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
+Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The current `2.0.0a1` source implements the Phase 1 microkernel and Phase 2A model foundation. The remainder of this document covers both implemented capabilities and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
 
 ## 2. Design principles
 
@@ -110,11 +110,9 @@ ModelRequest(
 
 An adapter declares whether each extension is consumed, forwarded, or rejected. Unsupported standard fields fail by default and are never silently discarded. Runtime context is controlled-mutable: formal transitions update core fields, while plugins directly write only their own namespace.
 
-Implemented Phase 1 protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, and `EventDispatcher`. Later `Planned` protocols include:
+Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, `ModelRequest`, `ModelResponse`, `StreamEvent`, `ModelCapability`, `RouteRequest`, `RouteDecision`, and `RoutingPolicy`. Later `Planned` protocols include:
 
 - `RunContext`, `RunEvent`, `RunResult`, and `StopReason`.
-- `ModelRequest`, `ModelResponse`, `StreamEvent`, and `ModelCapability`.
-- `RouteRequest`, `RouteDecision`, and `RoutingPolicy`.
 - `ToolDefinition`, `ToolCall`, `ToolResult`, and `ToolExecutor`.
 - `AgentDefinition`, `AgentLoop`, and `AgentHandle`.
 - `WorkflowDefinition`, `WorkflowEngine`, and `Checkpoint`.
@@ -122,11 +120,13 @@ Implemented Phase 1 protocols include `PluginSpec`, `PluginHandle`, `Registry`, 
 
 ## 6. Models, routing, and probing
 
-The model protocol supports OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, Ollama, vLLM, and custom providers. Multimodality, tool calling, structured output, reasoning, and prompt caching are exposed through capabilities rather than a lowest-common-denominator API.
+Status: the Phase 2A protocols, registry, routing, and probe framework are `Implemented`; first-party provider adapters plus retry and failover execution are `Planned`.
+
+The model protocol can express the capabilities needed by OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, Ollama, vLLM, and custom providers, but those first-party adapters are not built in yet. Multimodality, tool calling, structured output, reasoning, and prompt caching are exposed through capabilities rather than a lowest-common-denominator API.
 
 Routing applies user and safety filters, capability matching, health filtering, scoring, selection, invocation, and failover. Python strategies and YAML rules compile to the same `RoutingPolicy`. Every selection emits an observable `RouteDecision` with candidates, rejection reasons, scores, and the final choice.
 
-Endpoint probing covers network, authentication, protocol, model catalog, text generation, streaming, tool calling, structured output, and multimodal levels. Manual, registration-time, and periodic probes are supported. Active probes that may incur cost require explicit authorization.
+Current probing implements L1 URL/DNS/TCP/TLS/HTTP, L2 provider access, L3 model catalog, and explicitly authorized L4/L5 generation/stream-protocol checks, plus caching and a generic periodic scheduler. L6/L7 currently report declarations and remain marked as not actively verified; automatic registration wiring and CLI/TUI entry points are `Planned`. Potentially billable probes require `allow_active=True`.
 
 See [Models, routing, and endpoint probing](./model-routing.en.md).
 

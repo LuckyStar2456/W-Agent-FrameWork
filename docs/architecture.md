@@ -6,7 +6,7 @@
 
 W-Agent 是面向本地开发者的开放式 Agent 框架，不是托管平台，也不是固定 Harness。框架提供模块组合所需的稳定协议、生命周期和默认模板，开发者拥有模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面的最终控制权。
 
-稳定版 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座。当前 `2.0.0a1` 源码已经实现 Phase 1 微内核；本文其余部分同时描述已实现内核和 `Planned` 的后续架构，未标记 `Implemented` 的能力不得宣称已经提供。
+稳定版 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座。当前 `2.0.0a1` 源码已经实现 Phase 1 微内核和 Phase 2A 模型基础；本文其余部分同时描述已实现能力和 `Planned` 的后续架构，未标记 `Implemented` 的能力不得宣称已经提供。
 
 ## 2. 设计原则
 
@@ -110,11 +110,9 @@ ModelRequest(
 
 适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-已经实现的 Phase 1 协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration` 和 `EventDispatcher`。后续 `Planned` 协议包括：
+已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、`ModelRequest`、`ModelResponse`、`StreamEvent`、`ModelCapability`、`RouteRequest`、`RouteDecision` 和 `RoutingPolicy`。后续 `Planned` 协议包括：
 
 - `RunContext`、`RunEvent`、`RunResult`、`StopReason`。
-- `ModelRequest`、`ModelResponse`、`StreamEvent`、`ModelCapability`。
-- `RouteRequest`、`RouteDecision`、`RoutingPolicy`。
 - `ToolDefinition`、`ToolCall`、`ToolResult`、`ToolExecutor`。
 - `AgentDefinition`、`AgentLoop`、`AgentHandle`。
 - `WorkflowDefinition`、`WorkflowEngine`、`Checkpoint`。
@@ -122,11 +120,13 @@ ModelRequest(
 
 ## 6. 模型、路由与探测
 
-模型协议支持 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集。
+状态：Phase 2A 协议、注册表、路由和探测框架为 `Implemented`；首方 Provider 适配器、重试与故障转移执行器为 `Planned`。
+
+模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力，但当前尚未内置这些首方适配器。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集。
 
 路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分、选择、调用和故障转移。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。
 
-接口探测分为网络、鉴权、协议、模型目录、文本生成、流式、工具调用、结构化输出和多模态级别。手动、注册时和周期性探测均被支持；可能产生费用的主动探测必须显式开启。
+当前接口探测实现 L1 URL/DNS/TCP/TLS/HTTP、L2 Provider 访问、L3 模型目录和显式授权的 L4/L5 生成/流协议检查，并提供缓存与通用周期调度器。L6/L7 当前只报告声明并标记未主动验证；注册时自动挂接和 CLI/TUI 入口为 `Planned`。可能产生费用的主动探测必须传入 `allow_active=True`。
 
 详细设计见[模型、路由与接口探测](./model-routing.md)。
 

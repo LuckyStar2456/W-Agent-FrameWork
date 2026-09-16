@@ -4,7 +4,7 @@
 
 W-Agent 是一个面向本地开发者的 Python 开源 Agent 开发框架。它的目标不是提供托管平台或固定 Harness，而是提供稳定、可扩展的协议与可自由装配的模块，让开发者能够替换模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面实现。
 
-当前稳定发布版本是 `1.5.2`；仓库主线已进入 `2.0.0a1` 开发阶段。1.x 工程底座继续保留，Phase 1 微内核已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
+当前稳定发布版本是 `1.5.2`；仓库主线已进入 `2.0.0a1` 开发阶段。1.x 工程底座继续保留，Phase 1 微内核和 Phase 2A 模型基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
 
 ## 状态标记
 
@@ -48,7 +48,14 @@ W-Agent 遵循以下原则：
 - `Application → Workspace → Session → Agent → Run → Step` 作用域。
 - `publish`、`first`、`serial` 和 `pipeline` 事件模式。
 
-当前 `BaseAgent` 仍是简单抽象；模型统一协议、模型路由、标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。
+以下 Phase 2A 能力在当前源码中也为 `Implemented`：
+
+- Provider 中立的消息、能力、请求、响应和严格流事件协议。
+- 统一 `ModelRegistry`、可替换 `ModelProvider` 和协作式取消令牌。
+- 可解释的 Python 加权路由与安全 YAML 路由规则。
+- L1 端点可达性嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存和周期调度器。
+
+当前 `BaseAgent` 仍是简单抽象；具体 OpenAI、Anthropic、Gemini、本地模型适配器，自动故障转移，标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。
 
 ## 下一代模块图
 

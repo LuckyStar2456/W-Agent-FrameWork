@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, the Phase 1 microkernel is implemented, and the remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
+The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, the Phase 1 microkernel and Phase 2A model foundation are implemented, and the remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
 ## Status labels
 
@@ -48,7 +48,14 @@ The following Phase 1 capabilities are `Implemented` in the current `2.0.0a1` so
 - `Application → Workspace → Session → Agent → Run → Step` scopes.
 - `publish`, `first`, `serial`, and `pipeline` event modes.
 
-`BaseAgent` remains a minimal abstraction. A unified model protocol, routing, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features.
+The following Phase 2A capabilities are also `Implemented` in the current source:
+
+- Provider-neutral messages, capabilities, requests, responses, and strict stream events.
+- A unified `ModelRegistry`, replaceable `ModelProvider`, and cooperative cancellation token.
+- Explainable weighted Python routing and safe YAML routing rules.
+- L1 endpoint reachability sniffing, L2/L3 provider checks, explicitly authorized L4/L5 active probes, caching, and periodic scheduling.
+
+`BaseAgent` remains a minimal abstraction. Concrete OpenAI, Anthropic, Gemini, and local-model adapters, automatic failover, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features.
 
 ## Next-generation module map
 

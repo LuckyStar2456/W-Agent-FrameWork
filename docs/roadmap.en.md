@@ -23,10 +23,12 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Phase 1 microkernel public protocols | `Implemented` | 2.0.0a1 |
 | Unified registry and plugin lifecycle | `Implemented` | 2.0.0a1 |
 | Dependency resolution, reversible registration, scopes, event pipelines | `Implemented` | 2.0.0a1 |
-| Unified model protocol and stream events | `Planned` | Phase 2 |
+| Unified model protocol and stream events | `Implemented` | Phase 2A / 2.0.0a1 |
 | OpenAI, Anthropic, Gemini, OpenAI-compatible, local adapters | `Planned` | Phase 2 |
-| Python and YAML routing | `Planned` | Phase 2 |
-| Manual, registration-time, and periodic probing | `Planned` | Phase 2 |
+| Python and YAML routing | `Implemented` | Phase 2A / 2.0.0a1 |
+| Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
+| Automatic registration probes and CLI/TUI probe entry points | `Planned` | Phase 2B |
+| Automatic retry and failover executor | `Planned` | Phase 2B |
 | ReAct agent-loop template | `Planned` | Phase 3 |
 | Separate tool definition, policy, and execution | `Planned` | Phase 3 |
 | Session event recording and replay | `Planned` | Phase 3 |
@@ -59,9 +61,10 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 2: models and routing
 
-- Model request, response, stream event, capability, and extension protocols.
-- Provider adapters, route decisions, and three probe modes.
-- Errors, limits, timeouts, retry, and failover.
+- Status: `Implemented` for the 2A foundation / `Planned` for 2B adapters and execution.
+- 2A implements model requests, responses, stream events, capabilities, extensions, the provider registry, and stable error categories.
+- 2A implements explainable route decisions, Python/YAML policies, endpoint sniffing, provider probes, caching, and periodic scheduling.
+- 2B plans first-party provider adapters, automatic registration probes, CLI/TUI entry points, retry, and failover execution.
 
 ### Phase 3: agents and tools
 

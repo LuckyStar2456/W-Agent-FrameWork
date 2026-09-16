@@ -2,71 +2,121 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：`Planned`。当前 1.5.2 只有聊天示例中的 OpenAI 调用，没有统一模型注册表和路由器。
+状态：Phase 2A 基础为 `Implemented`（`2.0.0a1`）；首方 Provider 适配、自动重试/故障转移、注册自动探测和 CLI/TUI 入口为 `Planned`。
+
+## 已实现边界
+
+- Provider 中立的消息、内容块、工具定义、请求、模型描述和响应。
+- 文本、图像、音频、工具调用、结构化输出、Reasoning、Prompt Cache 等标准能力声明。
+- 严格流事件：块开始、文本/工具增量、块结束、Usage、标准错误和 Finish。
+- `ModelProvider`、`ModelRegistry`、`CancellationToken` 和标准错误分类。
+- 可解释的 `WeightedRoutingPolicy`、安全 YAML 策略和 `ModelRouter`。
+- L1 端点嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存与周期调度。
+
+当前未内置 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama 或 vLLM 适配器。协议可以承载这些适配器，但这不代表已经接入。
 
 ## 模型协议
 
-标准请求字段覆盖消息、工具、结构化输出、采样、停止条件、最大输出、模态、缓存提示和取消。Provider 专有能力通过命名空间扩展表达。
+`ModelRequest` 使用类型化标准字段和 `extensions` 命名空间。请求会从消息内容、工具和响应 Schema 推导路由所需能力。`ModelDescriptor` 声明模型身份、能力、上下文窗口、输出上限、Reasoning 档位和 Provider 扩展。
 
-Provider 返回统一流事件：内容块开始、增量、结束，工具调用增量，Usage，错误和 Finish。所有流必须具有明确终止事件；不完整流按协议错误处理。
+Provider 实现同一公开协议：
 
-## 能力声明
+```python
+class ModelProvider(Protocol):
+    async def list_models(self) -> tuple[ModelDescriptor, ...]: ...
+    async def resolve(self, model: str) -> ModelDescriptor: ...
 
-`ModelDescriptor` 声明：
-
-- 文本、图像、音频等输入输出模态。
-- 流式、工具调用、并行工具调用和结构化输出。
-- Reasoning 参数及可选值。
-- 上下文和输出上限。
-- Prompt Cache 或其他 Provider 特性。
-
-核心不把 Provider 私有枚举提升为全局枚举。调用者请求不支持的标准能力时，Provider 必须报错，不能静默忽略。
-
-## 首版 Provider
-
-`Planned`：OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama 和 vLLM。适配器之间共享协议测试套件。自定义 Provider 通过公开 `ModelProvider` 接口注册。
-
-## 路由管线
-
-```text
-候选 Provider/Model
-  → 用户策略与安全过滤
-  → 能力匹配
-  → 健康过滤
-  → 成本/延迟/质量评分
-  → 选择
-  → 调用
-  → 重试或故障转移
+    def stream(
+        self,
+        request: ModelRequest,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-Python `RoutingPolicy` 和 YAML 声明规则编译成相同决策接口。每次路由产生 `RouteDecision`，包含输入摘要、候选、拒绝原因、评分、选择、备用列表和策略版本。
+`collect_stream()` 拒绝未开始块的增量、重复块、存在未关闭块的 Finish、Finish 后事件以及没有 Finish 的不完整流。Provider 可抛出 `ModelError`，也可发送 `ErrorEvent`；两者携带同一 `ModelFailure` 分类。
 
-路由决策不记录提示词明文或密钥。是否保存模型输入由 Session 事件策略决定。
+## Provider 注册
+
+`ModelRegistry` 建立在统一 `Registry` 上，因此继承版本与作用域解析规则：
+
+```python
+models = ModelRegistry(shared_registry)
+registration = models.register(
+    "my-provider",
+    provider,
+    version="1.0.0",
+    scope=ScopePath.application(),
+)
+
+resolved = models.provider("my-provider")
+registration.dispose()
+```
+
+第三方实现不需要继承框架基类；满足 `ModelProvider` 协议即可。
+
+## 可解释路由
+
+路由管线为：
+
+```text
+当前模型目录
+  → 指定模型与 Provider allow/deny 过滤
+  → 标准能力匹配
+  → 健康与成本过滤
+  → 质量/延迟/成本/健康/偏好评分
+  → 选择与有序备用列表
+  → RouteDecision
+```
+
+`RouteDecision` 保存 Provider/模型、所有候选的接受或拒绝原因、得分、备用顺序、策略名/版本和请求计数摘要，但不保存提示词明文或密钥。
+
+Python 代码可以实现任意 `RoutingPolicy.select()`。内置 `WeightedRoutingPolicy` 提供可调整权重；`YamlRoutingPolicy` 使用 `yaml.safe_load` 将声明规则编译到同一接口，不导入或执行 YAML 中的代码。
+
+```yaml
+name: local-first
+version: 1
+preferred_providers: [ollama]
+deny_providers: [disabled-provider]
+max_cost_per_million: 20
+required_capabilities: [streaming]
+weights:
+  quality: 1.0
+  latency: 0.5
+  cost: 0.8
+  health: 1.0
+  preferred_provider: 0.5
+```
+
+当前 `ModelRouter` 只产生决定，不调用 Provider，也不自动执行备用路由。重试、退避、幂等边界和故障转移执行器属于 Phase 2B `Planned`。
 
 ## 接口探测
 
-三种触发方式：
-
-- 手动：CLI、TUI 或 Python API 调用。
-- 注册时：Provider 选择性执行安全检测。
-- 周期性：健康插件按照配置运行。
-
-探测层级：
-
-| 级别 | 内容 | 默认是否允许产生费用 |
+| 级别 | 当前行为 | 是否可能产生模型费用 |
 |---|---|---|
-| L1 | DNS、TCP、TLS、HTTP 可达 | 否 |
-| L2 | 鉴权与基础错误格式 | 否 |
-| L3 | API 协议和模型目录 | 否 |
-| L4 | 最小文本生成 | 可能，需确认 |
-| L5 | 流式响应 | 可能，需确认 |
-| L6 | 工具调用和结构化输出 | 可能，需确认 |
-| L7 | 多模态能力 | 可能，需确认 |
+| L1 | `EndpointProbe` 检查 URL、DNS、TCP、TLS、HTTP | 否 |
+| L2 | Provider 是否接受模型目录请求，并归一化访问失败 | 否 |
+| L3 | 读取模型目录与声明能力 | 否 |
+| L4 | 最小文本生成 | 是；必须 `allow_active=True` |
+| L5 | 验证完整流终止协议 | 是；必须 `allow_active=True` |
+| L6 | 工具/结构化能力仅报告声明，状态为 `SKIPPED` | 当前不执行 |
+| L7 | 多模态能力仅报告声明，状态为 `SKIPPED` | 当前不执行 |
 
-探测结果包含时间、端点标识、探测器版本、延迟、能力和失败分类，并具有过期时间。周期探测可以临时摘除故障路由并在恢复后重新加入，但不能修改用户配置。
+`EndpointProbe` 不发送凭据和请求体，结果目标会移除 URL 用户信息、查询串和片段。HTTP 4xx/5xx 仍证明端点可达；鉴权语义由 Provider Probe 处理。
 
-## 错误与故障转移
+`ProbeResult` 包含模式、分项状态、时间、延迟、失败类别、探测器版本和过期时间。`ProbeCache` 不返回过期结果。`PeriodicProbeService` 可以周期运行任意探测回调，但只产生结果，不修改用户配置。
 
-统一错误至少区分配置、鉴权、限流、超时、网络、协议、内容策略和 Provider 服务错误。路由策略基于稳定错误类别决定是否重试、退避、换模型或终止。
+手动 Python API 和通用周期调度已经实现。插件可以在注册流程中显式调用同一 API；框架级注册自动挂接及 `wagent probe`/TUI 页面仍为 `Planned`。
 
-工具调用已产生副作用后，不得因模型重试而自动重放该工具。Run 记录必须能说明发生过哪些尝试和为什么选择备用路由。
+## 错误与安全边界
+
+稳定错误类别包括配置、鉴权、限流、超时、网络、协议、内容策略、Provider、取消。路由决策可消费健康状态，但当前不会据此自动重试。
+
+主动探测必须由调用者显式设置 `allow_active=True`。此授权只覆盖当前调用，不会持久化，也不会从装配编码导入。后续故障转移不得自动重放已经产生副作用的工具调用。
+
+## Phase 2B 计划
+
+- OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama 和 vLLM 首方适配器及一致性测试。
+- 注册时自动安全探测、CLI/TUI 探测入口和健康状态桥接。
+- Provider 调用器、超时、限流、退避、重试、自动故障转移和尝试记录。
+- L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

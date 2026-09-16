@@ -4,7 +4,7 @@
 
 ## 1. 开发基线
 
-当前仓库版本为 `2.0.0a1`，Phase 1 微内核已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
+当前仓库版本为 `2.0.0a1`，Phase 1 微内核和 Phase 2A 模型基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
 
 下一代实现目标：
 
@@ -27,6 +27,8 @@ w_agent/
 ├── deployment/      # FastAPI 示例集成
 ├── distributed/     # Redis 锁
 ├── lifecycle/       # 初始化与销毁
+├── kernel/          # 插件、注册表、作用域与事件管线
+├── models/          # 模型协议、注册表、路由与探测
 ├── observability/   # 日志、指标、追踪、健康检查
 ├── resilience/      # 超时和舱壁
 ├── scanner/         # AST 组件扫描
@@ -36,7 +38,7 @@ w_agent/
 └── tools/           # LangChain 适配
 ```
 
-计划中的微内核与运行时会在这些模块基础上逐步重构，不能通过简单扩展 `BaseAgent.arun()` 完成。
+后续 Agent 与 Workflow 运行时会在这些模块基础上逐步实现，不能通过简单扩展 `BaseAgent.arun()` 完成。
 
 ## 3. 插件设计规则
 

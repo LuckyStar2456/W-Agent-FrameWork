@@ -4,9 +4,9 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核。IOC、AOP、配置、生命周期、弹性、观测和技能沙箱继续为 `Implemented`；模型协议、路由、ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核和 Phase 2A 模型基础。IOC、AOP、配置、生命周期、弹性、观测、技能沙箱、模型协议、路由策略和 Python 探测 API 为 `Implemented`；具体首方模型适配器、ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
 
-本指南中的“当前用法”可以在 1.x 使用；“计划用法”用于约束后续实现，不是当前可执行 API。
+1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
 ## 2. 安装当前版本
 
@@ -120,9 +120,37 @@ result = await app.agent("coding").run("修复失败的测试")
 
 同一装配也可以由装饰器、YAML 或 Python entry point 提供，最终进入同一个注册表。
 
-## 8. 计划中的模型探测
+## 8. 当前模型协议与探测 API
 
-状态：`Planned`。
+状态：Python API 为 `Implemented`；具体 Provider 和 CLI/TUI 入口为 `Planned`。
+
+自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
+
+```python
+from w_agent import EndpointProbe, ModelRegistry, ModelRouter, YamlRoutingPolicy
+
+models = ModelRegistry()
+models.register("custom", custom_provider, version="1.0.0")
+
+policy = YamlRoutingPolicy.from_yaml("preferred_providers: [custom]")
+decision = await ModelRouter(models, policy).route(request)
+reachability = await EndpointProbe().probe("https://example.com/v1")
+```
+
+主动 Provider 探测可能产生费用，必须为单次调用明确授权：
+
+```python
+from w_agent import ModelProviderProbe, ProbeMode
+
+result = await ModelProviderProbe().probe(
+    "custom",
+    custom_provider,
+    mode=ProbeMode.ACTIVE,
+    allow_active=True,
+)
+```
+
+以下 CLI 体验仍为 `Planned`：
 
 ```text
 wagent probe https://example.com/v1 --mode safe
@@ -130,9 +158,9 @@ wagent probe https://example.com/v1 --mode active
 wagent probe https://example.com/v1 --mode capability
 ```
 
-- `safe`：网络、鉴权和元数据，不主动产生模型费用。
+- `safe`：网络、Provider 访问和模型目录，不主动产生模型生成费用。
 - `active`：发送最小文本请求，需要用户确认。
-- `capability`：探测流式、工具、结构化输出和多模态，需要用户确认。
+- `capability`：当前 Python API 只报告 L6/L7 声明并标记未主动验证；主动验证器为 `Planned`。
 
 ## 9. 计划中的沙箱选择
 

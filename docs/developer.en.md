@@ -4,7 +4,7 @@ English | [简体中文](./developer.md)
 
 ## 1. Development baseline
 
-The current repository version is `2.0.0a1`: the Phase 1 microkernel is implemented and 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
+The current repository version is `2.0.0a1`: the Phase 1 microkernel and Phase 2A model foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
 
 Next-generation targets:
 
@@ -27,6 +27,8 @@ w_agent/
 ├── deployment/      # FastAPI example integration
 ├── distributed/     # Redis locks
 ├── lifecycle/       # Initialization and disposal
+├── kernel/          # Plugins, registry, scopes, and event pipelines
+├── models/          # Model protocols, registry, routing, and probing
 ├── observability/   # Logs, metrics, tracing, health
 ├── resilience/      # Timeouts and bulkheads
 ├── scanner/         # AST component scanning
@@ -36,7 +38,7 @@ w_agent/
 └── tools/           # LangChain adapter
 ```
 
-The planned microkernel and runtime will progressively refactor this foundation; they cannot be delivered by continuing to add behavior to `BaseAgent.arun()`.
+The later agent and workflow runtime will build on these modules; it cannot be delivered by continuing to add behavior to `BaseAgent.arun()`.
 
 ## 3. Plugin design rules
 

@@ -2,7 +2,7 @@
 
 English | [简体中文](./api.md)
 
-This document separates stable 1.5.2 APIs, the current `2.0.0a1` microkernel API, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
+This document separates stable 1.5.2 APIs, the current `2.0.0a1` microkernel/model APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
 
 ## 1. Current top-level API
 
@@ -21,6 +21,9 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Distributed | `RedisDistributedLock`, `LockRenewalPool` |
 | Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox` |
 | Tools/scanning | `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
+| Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
+| Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, and related types |
+| Routing/probing | `ModelRouter`, `RoutingPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 
 The only accurate current agent protocol is:
 
@@ -30,11 +33,11 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-It has no unified model, tool, session, checkpoint, or streaming-event protocol.
+`BaseAgent` is not yet integrated with the new model protocol and still has no unified tool, session, or checkpoint runtime.
 
 ## 2. Next-generation export strategy
 
-Status: `Implemented` / `Planned`. Microkernel APIs are exported directly; the agent, model, and workflow names in the example remain planned.
+Status: `Implemented` / `Planned`. Microkernel and model-foundation APIs are exported directly; `Application`, `AgentLoop`, and `WorkflowEngine` in the example remain planned.
 
 Next-generation APIs are exported directly from `w_agent`; there is no `w_agent.v2` namespace:
 
@@ -67,34 +70,45 @@ Current exports also include `PluginManager`, `PluginContext`, `FunctionPlugin`,
 
 ## 4. Model protocols
 
-Status: `Planned`.
+Status: `Implemented` in Phase 2A.
 
 ```python
 class ModelProvider(Protocol):
+    async def list_models(self) -> tuple[ModelDescriptor, ...]: ...
     async def resolve(self, model: str) -> ModelDescriptor: ...
 
     def stream(
         self,
         request: ModelRequest,
         *,
-        signal: CancelSignal,
+        cancellation: CancellationToken | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`StreamEvent` is planned to cover content block start/delta/end, tool-call deltas, usage, errors, and finish. A provider reports unsupported standard fields and never silently ignores them.
+`StreamEvent` covers content-block start/delta/end, text/tool-call deltas, usage, normalized errors, and finish. `collect_stream()` validates block ordering and an explicit terminal event. A provider reports unsupported standard fields and never silently ignores them. No first-party provider adapter is built in yet.
 
 ## 5. Routing protocol
 
-Status: `Planned`.
+Status: `Implemented` for Phase 2A policy and decisions; invocation, automatic retry, and failover are `Planned`.
 
 ```python
 class RoutingPolicy(Protocol):
-    async def route(self, request: RouteRequest) -> RouteDecision: ...
+    def select(self, request: RouteRequest) -> RouteDecision: ...
 ```
 
-`RouteDecision` contains candidates, rejection reasons, scores, the selected route, failover routes, and the policy version. Python policies and YAML rules produce the same type.
+`RouteDecision` contains candidates, rejection reasons, scores, the selected route, fallback routes, and the policy version, but no prompt plaintext. `WeightedRoutingPolicy` and the `yaml.safe_load`-based `YamlRoutingPolicy` produce the same type. `ModelRouter` reads the current model catalog and applies a policy; it does not yet invoke providers or automatically execute fallback routes.
 
-## 6. Agent protocol
+## 6. Probe protocols
+
+Status: `Implemented` as a Phase 2A foundation.
+
+- `EndpointProbe.probe()`: L1 URL, DNS, TCP, TLS, and HTTP reachability sniffing; the target identifier strips credentials, query data, and fragments.
+- `ModelProviderProbe.probe()`: L2/L3 provider access and model-catalog checks.
+- `ProbeMode.ACTIVE`: runs an L4/L5 minimal generation and stream-protocol check only with `allow_active=True`.
+- `ProbeMode.CAPABILITY`: currently reports L6/L7 declarations as `SKIPPED`; it never presents declarations as active verification.
+- `ProbeCache` and `PeriodicProbeService`: shared building blocks for manual, registration, and health plugins. Automatic registration wiring and CLI/TUI entry points remain `Planned`.
+
+## 7. Agent protocol
 
 Status: `Planned`.
 
@@ -106,7 +120,7 @@ class AgentLoop(Protocol):
 
 The default ReAct loop is an ordinary provider that another loop can replace through the same protocol. Synchronous `invoke()` is only a boundary wrapper.
 
-## 7. Workflow protocol
+## 8. Workflow protocol
 
 Status: `Planned`.
 
@@ -123,7 +137,7 @@ class WorkflowHandle(Protocol):
 
 The first release guarantees recovery only at node boundaries and explicit `checkpoint()` calls.
 
-## 8. Tool protocol
+## 9. Tool protocol
 
 Status: `Planned`.
 
@@ -134,7 +148,7 @@ class ToolExecutor(Protocol):
 
 A tool definition does not own execution policy. Permission, approval, cache, timeout, audit, and sandbox behavior compose through the execution pipeline.
 
-## 9. Sandbox protocol
+## 10. Sandbox protocol
 
 Status: `Planned`.
 
@@ -145,7 +159,7 @@ class SandboxProvider(Protocol):
 
 The first release plans Docker/OCI and explicitly authorized `UnsafeLocalSandbox`. nsjail and Wasm join the same capability through adapters. A remote sandbox remains `Reserved`.
 
-## 10. Composition protocol
+## 11. Composition protocol
 
 Status: `Planned`.
 
@@ -157,7 +171,7 @@ class CompositionCodec(Protocol):
 
 Decode produces a preview only; it installs no dependency, loads no plugin, and executes no code. Separate install and load operations continue only after user confirmation.
 
-## 11. Compatibility API
+## 12. Compatibility API
 
 Status: `Planned` / `Deprecated`.
 

@@ -2,7 +2,7 @@
 
 [English](./api.en.md) | 简体中文
 
-本文区分稳定版 1.5.2、当前 `2.0.0a1` 微内核 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
+本文区分稳定版 1.5.2、当前 `2.0.0a1` 微内核/模型 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
 
 ## 1. 当前顶层 API
 
@@ -21,6 +21,9 @@
 | 分布式 | `RedisDistributedLock`、`LockRenewalPool` |
 | 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox` |
 | 工具/扫描 | `LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
+| 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
+| 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent` 等 |
+| 路由/探测 | `ModelRouter`、`RoutingPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 
 当前准确的 Agent 协议只有：
 
@@ -30,11 +33,11 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-它没有统一模型、工具、Session、Checkpoint 或流式事件协议。
+`BaseAgent` 尚未接入新的模型协议，也仍没有统一工具、Session 或 Checkpoint 运行时。
 
 ## 2. 下一代导出策略
 
-状态：`Implemented` / `Planned`。微内核已经直接导出；示例中的 Agent、模型与 Workflow 类型仍为计划 API。
+状态：`Implemented` / `Planned`。微内核和模型基础已经直接导出；示例中的 `Application`、`AgentLoop` 与 `WorkflowEngine` 仍为计划 API。
 
 下一代 API 直接从 `w_agent` 导出，不创建 `w_agent.v2`：
 
@@ -67,34 +70,45 @@ class Registry(Protocol):
 
 ## 4. 模型协议
 
-状态：`Planned`。
+状态：`Implemented`（Phase 2A）。
 
 ```python
 class ModelProvider(Protocol):
+    async def list_models(self) -> tuple[ModelDescriptor, ...]: ...
     async def resolve(self, model: str) -> ModelDescriptor: ...
 
     def stream(
         self,
         request: ModelRequest,
         *,
-        signal: CancelSignal,
+        cancellation: CancellationToken | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`StreamEvent` 计划覆盖内容块开始/增量/结束、工具调用增量、Usage、错误和 Finish。Provider 必须完整报告不支持的标准字段，不得静默忽略。
+`StreamEvent` 已覆盖内容块开始/增量/结束、文本/工具调用增量、Usage、标准错误和 Finish。`collect_stream()` 校验块顺序和明确终止事件。Provider 必须完整报告不支持的标准字段，不得静默忽略。当前未内置首方 Provider Adapter。
 
 ## 5. 路由协议
 
-状态：`Planned`。
+状态：`Implemented`（Phase 2A 策略与决策）；自动调用、重试和故障转移为 `Planned`。
 
 ```python
 class RoutingPolicy(Protocol):
-    async def route(self, request: RouteRequest) -> RouteDecision: ...
+    def select(self, request: RouteRequest) -> RouteDecision: ...
 ```
 
-`RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本。Python 策略与 YAML 规则产生同一类型。
+`RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略；它尚不负责执行调用或自动切换备用路由。
 
-## 6. Agent 协议
+## 6. 探测协议
+
+状态：`Implemented`（Phase 2A 基础）。
+
+- `EndpointProbe.probe()`：L1 URL、DNS、TCP、TLS 和 HTTP 可达性嗅探，目标标识会移除凭据、查询串和片段。
+- `ModelProviderProbe.probe()`：L2/L3 Provider 访问和模型目录检查。
+- `ProbeMode.ACTIVE`：只有 `allow_active=True` 时才执行 L4/L5 最小生成与流协议检查。
+- `ProbeMode.CAPABILITY`：L6/L7 当前只报告 Provider 声明，明确标记 `SKIPPED`，不会伪装成主动验证。
+- `ProbeCache` 与 `PeriodicProbeService`：为手动、注册插件和健康插件提供公共构件；注册自动挂接及 CLI/TUI 入口仍为 `Planned`。
+
+## 7. Agent 协议
 
 状态：`Planned`。
 
@@ -106,7 +120,7 @@ class AgentLoop(Protocol):
 
 默认 ReAct 是普通 Provider，可以被同协议的其他 Loop 替换。同步 `invoke()` 只作为边界包装器。
 
-## 7. Workflow 协议
+## 8. Workflow 协议
 
 状态：`Planned`。
 
@@ -123,7 +137,7 @@ class WorkflowHandle(Protocol):
 
 首版只承诺节点边界和显式 `checkpoint()` 的恢复。
 
-## 8. 工具协议
+## 9. 工具协议
 
 状态：`Planned`。
 
@@ -134,7 +148,7 @@ class ToolExecutor(Protocol):
 
 工具 Definition 不持有执行策略；权限、审批、缓存、超时、审计和沙箱通过执行 Pipeline 组合。
 
-## 9. 沙箱协议
+## 10. 沙箱协议
 
 状态：`Planned`。
 
@@ -145,7 +159,7 @@ class SandboxProvider(Protocol):
 
 首版计划提供 Docker/OCI 和显式授权的 `UnsafeLocalSandbox`。nsjail/Wasm 通过适配器接入同一能力定义，Remote Sandbox 为 `Reserved`。
 
-## 10. 工程装配协议
+## 11. 工程装配协议
 
 状态：`Planned`。
 
@@ -157,7 +171,7 @@ class CompositionCodec(Protocol):
 
 解码只产生预览，不安装依赖、不加载插件、不执行代码。用户确认后由独立的安装与加载操作继续。
 
-## 11. 兼容接口
+## 12. 兼容接口
 
 状态：`Planned` / `Deprecated`。
 

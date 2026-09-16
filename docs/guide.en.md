@@ -4,9 +4,9 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel. IOC, AOP, configuration, lifecycle, resilience, observability, and skill sandboxes remain `Implemented`. The model protocol, routing, ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel and Phase 2A model foundation. IOC, AOP, configuration, lifecycle, resilience, observability, skill sandboxes, model protocols, routing policies, and Python probe APIs are `Implemented`. Concrete first-party model adapters, the ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
 
-“Current usage” examples work with 1.x. “Planned usage” defines the target experience and is not an executable API today.
+The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
 ## 2. Install the current release
 
@@ -120,9 +120,37 @@ result = await app.agent("coding").run("fix the failing test")
 
 The same composition may come from decorators, YAML, or Python entry points; every path enters the same registry.
 
-## 8. Planned endpoint probing
+## 8. Current model and probe APIs
 
-Status: `Planned`.
+Status: the Python API is `Implemented`; concrete providers and CLI/TUI entry points are `Planned`.
+
+After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
+
+```python
+from w_agent import EndpointProbe, ModelRegistry, ModelRouter, YamlRoutingPolicy
+
+models = ModelRegistry()
+models.register("custom", custom_provider, version="1.0.0")
+
+policy = YamlRoutingPolicy.from_yaml("preferred_providers: [custom]")
+decision = await ModelRouter(models, policy).route(request)
+reachability = await EndpointProbe().probe("https://example.com/v1")
+```
+
+Active provider probes may incur cost and require per-call authorization:
+
+```python
+from w_agent import ModelProviderProbe, ProbeMode
+
+result = await ModelProviderProbe().probe(
+    "custom",
+    custom_provider,
+    mode=ProbeMode.ACTIVE,
+    allow_active=True,
+)
+```
+
+The following CLI experience remains `Planned`:
 
 ```text
 wagent probe https://example.com/v1 --mode safe
@@ -130,9 +158,9 @@ wagent probe https://example.com/v1 --mode active
 wagent probe https://example.com/v1 --mode capability
 ```
 
-- `safe`: network, authentication, and metadata checks without intentional model cost.
+- `safe`: network, provider access, and model-catalog checks without intentional generation cost.
 - `active`: sends a minimal text request and requires confirmation.
-- `capability`: probes streaming, tools, structured output, and multimodality and requires confirmation.
+- `capability`: the current Python API reports L6/L7 declarations as not actively verified; active verifiers are `Planned`.
 
 ## 9. Planned sandbox selection
 

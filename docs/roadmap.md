@@ -23,10 +23,12 @@
 | Phase 1 微内核公共协议 | `Implemented` | 2.0.0a1 |
 | 统一注册表与插件生命周期 | `Implemented` | 2.0.0a1 |
 | 依赖解析、可撤销注册、作用域与事件管线 | `Implemented` | 2.0.0a1 |
-| 统一模型协议与流事件 | `Planned` | Phase 2 |
+| 统一模型协议与流事件 | `Implemented` | Phase 2A / 2.0.0a1 |
 | OpenAI、Anthropic、Gemini、OpenAI-compatible、本地模型适配 | `Planned` | Phase 2 |
-| Python/YAML 模型路由 | `Planned` | Phase 2 |
-| 手动、注册时、周期接口探测 | `Planned` | Phase 2 |
+| Python/YAML 模型路由 | `Implemented` | Phase 2A / 2.0.0a1 |
+| 手动探测 API、缓存与周期调度 | `Implemented` | Phase 2A / 2.0.0a1 |
+| 注册自动探测、CLI/TUI 探测入口 | `Planned` | Phase 2B |
+| 自动重试与故障转移执行器 | `Planned` | Phase 2B |
 | ReAct Agent Loop 模板 | `Planned` | Phase 3 |
 | 工具定义、策略和执行器分离 | `Planned` | Phase 3 |
 | Session 事件记录与回放 | `Planned` | Phase 3 |
@@ -59,9 +61,10 @@
 
 ### Phase 2：模型与路由
 
-- 模型请求、响应、流事件、能力声明和扩展参数。
-- Provider Adapter、路由决策和三类接口探测。
-- 错误、限流、超时、重试与故障转移。
+- 状态：`Implemented`（2A 基础）/ `Planned`（2B 适配与执行）。
+- 2A 已实现模型请求、响应、流事件、能力声明、扩展参数、Provider 注册表和稳定错误分类。
+- 2A 已实现可解释路由决策、Python/YAML 策略、端点嗅探、Provider 探测、缓存和周期调度。
+- 2B 计划提供首方 Provider Adapter、注册自动探测、CLI/TUI 入口、重试与故障转移执行器。
 
 ### Phase 3：Agent 与工具
 
