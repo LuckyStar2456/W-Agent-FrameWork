@@ -307,6 +307,7 @@ async def test_httpx_transport_parses_sse_and_normalizes_http_errors():
             200,
             headers={"content-type": "text/event-stream"},
             content=(
+                b"event: messages\n"
                 b'data: {"choices":[{"delta":{"content":"ok"},'
                 b'"finish_reason":"stop"}]}\n\n'
                 b"data: [DONE]\n\n"

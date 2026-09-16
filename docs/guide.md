@@ -123,7 +123,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API 与 OpenAI-compatible Provider 为 `Implemented`；其他专用 Provider 和 CLI/TUI 入口为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层和首批厂商模板为 `Implemented`；CLI/TUI 入口、OpenAI Responses 与 vLLM 差异适配为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
@@ -161,6 +161,8 @@ result = await ModelProviderProbe().probe(
     allow_active=True,
 )
 ```
+
+Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible 和 Turbo 模板可以通过 `builtin_provider_template_registry()` 装配。Qwen 同时支持原生 DashScope 与兼容入口；Turbo 模板指 Turbo AI/SIAM.AI，必须提供部署地址。详见 [HTTP Provider 与厂商模板](./provider-templates.md)。
 
 以下 CLI 体验仍为 `Planned`：
 

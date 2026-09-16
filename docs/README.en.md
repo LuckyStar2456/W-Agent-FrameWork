@@ -16,6 +16,7 @@ This documentation describes stable 1.5.2, the current `2.0.0a1` source, and the
 
 - [Plugin system](./plugin-system.en.md)
 - [Models, routing, and endpoint probing](./model-routing.en.md)
+- [HTTP providers and vendor templates](./provider-templates.en.md)
 - [Sandbox and local execution](./sandbox.en.md)
 - [CLI and TUI](./tui.en.md)
 - [Portable project compositions](./project-sharing.en.md)

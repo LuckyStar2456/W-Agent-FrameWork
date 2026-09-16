@@ -1,6 +1,23 @@
 """Public provider-neutral model, routing, and probing APIs."""
 
 from .errors import ModelError, ModelFailure, ModelFailureKind, RoutingError
+from .http_provider import (
+    HttpModelProfile,
+    HttpModelProvider,
+    HttpProviderMapping,
+    HttpProviderTransport,
+    HttpRequest,
+    HttpStreamDecoder,
+    HttpStreamFormat,
+    HttpStreamFrame,
+    HttpxProviderTransport,
+)
+from .native_mappings import (
+    AnthropicMessagesMapping,
+    GeminiGenerateContentMapping,
+    OllamaChatMapping,
+    QwenDashScopeMapping,
+)
 from .openai_compatible import (
     HttpxOpenAICompatibleTransport,
     OpenAICompatibleModelProfile,
@@ -38,6 +55,20 @@ from .routing import (
     WeightedRoutingPolicy,
     YamlRoutingPolicy,
 )
+from .templates import (
+    BUILTIN_PROVIDER_TEMPLATES,
+    ProviderTemplate,
+    ProviderTemplateRegistry,
+    anthropic_provider,
+    builtin_provider_template_registry,
+    deepseek_provider,
+    gemini_provider,
+    glm_provider,
+    ollama_provider,
+    qwen_compatible_provider,
+    qwen_native_provider,
+    turbo_provider,
+)
 from .types import (
     AudioContent,
     BlockEnd,
@@ -69,6 +100,8 @@ from .types import (
 __all__ = [
     "MODEL_PROVIDER_CAPABILITY",
     "AudioContent",
+    "AnthropicMessagesMapping",
+    "BUILTIN_PROVIDER_TEMPLATES",
     "BlockEnd",
     "BlockStart",
     "CancellationToken",
@@ -81,7 +114,16 @@ __all__ = [
     "FinishEvent",
     "FinishReason",
     "HealthStatus",
+    "HttpModelProfile",
+    "HttpModelProvider",
+    "HttpProviderMapping",
+    "HttpProviderTransport",
+    "HttpRequest",
+    "HttpStreamDecoder",
+    "HttpStreamFormat",
+    "HttpStreamFrame",
     "HttpxOpenAICompatibleTransport",
+    "HttpxProviderTransport",
     "ImageContent",
     "MessageRole",
     "ModelCapability",
@@ -97,6 +139,8 @@ __all__ = [
     "ModelResponse",
     "ModelRouter",
     "ModelStreamProtocolError",
+    "GeminiGenerateContentMapping",
+    "OllamaChatMapping",
     "OpenAICompatibleModelProfile",
     "OpenAICompatibleProvider",
     "OpenAICompatibleTransport",
@@ -107,6 +151,9 @@ __all__ = [
     "ProbeMode",
     "ProbeResult",
     "ProbeStatus",
+    "ProviderTemplate",
+    "ProviderTemplateRegistry",
+    "QwenDashScopeMapping",
     "RouteCandidate",
     "RouteDecision",
     "RouteRequest",
@@ -124,5 +171,14 @@ __all__ = [
     "UsageEvent",
     "WeightedRoutingPolicy",
     "YamlRoutingPolicy",
+    "anthropic_provider",
+    "builtin_provider_template_registry",
     "collect_stream",
+    "deepseek_provider",
+    "gemini_provider",
+    "glm_provider",
+    "ollama_provider",
+    "qwen_compatible_provider",
+    "qwen_native_provider",
+    "turbo_provider",
 ]

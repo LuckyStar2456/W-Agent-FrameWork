@@ -22,7 +22,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox` |
 | Tools/scanning | `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
-| Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, and related types |
+| Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
 | Routing/probing | `ModelRouter`, `RoutingPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 
 The only accurate current agent protocol is:
@@ -87,7 +87,9 @@ class ModelProvider(Protocol):
 
 `StreamEvent` covers content-block start/delta/end, text/tool-call deltas, usage, normalized errors, and finish. `collect_stream()` validates block ordering and an explicit terminal event. A provider reports unsupported standard fields and never silently ignores them.
 
-`OpenAICompatibleProvider` implements `/models` and streaming `/chat/completions` with a replaceable `OpenAICompatibleTransport`; the default HTTPX implementation is in the `models` extra. Dedicated OpenAI Responses and other vendor providers remain `Planned`.
+`OpenAICompatibleProvider` implements `/models` and streaming `/chat/completions` with a replaceable `OpenAICompatibleTransport`. Generic `HttpModelProvider` exposes `HttpRequest`, `HttpStreamFrame`, `HttpProviderMapping`, `HttpStreamDecoder`, and `HttpProviderTransport`; the default `HttpxProviderTransport` supports JSON, SSE, and NDJSON.
+
+`AnthropicMessagesMapping`, `GeminiGenerateContentMapping`, `OllamaChatMapping`, and `QwenDashScopeMapping` implement native protocols. `ProviderTemplateRegistry` includes Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI templates. Dedicated OpenAI Responses and vLLM differences remain `Planned`. Default HTTPX implementations are in the `models` extra.
 
 ## 5. Routing protocol
 

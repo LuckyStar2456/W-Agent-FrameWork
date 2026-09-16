@@ -55,8 +55,10 @@ W-Agent 遵循以下原则：
 - 可解释的 Python 加权路由与安全 YAML 路由规则。
 - L1 端点可达性嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存和周期调度器。
 - 可替换传输的 OpenAI-compatible Chat Completions Provider，适用于声明兼容接口的本地或远程服务。
+- 可插拔的通用 HTTP 请求映射层与 JSON/SSE/NDJSON 传输。
+- Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
 
-当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses、Anthropic、Gemini、Ollama 和 vLLM 适配器，自动故障转移，标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。
+当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses 与 vLLM 差异适配、自动故障转移、标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -147,6 +149,7 @@ CLI 与 TUI 将只调用公开 Python API。TUI 计划覆盖模型配置与探�
 - [API 状态与规划](./docs/api.md)
 - [插件系统](./docs/plugin-system.md)
 - [模型、路由与接口探测](./docs/model-routing.md)
+- [HTTP Provider 与厂商模板](./docs/provider-templates.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)
 - [1.x 迁移](./docs/migration-1x.md)

@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation and Phase 2B OpenAI-compatible provider are `Implemented` in `2.0.0a1`; other first-party providers, automatic retry/failover, automatic registration probes, and CLI/TUI entry points are `Planned`.
+Status: the Phase 2A foundation, Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, and initial vendor templates are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, automatic retry/failover, automatic registration probes, and CLI/TUI entry points are `Planned`.
 
 ## Implemented boundary
 
@@ -13,8 +13,11 @@ Status: the Phase 2A foundation and Phase 2B OpenAI-compatible provider are `Imp
 - Explainable `WeightedRoutingPolicy`, safe YAML policies, and `ModelRouter`.
 - L1 endpoint sniffing, L2/L3 provider checks, explicitly authorized L4/L5 active probes, caching, and periodic scheduling.
 - An OpenAI-compatible `/models` and `/chat/completions` provider with text, image/inline-audio input, tools, structured output, and SSE conversion.
+- Replaceable `HttpModelProvider`, request/frame, mapper, stream-decoder, and transport protocols; the default transport supports JSON, SSE, and NDJSON.
+- Native templates for Anthropic Messages, Gemini `streamGenerateContent`, Ollama `/api/chat`, and Qwen DashScope.
+- DeepSeek, GLM, Qwen OpenAI-compatible, and Turbo AI/SIAM.AI templates plus an independent template registry.
 
-No dedicated OpenAI Responses, Anthropic, Gemini, Ollama, or vLLM adapter is built in yet. Ollama/vLLM endpoints that declare OpenAI Chat Completions compatibility can use the generic provider, but dedicated capability detection and compatibility handling remain unimplemented.
+Dedicated OpenAI Responses and vLLM-specific adapters are not built in yet. Templates have fake-transport conformance tests, but repository tests contain no live credentials and do not claim that any individual remote model has been validated online. See [HTTP providers and vendor templates](./provider-templates.en.md) for details.
 
 ## Model protocol
 
@@ -93,6 +96,12 @@ provider = OpenAICompatibleProvider(
 
 Capabilities are never guessed from model names; developers explicitly declare every non-default capability in a profile. The `openai_compatible.body` extension can add vendor parameters but cannot replace core model, message, stream, tool, or structured-output fields. The HTTP layer is replaceable through `OpenAICompatibleTransport`, so the core depends on no specific SDK.
 
+### Generic HTTP mapping layer and templates
+
+`HttpModelProvider` composes an `HttpProviderMapping` with an `HttpProviderTransport`. A mapper creates catalog/inference requests and converts vendor frames to standard events; a transport only handles HTTP, SSE, or NDJSON. Applications may replace either layer and register their own `ProviderTemplate` in an independent `ProviderTemplateRegistry`.
+
+Built-in keys are `anthropic`, `gemini`, `ollama`, `qwen-native`, `deepseek`, `glm`, `qwen`, and `turbo`. `turbo` means Turbo AI/SIAM.AI and requires an explicit deployment URL. Qwen provides both native DashScope and OpenAI-compatible paths.
+
 ## Explainable routing
 
 The routing pipeline is:
@@ -152,9 +161,9 @@ Stable error categories cover configuration, authentication, rate limiting, time
 
 An active probe requires the caller to pass `allow_active=True`. That authorization covers only the current call, is not persisted, and cannot arrive through a composition code. Future failover execution must not replay a tool call that has already produced side effects.
 
-## Phase 2B plan
+## Remaining Phase 2B plan
 
-- Dedicated OpenAI Responses, Anthropic, Gemini, Ollama, and vLLM adapters with conformance tests.
+- Dedicated OpenAI Responses and vLLM differences, plus reasoning deltas and more vendor-specific features in existing templates.
 - Automatic safe registration probes, CLI/TUI probe entry points, and health-state bridging.
 - Provider invocation, timeout, rate limiting, backoff, retry, automatic failover, and attempt records.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

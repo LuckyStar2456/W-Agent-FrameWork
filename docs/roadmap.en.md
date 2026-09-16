@@ -25,7 +25,10 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Dependency resolution, reversible registration, scopes, event pipelines | `Implemented` | 2.0.0a1 |
 | Unified model protocol and stream events | `Implemented` | Phase 2A / 2.0.0a1 |
 | OpenAI-compatible Chat Completions adapter | `Implemented` | Phase 2B / 2.0.0a1 |
-| Dedicated OpenAI Responses, Anthropic, Gemini, Ollama, and vLLM adapters | `Planned` | Phase 2B |
+| Generic HTTP mapping layer and SSE/NDJSON transport | `Implemented` | Phase 2B / 2.0.0a1 |
+| Native Anthropic, Gemini, Ollama, and Qwen templates | `Implemented` | Phase 2B / 2.0.0a1 |
+| DeepSeek, GLM, Qwen-compatible, and Turbo template registry | `Implemented` | Phase 2B / 2.0.0a1 |
+| Dedicated OpenAI Responses and vLLM differences | `Planned` | Phase 2B |
 | Python and YAML routing | `Implemented` | Phase 2A / 2.0.0a1 |
 | Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
 | Automatic registration probes and CLI/TUI probe entry points | `Planned` | Phase 2B |
@@ -66,7 +69,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2A implements model requests, responses, stream events, capabilities, extensions, the provider registry, and stable error categories.
 - 2A implements explainable route decisions, Python/YAML policies, endpoint sniffing, provider probes, caching, and periodic scheduling.
 - 2B implements an OpenAI-compatible Chat Completions provider with replaceable HTTP transport.
-- Later 2B work plans other first-party provider adapters, automatic registration probes, CLI/TUI entry points, retry, and failover execution.
+- 2B implements the generic HTTP request-mapping layer, JSON/SSE/NDJSON transport, four native templates, and four compatible-vendor templates.
+- Later 2B work plans OpenAI Responses/vLLM differences, automatic registration probes, CLI/TUI entry points, retry, and failover execution.
 
 ### Phase 3: agents and tools
 

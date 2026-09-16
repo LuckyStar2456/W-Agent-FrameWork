@@ -123,7 +123,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API and OpenAI-compatible provider are `Implemented`; other dedicated providers and CLI/TUI entry points are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, and initial vendor templates are `Implemented`; CLI/TUI entry points and dedicated OpenAI Responses/vLLM differences are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
@@ -161,6 +161,8 @@ result = await ModelProviderProbe().probe(
     allow_active=True,
 )
 ```
+
+Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo templates can be assembled through `builtin_provider_template_registry()`. Qwen has both native DashScope and compatible entry points. The Turbo template means Turbo AI/SIAM.AI and requires a deployment URL. See [HTTP providers and vendor templates](./provider-templates.en.md).
 
 The following CLI experience remains `Planned`:
 

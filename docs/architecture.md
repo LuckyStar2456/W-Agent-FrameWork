@@ -120,9 +120,9 @@ ModelRequest(
 
 ## 6. 模型、路由与探测
 
-状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Chat Completions Provider 为 `Implemented`；其他首方 Provider 适配器、重试与故障转移执行器为 `Planned`。
+状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层和首批厂商模板为 `Implemented`；OpenAI Responses/vLLM 差异适配、重试与故障转移执行器为 `Planned`。
 
-模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力。当前已提供 OpenAI-compatible Chat Completions Provider；它也可连接声明兼容该接口的 Ollama/vLLM 服务，但这不等于专用适配器。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集。
+模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力。当前已提供 OpenAI-compatible Chat Completions Provider、可拆换请求映射/流解码/传输的通用 HTTP Provider，以及 Anthropic、Gemini、Ollama、Qwen、DeepSeek、GLM 和 Turbo 模板。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集；模板不会根据模型名称猜测能力。
 
 路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分、选择、调用和故障转移。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。
 

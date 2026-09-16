@@ -141,6 +141,8 @@ class HttpxOpenAICompatibleTransport:
                     stripped = line.strip()
                     if not stripped or stripped.startswith(":"):
                         continue
+                    if stripped.startswith(("event:", "id:", "retry:")):
+                        continue
                     if stripped.startswith("data:"):
                         stripped = stripped[5:].strip()
                     if stripped == "[DONE]":
@@ -227,6 +229,8 @@ class OpenAICompatibleProvider:
         discover_models: bool = True,
         timeout: float = 60.0,
         headers: Mapping[str, str] | None = None,
+        max_tokens_field: str = "max_completion_tokens",
+        include_stream_usage: bool = True,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
         if not name:
@@ -247,6 +251,12 @@ class OpenAICompatibleProvider:
             raise ValueError("base_url must be an absolute HTTP(S) URL")
         if timeout <= 0:
             raise ValueError("timeout must be positive")
+        if max_tokens_field not in {
+            "max_completion_tokens",
+            "max_tokens",
+            "maxTokens",
+        }:
+            raise ValueError("unsupported max_tokens_field")
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -254,6 +264,8 @@ class OpenAICompatibleProvider:
         self.discover_models = discover_models
         self.timeout = timeout
         self.headers = MappingProxyType(dict(headers or {}))
+        self.max_tokens_field = max_tokens_field
+        self.include_stream_usage = include_stream_usage
         self.transport = transport or HttpxOpenAICompatibleTransport()
         capabilities = default_capabilities or frozenset(
             {
@@ -505,12 +517,13 @@ class OpenAICompatibleProvider:
             "messages": _messages(request),
             "n": 1,
             "stream": True,
-            "stream_options": {"include_usage": True},
         }
+        if self.include_stream_usage:
+            body["stream_options"] = {"include_usage": True}
         if request.temperature is not None:
             body["temperature"] = request.temperature
         if request.max_output_tokens is not None:
-            body["max_completion_tokens"] = request.max_output_tokens
+            body[self.max_tokens_field] = request.max_output_tokens
         if request.stop:
             body["stop"] = list(request.stop)
         if request.tools:
@@ -550,6 +563,8 @@ class OpenAICompatibleProvider:
             )
         reserved = {
             "max_completion_tokens",
+            "max_tokens",
+            "maxTokens",
             "messages",
             "model",
             "n",

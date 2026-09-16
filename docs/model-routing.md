@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础和 Phase 2B OpenAI-compatible Provider 为 `Implemented`（`2.0.0a1`）；其他首方 Provider、自动重试/故障转移、注册自动探测和 CLI/TUI 入口为 `Planned`。
+状态：Phase 2A 基础、Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider 与首批厂商模板为 `Implemented`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配、自动重试/故障转移、注册自动探测和 CLI/TUI 入口为 `Planned`。
 
 ## 已实现边界
 
@@ -13,8 +13,11 @@
 - 可解释的 `WeightedRoutingPolicy`、安全 YAML 策略和 `ModelRouter`。
 - L1 端点嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存与周期调度。
 - OpenAI-compatible `/models` 与 `/chat/completions` Provider，包括文本、图像/内联音频输入、工具、结构化输出和 SSE 流转换。
+- 可替换的 `HttpModelProvider`、请求/流帧、映射器、流解码器与 HTTP 传输协议；默认传输支持 JSON、SSE 和 NDJSON。
+- Anthropic Messages、Gemini `streamGenerateContent`、Ollama `/api/chat` 和 Qwen DashScope 原生模板。
+- DeepSeek、GLM、Qwen OpenAI-compatible 和 Turbo AI/SIAM.AI 模板及独立模板注册表。
 
-当前未内置专用 OpenAI Responses、Anthropic、Gemini、Ollama 或 vLLM 适配器。声明兼容 OpenAI Chat Completions 的 Ollama/vLLM 端点可以使用通用 Provider，但专用能力检测与差异适配仍未实现。
+当前仍未内置专用 OpenAI Responses 或 vLLM 差异适配器。模板经过模拟传输一致性测试，但仓库测试不携带真实凭据，也不把某一远程型号的在线可用性当作已验证事实。完整模板说明见 [HTTP Provider 与厂商模板](./provider-templates.md)。
 
 ## 模型协议
 
@@ -93,6 +96,12 @@ provider = OpenAICompatibleProvider(
 
 能力不会根据模型名称猜测；开发者必须用 Profile 明确声明非默认能力。`openai_compatible.body` 扩展可加入厂商参数，但不能覆盖模型、消息、流、工具、结构化输出等核心字段。HTTP 传输通过 `OpenAICompatibleTransport` 可替换，核心不依赖具体 SDK。
 
+### 通用 HTTP 映射层与模板
+
+`HttpModelProvider` 组合 `HttpProviderMapping` 与 `HttpProviderTransport`。映射器生成模型目录/推理请求并把厂商帧转换为标准事件；传输只处理 HTTP、SSE 或 NDJSON。应用可以替换其中任意一层，也可以把自己的 `ProviderTemplate` 注册到独立 `ProviderTemplateRegistry`。
+
+内置 key 为 `anthropic`、`gemini`、`ollama`、`qwen-native`、`deepseek`、`glm`、`qwen` 和 `turbo`。`turbo` 指 Turbo AI/SIAM.AI，要求显式提供部署地址。Qwen 同时提供原生 DashScope 与 OpenAI-compatible 两条入口。
+
 ## 可解释路由
 
 路由管线为：
@@ -152,9 +161,9 @@ weights:
 
 主动探测必须由调用者显式设置 `allow_active=True`。此授权只覆盖当前调用，不会持久化，也不会从装配编码导入。后续故障转移不得自动重放已经产生副作用的工具调用。
 
-## Phase 2B 计划
+## Phase 2B 后续计划
 
-- 专用 OpenAI Responses、Anthropic、Gemini、Ollama 和 vLLM 适配器及一致性测试。
+- 专用 OpenAI Responses 与 vLLM 差异适配器；扩展现有模板的 Reasoning 增量和更多厂商特性。
 - 注册时自动安全探测、CLI/TUI 探测入口和健康状态桥接。
 - Provider 调用器、超时、限流、退避、重试、自动故障转移和尝试记录。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

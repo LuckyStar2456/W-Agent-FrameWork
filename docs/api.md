@@ -22,7 +22,7 @@
 | 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox` |
 | 工具/扫描 | `LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
-| 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider` 等 |
+| 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
 | 路由/探测 | `ModelRouter`、`RoutingPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 
 当前准确的 Agent 协议只有：
@@ -87,7 +87,9 @@ class ModelProvider(Protocol):
 
 `StreamEvent` 已覆盖内容块开始/增量/结束、文本/工具调用增量、Usage、标准错误和 Finish。`collect_stream()` 校验块顺序和明确终止事件。Provider 必须完整报告不支持的标准字段，不得静默忽略。
 
-`OpenAICompatibleProvider` 已实现 `/models` 和流式 `/chat/completions`，其 `OpenAICompatibleTransport` 可以替换；默认 HTTPX 实现位于 `models` 可选依赖。专用 OpenAI Responses 和其他厂商 Provider 仍为 `Planned`。
+`OpenAICompatibleProvider` 已实现 `/models` 和流式 `/chat/completions`，其 `OpenAICompatibleTransport` 可以替换。通用 `HttpModelProvider` 公开 `HttpRequest`、`HttpStreamFrame`、`HttpProviderMapping`、`HttpStreamDecoder` 与 `HttpProviderTransport`；默认 `HttpxProviderTransport` 支持 JSON、SSE 和 NDJSON。
+
+`AnthropicMessagesMapping`、`GeminiGenerateContentMapping`、`OllamaChatMapping` 与 `QwenDashScopeMapping` 为原生协议映射。`ProviderTemplateRegistry` 提供 Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible 和 Turbo AI/SIAM.AI 模板。专用 OpenAI Responses 与 vLLM 差异适配仍为 `Planned`。默认 HTTPX 实现位于 `models` 可选依赖。
 
 ## 5. 路由协议
 
