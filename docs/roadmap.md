@@ -24,7 +24,8 @@
 | 统一注册表与插件生命周期 | `Implemented` | 2.0.0a1 |
 | 依赖解析、可撤销注册、作用域与事件管线 | `Implemented` | 2.0.0a1 |
 | 统一模型协议与流事件 | `Implemented` | Phase 2A / 2.0.0a1 |
-| OpenAI、Anthropic、Gemini、OpenAI-compatible、本地模型适配 | `Planned` | Phase 2 |
+| OpenAI-compatible Chat Completions 适配 | `Implemented` | Phase 2B / 2.0.0a1 |
+| 专用 OpenAI Responses、Anthropic、Gemini、Ollama、vLLM 适配 | `Planned` | Phase 2B |
 | Python/YAML 模型路由 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 手动探测 API、缓存与周期调度 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 注册自动探测、CLI/TUI 探测入口 | `Planned` | Phase 2B |
@@ -64,7 +65,8 @@
 - 状态：`Implemented`（2A 基础）/ `Planned`（2B 适配与执行）。
 - 2A 已实现模型请求、响应、流事件、能力声明、扩展参数、Provider 注册表和稳定错误分类。
 - 2A 已实现可解释路由决策、Python/YAML 策略、端点嗅探、Provider 探测、缓存和周期调度。
-- 2B 计划提供首方 Provider Adapter、注册自动探测、CLI/TUI 入口、重试与故障转移执行器。
+- 2B 已实现带可替换 HTTP 传输的 OpenAI-compatible Chat Completions Provider。
+- 2B 后续计划提供其他首方 Provider Adapter、注册自动探测、CLI/TUI 入口、重试与故障转移执行器。
 
 ### Phase 3：Agent 与工具
 

@@ -3,7 +3,7 @@ import os
 
 # 读取README.md作为长描述
 here = os.path.abspath(os.path.dirname(__file__))
-with open(os.path.join(here, 'README.md'), 'r', encoding='utf-8') as f:
+with open(os.path.join(here, "README.md"), "r", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
@@ -27,20 +27,21 @@ setup(
         "asgiref",
         "redis",
         "packaging>=23",
-        "pyyaml>=6"
+        "pyyaml>=6",
     ],
     extras_require={
         "fastapi": ["fastapi", "uvicorn"],
         "langchain": ["langchain"],
+        "models": ["httpx>=0.27,<1"],
         "wasm": ["wasmer-sdk>=0.1.2,<0.2; platform_system != 'Windows'"],
-        "opentelemetry": ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp"],
-        "testing": ["pytest", "pytest-asyncio"]
+        "opentelemetry": [
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp",
+        ],
+        "testing": ["pytest", "pytest-asyncio"],
     },
-    entry_points={
-        "console_scripts": [
-            "w-agent=w_agent.cli:main"
-        ]
-    },
+    entry_points={"console_scripts": ["w-agent=w_agent.cli:main"]},
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -49,7 +50,7 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
         "Topic :: Software Development :: Libraries :: Application Frameworks",
-        "Topic :: Software Development :: Libraries :: Python Modules"
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     python_requires=">=3.11",
     keywords="agent framework AOP IOC sandbox",

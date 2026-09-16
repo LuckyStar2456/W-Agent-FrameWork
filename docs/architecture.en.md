@@ -120,9 +120,9 @@ Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `Registr
 
 ## 6. Models, routing, and probing
 
-Status: the Phase 2A protocols, registry, routing, and probe framework are `Implemented`; first-party provider adapters plus retry and failover execution are `Planned`.
+Status: the Phase 2A protocols, registry, routing, and probe framework plus the Phase 2B OpenAI-compatible Chat Completions provider are `Implemented`; other first-party provider adapters plus retry and failover execution are `Planned`.
 
-The model protocol can express the capabilities needed by OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, Ollama, vLLM, and custom providers, but those first-party adapters are not built in yet. Multimodality, tool calling, structured output, reasoning, and prompt caching are exposed through capabilities rather than a lowest-common-denominator API.
+The model protocol can express the capabilities needed by OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, Ollama, vLLM, and custom providers. An OpenAI-compatible Chat Completions provider is now available; it can also connect to Ollama/vLLM services that declare compatibility, but that is not a dedicated adapter. Multimodality, tool calling, structured output, reasoning, and prompt caching are exposed through capabilities rather than a lowest-common-denominator API.
 
 Routing applies user and safety filters, capability matching, health filtering, scoring, selection, invocation, and failover. Python strategies and YAML rules compile to the same `RoutingPolicy`. Every selection emits an observable `RouteDecision` with candidates, rejection reasons, scores, and the final choice.
 

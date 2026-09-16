@@ -20,6 +20,7 @@ pip install wagent-framework
 pip install "wagent-framework[fastapi]"
 pip install "wagent-framework[langchain]"
 pip install "wagent-framework[opentelemetry]"
+pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
 ```
 
@@ -122,17 +123,28 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API 为 `Implemented`；具体 Provider 和 CLI/TUI 入口为 `Planned`。
+状态：Python API 与 OpenAI-compatible Provider 为 `Implemented`；其他专用 Provider 和 CLI/TUI 入口为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
 ```python
-from w_agent import EndpointProbe, ModelRegistry, ModelRouter, YamlRoutingPolicy
+from w_agent import (
+    EndpointProbe,
+    ModelRegistry,
+    ModelRouter,
+    OpenAICompatibleProvider,
+    YamlRoutingPolicy,
+)
 
 models = ModelRegistry()
-models.register("custom", custom_provider, version="1.0.0")
+provider = OpenAICompatibleProvider(
+    name="local",
+    base_url="http://127.0.0.1:11434/v1",
+    default_model="my-model",
+)
+models.register("local", provider, version="1.0.0")
 
-policy = YamlRoutingPolicy.from_yaml("preferred_providers: [custom]")
+policy = YamlRoutingPolicy.from_yaml("preferred_providers: [local]")
 decision = await ModelRouter(models, policy).route(request)
 reachability = await EndpointProbe().probe("https://example.com/v1")
 ```
@@ -143,8 +155,8 @@ reachability = await EndpointProbe().probe("https://example.com/v1")
 from w_agent import ModelProviderProbe, ProbeMode
 
 result = await ModelProviderProbe().probe(
-    "custom",
-    custom_provider,
+    "local",
+    provider,
     mode=ProbeMode.ACTIVE,
     allow_active=True,
 )

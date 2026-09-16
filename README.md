@@ -54,8 +54,9 @@ W-Agent 遵循以下原则：
 - 统一 `ModelRegistry`、可替换 `ModelProvider` 和协作式取消令牌。
 - 可解释的 Python 加权路由与安全 YAML 路由规则。
 - L1 端点可达性嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存和周期调度器。
+- 可替换传输的 OpenAI-compatible Chat Completions Provider，适用于声明兼容接口的本地或远程服务。
 
-当前 `BaseAgent` 仍是简单抽象；具体 OpenAI、Anthropic、Gemini、本地模型适配器，自动故障转移，标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。
+当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses、Anthropic、Gemini、Ollama 和 vLLM 适配器，自动故障转移，标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。
 
 ## 下一代模块图
 
@@ -79,6 +80,7 @@ pip install wagent-framework
 
 ```bash
 pip install "wagent-framework[fastapi,langchain,opentelemetry]"
+pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
 ```
 

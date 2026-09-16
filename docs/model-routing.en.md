@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation is `Implemented` in `2.0.0a1`; first-party provider adapters, automatic retry/failover, automatic registration probes, and CLI/TUI entry points are `Planned`.
+Status: the Phase 2A foundation and Phase 2B OpenAI-compatible provider are `Implemented` in `2.0.0a1`; other first-party providers, automatic retry/failover, automatic registration probes, and CLI/TUI entry points are `Planned`.
 
 ## Implemented boundary
 
@@ -12,8 +12,9 @@ Status: the Phase 2A foundation is `Implemented` in `2.0.0a1`; first-party provi
 - `ModelProvider`, `ModelRegistry`, `CancellationToken`, and stable failure categories.
 - Explainable `WeightedRoutingPolicy`, safe YAML policies, and `ModelRouter`.
 - L1 endpoint sniffing, L2/L3 provider checks, explicitly authorized L4/L5 active probes, caching, and periodic scheduling.
+- An OpenAI-compatible `/models` and `/chat/completions` provider with text, image/inline-audio input, tools, structured output, and SSE conversion.
 
-No OpenAI, Anthropic, Gemini, OpenAI-compatible, Ollama, or vLLM adapter is built in yet. The protocol can carry such adapters, but that does not mean they are connected today.
+No dedicated OpenAI Responses, Anthropic, Gemini, Ollama, or vLLM adapter is built in yet. Ollama/vLLM endpoints that declare OpenAI Chat Completions compatibility can use the generic provider, but dedicated capability detection and compatibility handling remain unimplemented.
 
 ## Model protocol
 
@@ -54,6 +55,43 @@ registration.dispose()
 ```
 
 A third-party implementation does not inherit a framework base class; satisfying the `ModelProvider` protocol is sufficient.
+
+### OpenAI-compatible provider
+
+Install the optional HTTP transport:
+
+```bash
+pip install "wagent-framework[models]"
+```
+
+```python
+from w_agent import (
+    ModelCapability,
+    OpenAICompatibleModelProfile,
+    OpenAICompatibleProvider,
+)
+
+provider = OpenAICompatibleProvider(
+    name="local",
+    base_url="http://127.0.0.1:11434/v1",
+    default_model="my-model",
+    profiles=(
+        OpenAICompatibleModelProfile(
+            "my-model",
+            frozenset(
+                {
+                    ModelCapability.TEXT_INPUT,
+                    ModelCapability.TEXT_OUTPUT,
+                    ModelCapability.STREAMING,
+                }
+            ),
+        ),
+    ),
+    discover_models=False,
+)
+```
+
+Capabilities are never guessed from model names; developers explicitly declare every non-default capability in a profile. The `openai_compatible.body` extension can add vendor parameters but cannot replace core model, message, stream, tool, or structured-output fields. The HTTP layer is replaceable through `OpenAICompatibleTransport`, so the core depends on no specific SDK.
 
 ## Explainable routing
 
@@ -116,7 +154,7 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 
 ## Phase 2B plan
 
-- First-party OpenAI, Anthropic, Gemini, OpenAI-compatible, Ollama, and vLLM adapters with conformance tests.
+- Dedicated OpenAI Responses, Anthropic, Gemini, Ollama, and vLLM adapters with conformance tests.
 - Automatic safe registration probes, CLI/TUI probe entry points, and health-state bridging.
 - Provider invocation, timeout, rate limiting, backoff, retry, automatic failover, and attempt records.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

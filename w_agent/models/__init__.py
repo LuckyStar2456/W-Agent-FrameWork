@@ -1,6 +1,12 @@
 """Public provider-neutral model, routing, and probing APIs."""
 
 from .errors import ModelError, ModelFailure, ModelFailureKind, RoutingError
+from .openai_compatible import (
+    HttpxOpenAICompatibleTransport,
+    OpenAICompatibleModelProfile,
+    OpenAICompatibleProvider,
+    OpenAICompatibleTransport,
+)
 from .probing import (
     EndpointProbe,
     ModelProviderProbe,
@@ -75,6 +81,7 @@ __all__ = [
     "FinishEvent",
     "FinishReason",
     "HealthStatus",
+    "HttpxOpenAICompatibleTransport",
     "ImageContent",
     "MessageRole",
     "ModelCapability",
@@ -90,6 +97,9 @@ __all__ = [
     "ModelResponse",
     "ModelRouter",
     "ModelStreamProtocolError",
+    "OpenAICompatibleModelProfile",
+    "OpenAICompatibleProvider",
+    "OpenAICompatibleTransport",
     "PeriodicProbeService",
     "ProbeCache",
     "ProbeCheck",

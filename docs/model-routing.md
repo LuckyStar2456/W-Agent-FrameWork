@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础为 `Implemented`（`2.0.0a1`）；首方 Provider 适配、自动重试/故障转移、注册自动探测和 CLI/TUI 入口为 `Planned`。
+状态：Phase 2A 基础和 Phase 2B OpenAI-compatible Provider 为 `Implemented`（`2.0.0a1`）；其他首方 Provider、自动重试/故障转移、注册自动探测和 CLI/TUI 入口为 `Planned`。
 
 ## 已实现边界
 
@@ -12,8 +12,9 @@
 - `ModelProvider`、`ModelRegistry`、`CancellationToken` 和标准错误分类。
 - 可解释的 `WeightedRoutingPolicy`、安全 YAML 策略和 `ModelRouter`。
 - L1 端点嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存与周期调度。
+- OpenAI-compatible `/models` 与 `/chat/completions` Provider，包括文本、图像/内联音频输入、工具、结构化输出和 SSE 流转换。
 
-当前未内置 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama 或 vLLM 适配器。协议可以承载这些适配器，但这不代表已经接入。
+当前未内置专用 OpenAI Responses、Anthropic、Gemini、Ollama 或 vLLM 适配器。声明兼容 OpenAI Chat Completions 的 Ollama/vLLM 端点可以使用通用 Provider，但专用能力检测与差异适配仍未实现。
 
 ## 模型协议
 
@@ -54,6 +55,43 @@ registration.dispose()
 ```
 
 第三方实现不需要继承框架基类；满足 `ModelProvider` 协议即可。
+
+### OpenAI-compatible Provider
+
+安装可选 HTTP 传输：
+
+```bash
+pip install "wagent-framework[models]"
+```
+
+```python
+from w_agent import (
+    ModelCapability,
+    OpenAICompatibleModelProfile,
+    OpenAICompatibleProvider,
+)
+
+provider = OpenAICompatibleProvider(
+    name="local",
+    base_url="http://127.0.0.1:11434/v1",
+    default_model="my-model",
+    profiles=(
+        OpenAICompatibleModelProfile(
+            "my-model",
+            frozenset(
+                {
+                    ModelCapability.TEXT_INPUT,
+                    ModelCapability.TEXT_OUTPUT,
+                    ModelCapability.STREAMING,
+                }
+            ),
+        ),
+    ),
+    discover_models=False,
+)
+```
+
+能力不会根据模型名称猜测；开发者必须用 Profile 明确声明非默认能力。`openai_compatible.body` 扩展可加入厂商参数，但不能覆盖模型、消息、流、工具、结构化输出等核心字段。HTTP 传输通过 `OpenAICompatibleTransport` 可替换，核心不依赖具体 SDK。
 
 ## 可解释路由
 
@@ -116,7 +154,7 @@ weights:
 
 ## Phase 2B 计划
 
-- OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama 和 vLLM 首方适配器及一致性测试。
+- 专用 OpenAI Responses、Anthropic、Gemini、Ollama 和 vLLM 适配器及一致性测试。
 - 注册时自动安全探测、CLI/TUI 探测入口和健康状态桥接。
 - Provider 调用器、超时、限流、退避、重试、自动故障转移和尝试记录。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

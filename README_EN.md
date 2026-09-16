@@ -54,8 +54,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - A unified `ModelRegistry`, replaceable `ModelProvider`, and cooperative cancellation token.
 - Explainable weighted Python routing and safe YAML routing rules.
 - L1 endpoint reachability sniffing, L2/L3 provider checks, explicitly authorized L4/L5 active probes, caching, and periodic scheduling.
+- An OpenAI-compatible Chat Completions provider with a replaceable transport for local or remote services that declare compatibility.
 
-`BaseAgent` remains a minimal abstraction. Concrete OpenAI, Anthropic, Gemini, and local-model adapters, automatic failover, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features.
+`BaseAgent` remains a minimal abstraction. Dedicated OpenAI Responses, Anthropic, Gemini, Ollama, and vLLM adapters, automatic failover, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features.
 
 ## Next-generation module map
 
@@ -79,6 +80,7 @@ Optional dependencies:
 
 ```bash
 pip install "wagent-framework[fastapi,langchain,opentelemetry]"
+pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
 ```
 

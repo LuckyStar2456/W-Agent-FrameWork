@@ -20,6 +20,7 @@ Optional capabilities:
 pip install "wagent-framework[fastapi]"
 pip install "wagent-framework[langchain]"
 pip install "wagent-framework[opentelemetry]"
+pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
 ```
 
@@ -122,17 +123,28 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API is `Implemented`; concrete providers and CLI/TUI entry points are `Planned`.
+Status: the Python API and OpenAI-compatible provider are `Implemented`; other dedicated providers and CLI/TUI entry points are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
 ```python
-from w_agent import EndpointProbe, ModelRegistry, ModelRouter, YamlRoutingPolicy
+from w_agent import (
+    EndpointProbe,
+    ModelRegistry,
+    ModelRouter,
+    OpenAICompatibleProvider,
+    YamlRoutingPolicy,
+)
 
 models = ModelRegistry()
-models.register("custom", custom_provider, version="1.0.0")
+provider = OpenAICompatibleProvider(
+    name="local",
+    base_url="http://127.0.0.1:11434/v1",
+    default_model="my-model",
+)
+models.register("local", provider, version="1.0.0")
 
-policy = YamlRoutingPolicy.from_yaml("preferred_providers: [custom]")
+policy = YamlRoutingPolicy.from_yaml("preferred_providers: [local]")
 decision = await ModelRouter(models, policy).route(request)
 reachability = await EndpointProbe().probe("https://example.com/v1")
 ```
@@ -143,8 +155,8 @@ Active provider probes may incur cost and require per-call authorization:
 from w_agent import ModelProviderProbe, ProbeMode
 
 result = await ModelProviderProbe().probe(
-    "custom",
-    custom_provider,
+    "local",
+    provider,
     mode=ProbeMode.ACTIVE,
     allow_active=True,
 )
