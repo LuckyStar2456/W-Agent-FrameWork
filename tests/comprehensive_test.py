@@ -17,6 +17,7 @@ from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
 
 class TestService:
     """测试服务"""
+    __test__ = False
     def __init__(self):
         self.calls = 0
     
@@ -26,6 +27,7 @@ class TestService:
 
 class TestAgent(BaseAgent):
     """测试Agent"""
+    __test__ = False
     def __init__(self, test_service: TestService, config_manager: DynamicConfigManager):
         self.test_service = test_service
         self.config_manager = config_manager
@@ -53,6 +55,7 @@ class TestAgent(BaseAgent):
 
 class TestSkill(Skill):
     """测试技能"""
+    __test__ = False
     def __init__(self):
         from pathlib import Path
         script_path = Path(__file__).parent / "test.py"
@@ -134,9 +137,7 @@ async def test_lifecycle_management():
     
     component = TestComponent()
     
-    # 手动添加生命周期方法
-    lifecycle_manager._post_construct_map.setdefault(LifecycleOrder.AGENT, []).append((component, component.post_construct))
-    lifecycle_manager._pre_destroy_map.setdefault(LifecycleOrder.AGENT, []).append((component, component.pre_destroy))
+    lifecycle_manager.register(component, LifecycleOrder.AGENT)
     
     # 测试初始化
     await lifecycle_manager.post_construct_all()
@@ -239,6 +240,14 @@ async def test_cli_functionality():
     )
     assert result.returncode == 0
     assert "W-Agent Command Line Tool" in result.stdout
+
+    result = subprocess.run(
+        [sys.executable, "-m", "w_agent", "--version"],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0
+    assert "W-Agent version 1.5.2" in result.stdout
 
 async def test_comprehensive_integration():
     """综合集成测试"""

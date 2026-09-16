@@ -62,7 +62,13 @@ class Doctor:
         """检查WasmSandbox"""
         try:
             sandbox = WasmSkillSandbox()
-            return True, f"WasmSandbox initialized successfully (Pyodide available: {sandbox.pyodide_available})"
+            if not sandbox.available:
+                return False, (
+                    "WasmSandbox unavailable "
+                    f"(Pyodide compiler: {sandbox.pyodide_available}, "
+                    f"Wasmer runtime: {sandbox.wasmer_available})"
+                )
+            return True, "WasmSandbox compiler and runtime are available"
         except Exception as e:
             return False, f"WasmSandbox initialization failed: {e}"
     
@@ -70,26 +76,30 @@ class Doctor:
         """检查NsjailSandbox"""
         try:
             sandbox = NsJailSkillSandbox()
-            return True, f"NsjailSandbox initialized successfully (Nsjail available: {sandbox.nsjail_available})"
+            if not sandbox.available:
+                missing = []
+                if not sandbox.nsjail_available:
+                    missing.append("nsjail executable")
+                if not sandbox.rootfs_available:
+                    missing.append("curated rootfs")
+                return False, "NsjailSandbox unavailable: " + ", ".join(missing)
+            return True, "NsjailSandbox executable and curated rootfs are available"
         except Exception as e:
             return False, f"NsjailSandbox initialization failed: {e}"
     
     def check_distributed_lock(self) -> Tuple[bool, str]:
         """检查DistributedLock"""
         try:
-            # 尝试导入redis模块
             import redis
-            # 尝试创建Redis客户端
-            redis_client = redis.Redis(host='localhost', port=6379, db=0)
-            # 尝试创建锁
-            lock = RedisDistributedLock(redis=redis_client, name="test-lock")
-            return True, "RedisDistributedLock initialized successfully"
+            import socket
+
+            with socket.create_connection(("127.0.0.1", 6379), timeout=0.5):
+                pass
+            return True, "Redis backend for distributed locks is reachable"
         except ImportError:
             return False, "RedisDistributedLock initialization failed: redis module not installed"
-        except redis.ConnectionError:
+        except (ConnectionError, OSError, TimeoutError):
             return False, "RedisDistributedLock initialization failed: Redis server not available"
-        except redis.RedisError as e:
-            return False, f"RedisDistributedLock initialization failed: Redis error - {e}"
         except Exception as e:
             return False, f"RedisDistributedLock initialization failed: {e}"
     

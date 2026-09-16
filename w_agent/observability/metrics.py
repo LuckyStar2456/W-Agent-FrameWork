@@ -1,7 +1,10 @@
 """OpenTelemetry 指标功能"""
 
 from typing import Optional, Dict, Any
+import functools
+import inspect
 import os
+import time
 
 # 尝试导入OpenTelemetry
 _otel_available = False
@@ -74,24 +77,35 @@ def init_metrics(service_name: str = "w-agent"):
 
 def track(func):
     """指标追踪装饰器"""
-    import time
-    
+    def record_duration(start_time):
+        duration = (time.perf_counter() - start_time) * 1000
+        metrics_instance = Metrics(func.__module__)
+        histogram = metrics_instance.histogram(
+            f"{func.__name__}_duration",
+            f"Duration of {func.__name__} function",
+        )
+        if histogram:
+            histogram.record(duration)
+
+    if inspect.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            start_time = time.perf_counter()
+            try:
+                return await func(*args, **kwargs)
+            finally:
+                record_duration(start_time)
+
+        return async_wrapper
+
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
-            result = func(*args, **kwargs)
-            return result
+            return func(*args, **kwargs)
         finally:
-            duration = (time.time() - start_time) * 1000  # 转换为毫秒
-            # 记录指标
-            metrics_instance = Metrics(func.__module__)
-            histogram = metrics_instance.histogram(
-                f"{func.__name__}_duration",
-                f"Duration of {func.__name__} function"
-            )
-            if histogram:
-                histogram.record(duration)
-    
+            record_duration(start_time)
+
     return wrapper
 
 # 全局指标实例

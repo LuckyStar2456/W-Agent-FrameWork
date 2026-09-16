@@ -213,6 +213,8 @@ pool.stop()
 
 ## 七、沙箱执行
 
+Wasm 与 nsjail 都要求真实隔离后端可用。后端缺失或不完整时，执行会抛出 `SkillSandboxError` 并失败关闭，不会降级到宿主机执行。
+
 ### 7.1 Wasm 沙箱
 
 ```python
@@ -228,10 +230,12 @@ result = await sandbox.execute(skill, "script_name", {"arg": "value"})
 
 ```python
 from w_agent import NsJailSkillSandbox
+from pathlib import Path
 
 sandbox = NsJailSkillSandbox(
     max_cpu_seconds=5,
-    max_memory_bytes=100 * 1024 * 1024
+    max_memory_bytes=100 * 1024 * 1024,
+    rootfs_path=Path("/opt/w-agent-rootfs")
 )
 
 result = await sandbox.execute(skill, "script_name", {"arg": "value"})
@@ -314,7 +318,7 @@ shutdown.register_signal_handlers()
 
 ### Q1: 如何处理循环依赖？
 
-A: W-Agent 使用三级缓存机制自动处理循环依赖。确保使用 `BeanDefinition` 注册依赖关系，而不是直接实例化。
+A: 字段/Setter 注入的单例循环依赖可以通过早期引用处理；构造器循环依赖无法安全创建，容器会抛出 `CircularDependencyError` 并给出依赖路径。优先拆分职责或引入中间服务来消除构造器环。
 
 ### Q2: 如何配置多环境？
 

@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import ast
 import logging
+import asyncio
 from typing import List, Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,10 @@ class ScanResult:
         return cls(components)
 
 class ParallelASTScanner:
-    def __init__(self):
+    def __init__(self, scan_paths=None, skip_paths=None, workers: int = 4):
+        self.scan_paths = [Path(path) for path in (scan_paths or [])]
+        self.skip_paths = set(skip_paths or ["__pycache__", ".git"])
+        self.workers = workers
         self.component_decorators = [
             "AgentComponent",
             "ServiceComponent", 
@@ -48,9 +52,27 @@ class ParallelASTScanner:
             "RepositoryComponent",
             "ControllerComponent"
         ]
+
+    async def scan(self) -> ScanResult:
+        """Asynchronously scan all configured paths without blocking the loop."""
+        if not self.scan_paths:
+            raise ValueError("scan_paths must contain at least one path")
+        results = await asyncio.gather(*[
+            asyncio.to_thread(self.scan_package, path, self.workers)
+            for path in self.scan_paths
+        ])
+        return ScanResult([
+            component
+            for result in results
+            for component in result.components
+        ])
     
     def scan_package(self, package_path: Path, workers: int = 4) -> ScanResult:
-        files = list(package_path.rglob("*.py"))
+        package_path = Path(package_path)
+        files = [
+            path for path in package_path.rglob("*.py")
+            if not any(part in self.skip_paths for part in path.parts)
+        ]
         logger.info(f"Scanning {len(files)} files in {package_path}")
         all_components = []
         
@@ -85,7 +107,7 @@ class ParallelASTScanner:
                     component = self._process_class_def(node, file_path)
                     if component:
                         components.append(component)
-                elif isinstance(node, ast.FunctionDef):
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     component = self._process_function_def(node, file_path)
                     if component:
                         components.append(component)

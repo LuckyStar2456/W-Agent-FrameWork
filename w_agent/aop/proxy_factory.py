@@ -75,39 +75,39 @@ class AopProxy:
         
         if asyncio.iscoroutinefunction(original):
             async def advised(*args, **kwargs):
+                around_chain = around_advices
+                joinpoint = JoinPoint(self._target, original, args, kwargs, around_chain)
                 # 执行所有 BeforeAdvice
                 for before_advice in before_advices:
-                    await before_advice(None, lambda: None)
+                    await before_advice(joinpoint, None)
                 
                 # 执行所有 AroundAdvice 的前半部分和目标方法，以及 AroundAdvice 的后半部分
                 # 创建一个只包含 AroundAdvice 的链
-                around_chain = around_advices
-                joinpoint = JoinPoint(self._target, original, args, kwargs, around_chain)
                 result = await joinpoint.proceed()
                 
                 # 执行所有 AfterAdvice
                 for after_advice in after_advices:
-                    await after_advice(None, None, result)
+                    result = await after_advice(joinpoint, None, result)
                 
                 return result
         else:
             def advised(*args, **kwargs):
+                around_chain = around_advices
+                joinpoint = JoinPoint(self._target, original, args, kwargs, around_chain)
                 # 对于同步方法，直接执行通知和目标方法
                 # 执行所有 BeforeAdvice
                 for before_advice in before_advices:
                     # 对于同步方法中的异步通知，使用 asyncio.run 执行
-                    asyncio.run(before_advice(None, lambda: None))
+                    asyncio.run(before_advice(joinpoint, None))
                 
                 # 执行所有 AroundAdvice 的前半部分和目标方法，以及 AroundAdvice 的后半部分
                 # 创建一个只包含 AroundAdvice 的链
-                around_chain = around_advices
-                joinpoint = JoinPoint(self._target, original, args, kwargs, around_chain)
                 result = asyncio.run(joinpoint.proceed())
                 
                 # 执行所有 AfterAdvice
                 for after_advice in after_advices:
                     # 对于同步方法中的异步通知，使用 asyncio.run 执行
-                    asyncio.run(after_advice(None, None, result))
+                    result = asyncio.run(after_advice(joinpoint, None, result))
                 
                 return result
         

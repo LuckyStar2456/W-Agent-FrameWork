@@ -72,11 +72,11 @@ class DemoAgent(BaseAgent):
         return result
     
     @PostConstruct(order=1)
-    def initialize(self):
+    async def initialize(self):
         """初始化方法"""
         print(f"DemoAgent: {self.name} is initializing...")
         # 发布初始化事件
-        asyncio.create_task(event_bus.emit(Event("agent.initialized", {"name": self.name})))
+        await event_bus.emit(Event("agent.initialized", {"name": self.name}))
     
     @PreDestroy(order=1)
     def cleanup(self):
@@ -118,24 +118,18 @@ async def main():
     
     # 测试重试功能
     print("\n5. 测试重试功能...")
-    # 模拟失败
-    original_get_greeting = greeting_service.get_greeting
-    
-    async def mock_failing_get_greeting(name):
-        print("GreetingService: 模拟失败...")
-        raise Exception("临时失败")
-    
-    # 替换方法以模拟失败
-    greeting_service.get_greeting = mock_failing_get_greeting
-    
-    try:
-        result = await agent.arun("Test")
-        print(f"重试成功: {result}")
-    except Exception as e:
-        print(f"最终失败: {e}")
-    
-    # 恢复原始方法
-    greeting_service.get_greeting = original_get_greeting
+    attempts = 0
+
+    @Retry(max_attempts=3, delay=0.01)
+    async def flaky_operation():
+        nonlocal attempts
+        attempts += 1
+        print(f"模拟调用，第 {attempts} 次")
+        if attempts < 3:
+            raise RuntimeError("临时失败")
+        return "重试后成功"
+
+    print(f"重试结果: {await flaky_operation()}")
     
     # 销毁单例
     print("\n6. 销毁组件...")

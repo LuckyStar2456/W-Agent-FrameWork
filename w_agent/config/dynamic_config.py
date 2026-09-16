@@ -48,3 +48,7 @@ class DynamicConfigManager:
         """移除配置值"""
         if key in self._config:
             del self._config[key]
+
+    def as_dict(self) -> Dict[str, Any]:
+        """Return a shallow copy suitable for diagnostics and CLI output."""
+        return dict(self._config)

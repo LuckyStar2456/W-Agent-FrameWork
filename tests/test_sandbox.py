@@ -2,7 +2,8 @@ import asyncio
 import pytest
 from pathlib import Path
 import tempfile
-from w_agent import NsJailSkillSandbox, WasmSkillSandbox, Skill
+import subprocess
+from w_agent import NsJailSkillSandbox, WasmSkillSandbox, Skill, SkillSandboxError
 
 class TestSandbox:
     """测试沙箱模块"""
@@ -32,31 +33,67 @@ class TestSandbox:
         shutil.rmtree(self.skill_dir)
     
     async def test_nsjail_sandbox(self):
-        """测试nsjail沙箱"""
+        """nsjail不可用时必须拒绝不安全降级"""
         sandbox = NsJailSkillSandbox()
-        result = await sandbox.execute(self.skill, "test", {"name": "test"})
-        assert "result" in result
+        if not sandbox.available:
+            with pytest.raises(SkillSandboxError, match="refusing unsafe fallback"):
+                await sandbox.execute(self.skill, "test", {"name": "test"})
     
     async def test_wasm_sandbox(self):
-        """测试Wasm沙箱"""
+        """Wasm工具链不完整时必须拒绝执行"""
         sandbox = WasmSkillSandbox()
-        result = await sandbox.execute(self.skill, "test", {"name": "test"})
-        assert "result" in result
+        if not sandbox.available:
+            with pytest.raises(SkillSandboxError, match="Wasm sandbox unavailable"):
+                await sandbox.execute(self.skill, "test", {"name": "test"})
     
     async def test_sandbox_fallback(self):
-        """测试沙箱fallback机制"""
-        # 测试nsjail不可用时的fallback
+        """显式验证普通子进程fallback已被移除"""
         sandbox = NsJailSkillSandbox()
-        # 保存原始的nsjail_available
         original_available = sandbox.nsjail_available
         try:
-            # 强制设置为不可用
             sandbox.nsjail_available = False
-            result = await sandbox.execute(self.skill, "test", {"name": "test"})
-            assert "result" in result
+            with pytest.raises(SkillSandboxError, match="refusing unsafe fallback"):
+                await sandbox.execute(self.skill, "test", {"name": "test"})
         finally:
-            # 恢复原始值
             sandbox.nsjail_available = original_available
+
+    async def test_sandbox_rejects_unknown_script(self):
+        sandbox = WasmSkillSandbox()
+        with pytest.raises(SkillSandboxError, match="Unknown skill script"):
+            await sandbox.execute(self.skill, "missing", {})
+
+    async def test_nsjail_command_enforces_isolation_policy(
+        self, tmp_path, monkeypatch
+    ):
+        rootfs = tmp_path / "rootfs"
+        python_path = rootfs / "usr" / "bin" / "python3"
+        python_path.parent.mkdir(parents=True)
+        python_path.touch()
+        sandbox_root = tmp_path / "payload"
+        sandbox_root.mkdir()
+
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            return subprocess.CompletedProcess(command, 0, '{"result": "ok"}', '')
+
+        sandbox = NsJailSkillSandbox(rootfs_path=rootfs)
+        sandbox.nsjail_available = True
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/nsjail")
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        result = await sandbox._execute_with_nsjail(sandbox_root, {})
+
+        assert result == {"result": "ok"}
+        command = captured["command"]
+        assert command[command.index("--chroot") + 1] == str(rootfs.resolve())
+        assert "--seccomp_string" in command
+        assert "--rlimit_cpu" in command
+        assert "--rlimit_as" in command
+        assert "--rlimit_nofile" in command
+        assert "--tmpfsmount" in command
+        assert "--disable_clone_newnet" not in command
 
 if __name__ == "__main__":
     test = TestSandbox()

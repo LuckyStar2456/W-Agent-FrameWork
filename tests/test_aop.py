@@ -1,6 +1,9 @@
 import asyncio
 import pytest
-from w_agent import AspectJPointcut, BeforeAdvice, AfterAdvice, AroundAdvice, ProxyFactory, JoinPoint
+from w_agent import (
+    AspectJPointcut, BeforeAdvice, AfterAdvice, AroundAdvice, ProxyFactory,
+    JoinPoint, Retry, CircuitBreaker
+)
 
 class TestAOP:
     """测试AOP功能"""
@@ -68,47 +71,73 @@ class TestAOP:
         assert pointcut.matches(method, TestClass, "test_bean", ("test",))
         assert not pointcut.matches(method, TestClass, "test_bean", (123,))
     
-    # async def test_advice_chain(self):
-    #     """测试通知链执行顺序"""
+    async def test_advice_chain(self):
+        """测试通知链执行顺序"""
     #     # 创建目标类
-    #     class Target:
-    #         def do_something(self, value):
-    #             return f"Result: {value}"
+        class Target:
+            async def do_something(self, value):
+                return f"Result: {value}"
     #     
     #     # 创建通知
-    #     execution_order = []
+        execution_order = []
     #     
-    #     async def before_advice(joinpoint):
-    #         execution_order.append("before")
+        async def before_advice(joinpoint):
+            assert joinpoint.target is target
+            execution_order.append("before")
     #     
-    #     async def after_advice(joinpoint, result):
-    #         execution_order.append("after")
+        async def after_advice(joinpoint, result):
+            assert result == "Result: test"
+            execution_order.append("after")
     #     
-    #     async def around_advice(joinpoint, proceed):
-    #         execution_order.append("around_before")
-    #         result = await proceed()
-    #         execution_order.append("around_after")
-    #         return result
+        async def around_advice(joinpoint, proceed):
+            execution_order.append("around_before")
+            result = await proceed()
+            execution_order.append("around_after")
+            return result
     #     
     #     # 创建代理
-    #     proxy_factory = ProxyFactory()
-    #     target = Target()
-    #     advices = [
-    #         BeforeAdvice(before_advice),
-    #         AroundAdvice(around_advice),
-    #         AfterAdvice(after_advice)
-    #     ]
-    #     proxy = proxy_factory.create_proxy(target, {"do_something": advices})
+        proxy_factory = ProxyFactory()
+        target = Target()
+        advices = [
+            BeforeAdvice(before_advice),
+            AroundAdvice(around_advice),
+            AfterAdvice(after_advice)
+        ]
+        proxy = proxy_factory.create_proxy(target, {"do_something": advices})
     #     
     #     # 调用方法
-    #     result = await proxy.do_something("test")
+        result = await proxy.do_something("test")
     #     
     #     # 打印实际执行顺序
     #     print(f"实际执行顺序: {execution_order}")
     #     
     #     # 验证执行顺序
-    #     assert execution_order == ["before", "around_before", "around_after", "after"]
-    #     assert result == "Result: test"
+        assert execution_order == ["before", "around_before", "around_after", "after"]
+        assert result == "Result: test"
+
+    async def test_retry_decorator_executes(self):
+        attempts = 0
+
+        @Retry(max_attempts=3, delay=0)
+        async def operation():
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise RuntimeError("temporary")
+            return "ok"
+
+        assert await operation() == "ok"
+        assert attempts == 3
+
+    async def test_circuit_breaker_opens(self):
+        @CircuitBreaker(failure_threshold=1, recovery_timeout=10)
+        async def operation():
+            raise RuntimeError("down")
+
+        with pytest.raises(RuntimeError, match="down"):
+            await operation()
+        with pytest.raises(RuntimeError, match="Circuit breaker is open"):
+            await operation()
 
 if __name__ == "__main__":
     test = TestAOP()

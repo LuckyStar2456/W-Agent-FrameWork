@@ -1,4 +1,4 @@
-# W-Agent v1.5.0
+# W-Agent v1.5.2
 
 [English](./README_EN.md) | 简体中文
 
@@ -27,7 +27,7 @@ Python 企业级智能体框架，提供完整的技术架构方案，支持 AOP
 |------|------|
 | **AOP 面向切面编程** | 支持 AspectJ 切点表达式（execution、within、@annotation、bean、args），提供重试、断路器等切面实现 |
 | **IOC 依赖注入** | 三级缓存、构造器/字段/setter 注入、@Autowired/@Qualifier 注解，支持组件扫描和自动装配 |
-| **沙箱安全** | Wasm/nsjail 沙箱、seccomp 过滤、资源限制，确保技能执行安全 |
+| **沙箱安全** | Wasm/nsjail 真实隔离后端、seccomp 过滤与资源限制；后端不可用时失败关闭，不回退到宿主机执行 |
 | **弹性模式** | 重试（带退避）、断路器（CLOSED/OPEN/HALF_OPEN 状态）、超时控制，提高系统稳定性 |
 | **可观测性** | OpenTelemetry 集成、链路追踪、指标监控、健康检查，提供完整的可观测性解决方案 |
 | **RAG 集成** | 向量检索（Redis/内存）、相似度搜索，支持文档存储和检索增强生成 |
@@ -420,7 +420,7 @@ asyncio.run(main())
 
 ### 沙箱安全
 
-沙箱提供了安全的技能执行环境，支持 Wasm 和 nsjail 沙箱。
+沙箱提供 Wasm 和 nsjail 两种隔离后端。执行前必须安装并配置对应的真实后端；后端不可用时会抛出 `SkillSandboxError`，不会回退到宿主机 Python 或普通子进程执行。
 
 ```python
 from w_agent import WasmSkillSandbox, NsJailSkillSandbox, Skill
@@ -438,8 +438,8 @@ wasm_sandbox = WasmSkillSandbox()
 result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
 print(f"Wasm sandbox result: {result}")
 
-# 使用 nsjail 沙箱
-nsjail_sandbox = NsJailSkillSandbox()
+# 使用 nsjail 沙箱（也可通过 W_AGENT_NSJAIL_ROOTFS 配置）
+nsjail_sandbox = NsJailSkillSandbox(rootfs_path=Path("/opt/w-agent-rootfs"))
 result = await nsjail_sandbox.execute(skill, "test", {"name": "World"})
 print(f"NsJail sandbox result: {result}")
 ```
@@ -610,11 +610,16 @@ export W_AGENT_RESILIENCE_RETRY_MAX_ATTEMPTS=5
 ## 📦 PyPI 包
 
 - **包名**: `wagent-framework`
-- **版本**: 1.5.1
+- **版本**: 1.5.2
 - **安装**: `pip install wagent-framework`
 - **PyPI 地址**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
 
 ## 📝 更新日志
+
+### v1.5.2 (2026-06-15)
+- **安全修复**: 沙箱后端不可用时拒绝不安全降级执行
+- **链路修复**: 补齐组件扫描、依赖注入、生命周期和部署示例链路
+- **质量修复**: CLI、流式超时、综合测试发现与版本信息保持一致
 
 ### v1.5.1 (2026-04-27)
 - **版本更新**: 版本号更新至 1.5.1

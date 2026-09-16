@@ -147,6 +147,61 @@ class TestLifecycleManager:
         # 执行PreDestroy
         await lifecycle_manager.pre_destroy_all()
         assert test_obj.pre_destroy_called
+
+    async def test_async_decorated_lifecycle_methods_are_awaited(self):
+        calls = []
+
+        class TestClass:
+            @PostConstruct
+            async def initialize(self):
+                await asyncio.sleep(0)
+                calls.append("post")
+
+            @PreDestroy
+            async def cleanup(self):
+                await asyncio.sleep(0)
+                calls.append("pre")
+
+        lifecycle_manager = LifecycleManager()
+        lifecycle_manager.register(TestClass(), LifecycleOrder.SERVICE)
+        await lifecycle_manager.post_construct_all()
+        await lifecycle_manager.pre_destroy_all()
+        assert calls == ["post", "pre"]
+
+    async def test_lifecycle_layer_precedes_method_order(self):
+        calls = []
+
+        class Infrastructure:
+            @PostConstruct(order=10)
+            def initialize(self):
+                calls.append("infrastructure")
+
+        class Agent:
+            @PostConstruct(order=0)
+            def initialize(self):
+                calls.append("agent")
+
+        lifecycle_manager = LifecycleManager()
+        lifecycle_manager.register(Agent(), LifecycleOrder.AGENT)
+        lifecycle_manager.register(Infrastructure(), LifecycleOrder.INFRASTRUCTURE)
+        await lifecycle_manager.post_construct_all()
+        assert calls == ["infrastructure", "agent"]
+
+    async def test_inherited_lifecycle_method_is_registered(self):
+        calls = []
+
+        class Base:
+            @PostConstruct
+            async def initialize(self):
+                calls.append("base")
+
+        class Child(Base):
+            pass
+
+        lifecycle_manager = LifecycleManager()
+        lifecycle_manager.register(Child())
+        await lifecycle_manager.post_construct_all()
+        assert calls == ["base"]
     
     async def test_lifecycle_order_enum(self):
         """测试LifecycleOrder枚举"""

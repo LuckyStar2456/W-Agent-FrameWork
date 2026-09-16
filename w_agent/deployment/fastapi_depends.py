@@ -3,14 +3,15 @@ from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 from typing import Optional, Any
 from w_agent.container.bean_factory import BeanFactory
+from w_agent.core.agent import BaseAgent
 from w_agent.observability.health import CompositeHealthIndicator
 from w_agent.lifecycle.graceful_shutdown import GracefulShutdownManager
 
-class BaseAgent:
-    """基础Agent类"""
+class DefaultAgent(BaseAgent):
+    """Safe default used by the deployable example."""
+
     async def arun(self, prompt: str) -> str:
-        """异步运行Agent"""
-        raise NotImplementedError
+        return f"W-Agent: {prompt}"
 
 class FastAPIContext:
     """FastAPI上下文"""
@@ -21,6 +22,7 @@ class FastAPIContext:
 
 # 全局上下文
 ctx = FastAPIContext()
+ctx.bean_factory.register_bean("default_agent", DefaultAgent())
 
 async def get_agent(agent_name: str = "default_agent") -> BaseAgent:
     """FastAPI 依赖项，从容器获取 Agent"""

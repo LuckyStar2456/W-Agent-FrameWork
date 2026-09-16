@@ -1,4 +1,4 @@
-# W-Agent v1.5.0
+# W-Agent v1.5.2
 
 [English](./README_EN.md) | [简体中文](./README.md)
 
@@ -26,7 +26,7 @@ Python Enterprise Agent Framework, Complete Technical Architecture Solution.
 |---------|-------------|
 | **AOP Aspect-Oriented Programming** | Supports AspectJ pointcut expressions (execution, within, @annotation, bean, args), provides retry, circuit breaker aspects |
 | **IOC Dependency Injection** | Three-level caching, constructor/field/setter injection, @Autowired/@Qualifier annotations, component scanning |
-| **Sandbox Security** | Wasm/nsjail sandbox, seccomp filtering, resource limits, ensures safe skill execution |
+| **Sandbox Security** | Real Wasm/nsjail isolation backends, seccomp filtering, and resource limits; fails closed instead of executing on the host |
 | **Resilience Patterns** | Retry (with backoff), Circuit Breaker (CLOSED/OPEN/HALF_OPEN states), timeout control |
 | **Observability** | OpenTelemetry integration, distributed tracing, metrics monitoring, health checks |
 | **RAG Integration** | Vector search (Redis/memory), similarity search, document storage and retrieval-augmented generation |
@@ -419,7 +419,7 @@ asyncio.run(main())
 
 ### Sandbox Security
 
-Sandbox provides secure skill execution environment, supporting Wasm and nsjail sandbox.
+The sandbox supports Wasm and nsjail isolation backends. A real backend must be installed and configured before execution; otherwise `SkillSandboxError` is raised and the code is never executed by host Python or an ordinary subprocess.
 
 ```python
 from w_agent import WasmSkillSandbox, NsJailSkillSandbox, Skill
@@ -437,8 +437,8 @@ wasm_sandbox = WasmSkillSandbox()
 result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
 print(f"Wasm sandbox result: {result}")
 
-# Use nsjail sandbox
-nsjail_sandbox = NsJailSkillSandbox()
+# Use nsjail sandbox (or configure W_AGENT_NSJAIL_ROOTFS)
+nsjail_sandbox = NsJailSkillSandbox(rootfs_path=Path("/opt/w-agent-rootfs"))
 result = await nsjail_sandbox.execute(skill, "test", {"name": "World"})
 print(f"NsJail sandbox result: {result}")
 ```
@@ -609,11 +609,16 @@ If you find this project helpful, please give us a ⭐!
 ## 📦 PyPI Package
 
 - **Package Name**: `wagent-framework`
-- **Version**: 1.5.1
+- **Version**: 1.5.2
 - **Installation**: `pip install wagent-framework`
 - **PyPI URL**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
 
 ## 📝 Changelog
+
+### v1.5.2 (2026-06-15)
+- **Security**: Fail closed when a real skill sandbox backend is unavailable
+- **Runtime**: Complete component scanning, injection, lifecycle, and deployment example chains
+- **Quality**: Align CLI, streaming timeouts, comprehensive test discovery, and version metadata
 
 ### v1.5.1 (2026-04-27)
 - **Version Update**: Bumped version to 1.5.1

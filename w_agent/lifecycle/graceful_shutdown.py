@@ -28,6 +28,9 @@ class GracefulShutdownManager:
     async def shutdown(self):
         """触发关闭，等待活跃请求完成或超时"""
         self._shutdown_event.set()
+        async with self._lock:
+            if self._active_requests == 0:
+                self._shutdown_complete.set()
         # 停止接收新请求（由 web 框架中间件实现）
         try:
             await asyncio.wait_for(self._shutdown_complete.wait(), timeout=self._timeout)

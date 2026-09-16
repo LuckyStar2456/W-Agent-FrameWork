@@ -34,59 +34,19 @@ class ResilienceManager:
     def retry(self, max_attempts: int = 3, delay: float = 0.1, backoff: float = 2.0, 
               retry_exceptions: tuple = (Exception,)):
         def decorator(func):
-            # 检查函数是否已经被装饰
             if hasattr(func, "__retry__"):
                 return func
-            
-            # 添加重试装饰器
             from w_agent.core.decorators import Retry
-            retry_decorator = Retry(max_attempts, delay, backoff, retry_exceptions)
-            decorated_func = retry_decorator(func)
-            
-            # 创建代理
-            advice = self._retry_aspect.create_advice(decorated_func)
-            
-            # 为了支持直接调用，我们需要一个特殊的代理
-            class RetryProxy:
-                def __init__(self, target, advice):
-                    self._target = target
-                    self._advice = advice
-                
-                async def __call__(self, *args, **kwargs):
-                    # 手动创建joinpoint并执行advice
-                    from w_agent.aop.joinpoint import JoinPoint
-                    joinpoint = JoinPoint(self._target, self._target, args, kwargs, [self._advice])
-                    return await joinpoint.proceed()
-            
-            return RetryProxy(decorated_func, advice)
+            return Retry(max_attempts, delay, backoff, retry_exceptions)(func)
         return decorator
     
     def circuit_breaker(self, failure_threshold: int = 5, recovery_timeout: float = 30.0, 
                        fallback_method: str = None):
         def decorator(func):
-            # 检查函数是否已经被装饰
             if hasattr(func, "__circuit_breaker__"):
                 return func
-            
-            # 添加断路器装饰器
             from w_agent.core.decorators import CircuitBreaker
-            cb_decorator = CircuitBreaker(failure_threshold, recovery_timeout, fallback_method)
-            decorated_func = cb_decorator(func)
-            
-            # 创建代理
-            advice = self._circuit_breaker_aspect.create_advice(decorated_func)
-            
-            # 为了支持直接调用，我们需要一个特殊的代理
-            class CircuitBreakerProxy:
-                def __init__(self, target, advice):
-                    self._target = target
-                    self._advice = advice
-                
-                async def __call__(self, *args, **kwargs):
-                    # 手动创建joinpoint并执行advice
-                    from w_agent.aop.joinpoint import JoinPoint
-                    joinpoint = JoinPoint(self._target, self._target, args, kwargs, [self._advice])
-                    return await joinpoint.proceed()
-            
-            return CircuitBreakerProxy(decorated_func, advice)
+            return CircuitBreaker(
+                failure_threshold, recovery_timeout, fallback_method
+            )(func)
         return decorator

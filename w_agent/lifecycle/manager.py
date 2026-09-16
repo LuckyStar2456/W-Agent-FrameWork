@@ -11,17 +11,19 @@ class LifecycleManager:
         # 存储结构: {lifecycle_order_value: [(method_order, instance, bound_method), ...]}
         self._post_construct_map: Dict[int, List[Tuple[int, Any, Callable]]] = {}
         self._pre_destroy_map: Dict[int, List[Tuple[int, Any, Callable]]] = {}
+        self._registrations = set()
 
     def register(self, instance: Any, order: LifecycleOrder = LifecycleOrder.SERVICE):
         cls = type(instance)
         
-        # 直接遍历类的__dict__，查找所有方法
-        for name, value in cls.__dict__.items():
+        # dir(instance) includes inherited lifecycle methods as well.
+        for name in dir(instance):
             # 跳过私有方法和特殊方法
             if name.startswith('_'):
                 continue
             
             try:
+                value = getattr(cls, name, None)
                 # 检查是否是函数或方法，或者是装饰器对象
                 if callable(value) or hasattr(value, 'func') or name in ['post_construct', 'pre_destroy']:
                     # 处理装饰器对象的情况
@@ -50,9 +52,12 @@ class LifecycleManager:
                             # 确保method_order是整数
                             if not isinstance(method_order, int):
                                 method_order = 0
-                            self._post_construct_map.setdefault(order.value, []).append(
-                                (method_order, instance, bound_method)
-                            )
+                            registration = (id(instance), name, "post")
+                            if registration not in self._registrations:
+                                self._registrations.add(registration)
+                                self._post_construct_map.setdefault(order.value, []).append(
+                                    (method_order, instance, bound_method)
+                                )
                         
                         if has_pre:
                             # 获取order值
@@ -60,24 +65,23 @@ class LifecycleManager:
                             # 确保method_order是整数
                             if not isinstance(method_order, int):
                                 method_order = 0
-                            self._pre_destroy_map.setdefault(order.value, []).append(
-                                (method_order, instance, bound_method)
-                            )
+                            registration = (id(instance), name, "pre")
+                            if registration not in self._registrations:
+                                self._registrations.add(registration)
+                                self._pre_destroy_map.setdefault(order.value, []).append(
+                                    (method_order, instance, bound_method)
+                                )
             except Exception as e:
                 logger.debug(f"Error registering lifecycle method '{name}' for {type(instance).__name__}: {e}")
 
     async def post_construct_all(self):
-        # 收集所有方法（按 lifecycle order 排序）
-        all_methods = []
+        # Lifecycle layer takes precedence over method-local order.
         for lifecycle_order in sorted(self._post_construct_map.keys()):
-            all_methods.extend(self._post_construct_map[lifecycle_order])
-        
-        # 按方法自身的 order 值升序（数值小的先执行）
-        sorted_methods = sorted(all_methods, key=lambda x: x[0])
-
-        # 执行
-        for method_order, instance, func in sorted_methods:
-            await self._invoke(func)
+            methods = sorted(
+                self._post_construct_map[lifecycle_order], key=lambda item: item[0]
+            )
+            for method_order, instance, func in methods:
+                await self._invoke(func)
 
     async def pre_destroy_all(self):
         # 销毁顺序：先按 lifecycle order 降序，再按方法自身的 order 值降序
@@ -89,10 +93,7 @@ class LifecycleManager:
 
     async def _invoke(self, func: Callable):
         """统一调用，支持同步/异步"""
-        # 直接调用绑定方法，不需要获取原始函数
-        if asyncio.iscoroutinefunction(func):
-            result = await func()
-            return result
-        else:
-            result = func()
-            return result
+        result = func()
+        if inspect.isawaitable(result):
+            return await result
+        return result

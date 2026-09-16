@@ -262,6 +262,8 @@ status = await health.check()
 
 ### 沙箱
 
+沙箱执行采用失败关闭策略：真实 Wasm/nsjail 后端不可用时抛出 `SkillSandboxError`，不会使用宿主机执行作为降级方案。
+
 #### WasmSkillSandbox
 
 Wasm 沙箱。

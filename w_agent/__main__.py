@@ -34,8 +34,16 @@ async def main():
         result = await agent.arun(prompt)
         print(result)
     else:
-        print("W-Agent v1.5.0")
+        from w_agent import __version__
+        print(f"W-Agent v{__version__}")
         print("Usage: python -m w_agent <prompt>")
 
 if __name__ == "__main__":
+    cli_commands = {
+        "health", "doctor", "version", "config", "bean",
+        "-h", "--help", "-V", "--version",
+    }
+    if len(sys.argv) > 1 and sys.argv[1] in cli_commands:
+        from w_agent.cli import main as cli_main
+        raise SystemExit(cli_main())
     asyncio.run(main())

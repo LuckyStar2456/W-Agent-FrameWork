@@ -54,7 +54,7 @@ async def unreliable_operation():
 
 ### 2.2 IOC（控制反转）
 
-IOC 模块提供依赖注入容器，实现三级缓存解决循环依赖：
+IOC 模块提供依赖注入容器，通过三级缓存处理字段/Setter 注入的单例循环依赖；构造器循环依赖会被检测并以明确错误终止：
 
 - **三级缓存机制**：
   - 一级缓存：`singleton_objects` - 完全成生的单例对象
@@ -144,6 +144,8 @@ with tracer.start_span("operation") as span:
 ### 2.6 沙箱安全
 
 提供 Wasm 和 nsjail 两种沙箱隔离方案：
+
+两种方案都采用失败关闭策略。真实隔离后端不可用时拒绝执行，禁止回退到宿主机 Python 或普通子进程。
 
 - **Wasm 沙箱**：
   - 使用 Pyodide 将 Python 编译为 Wasm

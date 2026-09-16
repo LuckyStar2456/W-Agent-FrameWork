@@ -12,6 +12,7 @@ from w_agent import BaseAgent, AgentComponent, ServiceComponent, PostConstruct, 
 
 class TestService:
     """测试服务"""
+    __test__ = False
     def __init__(self):
         self.calls = 0
     
@@ -21,6 +22,7 @@ class TestService:
 
 class TestAgent(BaseAgent):
     """测试Agent"""
+    __test__ = False
     def __init__(self, test_service: TestService, config_manager: DynamicConfigManager):
         self.test_service = test_service
         self.config_manager = config_manager
@@ -48,6 +50,7 @@ class TestAgent(BaseAgent):
 
 class TestSkill(Skill):
     """测试技能"""
+    __test__ = False
     def __init__(self):
         # 不需要外部脚本文件，直接在execute方法中实现逻辑
         super().__init__("test_skill", "Test Skill", {"test": None})

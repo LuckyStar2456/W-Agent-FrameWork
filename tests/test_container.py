@@ -1,6 +1,14 @@
 import asyncio
 import pytest
-from w_agent import BeanFactory, BeanDefinition, Scope, BeanNotFoundError, InjectionError
+from w_agent import (
+    BeanFactory,
+    BeanDefinition,
+    Scope,
+    BeanNotFoundError,
+    CircularDependencyError,
+    Autowired,
+    PreDestroy,
+)
 
 class TestBeanFactory:
     """测试BeanFactory"""
@@ -99,6 +107,123 @@ class TestBeanFactory:
         # 获取实例并验证注入
         dependent = await factory.get_bean("dependent")
         assert dependent.dependency.value == "dependency"
+
+    async def test_field_and_setter_injection(self):
+        class Dependency:
+            pass
+
+        class FieldDependent:
+            dependency: Dependency
+
+            @Autowired()
+            def dependency(self):
+                pass
+
+        class SetterDependent:
+            def __init__(self):
+                self.dependency = None
+
+            @Autowired()
+            def set_dependency(self, dependency: Dependency):
+                self.dependency = dependency
+
+        factory = BeanFactory()
+        dependency = Dependency()
+        factory.register_bean("dependency", dependency)
+        factory.register_bean_definition(
+            "field_dependent", BeanDefinition("field_dependent", FieldDependent)
+        )
+        factory.register_bean_definition(
+            "setter_dependent", BeanDefinition("setter_dependent", SetterDependent)
+        )
+
+        field_dependent = await factory.get_bean("field_dependent")
+        setter_dependent = await factory.get_bean("setter_dependent")
+
+        assert field_dependent.dependency is dependency
+        assert setter_dependent.dependency is dependency
+
+    async def test_field_cycle_uses_early_singleton_references(self):
+        class A:
+            @Autowired("b")
+            def b(self):
+                pass
+
+        class B:
+            @Autowired("a")
+            def a(self):
+                pass
+
+        A.__annotations__ = {"b": B}
+        B.__annotations__ = {"a": A}
+
+        factory = BeanFactory()
+        factory.register_bean_definition("a", BeanDefinition("a", A))
+        factory.register_bean_definition("b", BeanDefinition("b", B))
+
+        a = await factory.get_bean("a")
+        b = await factory.get_bean("b")
+
+        assert a.b is b
+        assert b.a is a
+        await factory.destroy_singletons()
+
+    async def test_constructor_cycle_fails_with_clear_error(self):
+        class A:
+            def __init__(self, b):
+                self.b = b
+
+        class B:
+            def __init__(self, a):
+                self.a = a
+
+        A.__init__.__annotations__["b"] = B
+        B.__init__.__annotations__["a"] = A
+
+        factory = BeanFactory()
+        factory.register_bean_definition("a", BeanDefinition("a", A))
+        factory.register_bean_definition("b", BeanDefinition("b", B))
+
+        with pytest.raises(CircularDependencyError, match="a -> b -> a"):
+            await factory.get_bean("a")
+
+    async def test_concurrent_singleton_creation_is_serialized(self):
+        class SlowSingleton:
+            created = 0
+
+            def __init__(self):
+                type(self).created += 1
+
+            async def initialize(self):
+                await asyncio.sleep(0.01)
+
+        factory = BeanFactory()
+        factory.register_bean_definition(
+            "slow",
+            BeanDefinition("slow", SlowSingleton, init_method="initialize"),
+        )
+        first, second = await asyncio.gather(
+            factory.get_bean("slow"), factory.get_bean("slow")
+        )
+        assert first is second
+        assert SlowSingleton.created == 1
+
+    async def test_direct_singleton_is_destroyed_and_removed(self):
+        class Resource:
+            def __init__(self):
+                self.destroyed = False
+
+            @PreDestroy
+            async def cleanup(self):
+                self.destroyed = True
+
+        factory = BeanFactory()
+        resource = Resource()
+        factory.register_bean("resource", resource)
+        await factory.destroy_singletons()
+        assert resource.destroyed
+        with pytest.raises(BeanNotFoundError):
+            await factory.get_bean("resource")
 
 if __name__ == "__main__":
     asyncio.run(TestBeanFactory().test_register_and_get_bean())

@@ -1,6 +1,6 @@
 """W-Agent 框架包"""
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 __author__ = "LuckyStar2456"
 __license__ = "MIT"
 
@@ -30,7 +30,12 @@ from w_agent.resilience.bulkhead import ResilienceManager
 from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
 from w_agent.skills.sandbox.nsjail_sandbox import NsJailSkillSandbox
 from w_agent.skills.skill import Skill
-from w_agent.exceptions.framework_errors import BeanNotFoundError, InjectionError
+from w_agent.exceptions.framework_errors import (
+    BeanNotFoundError,
+    CircularDependencyError,
+    InjectionError,
+    SkillSandboxError,
+)
 from w_agent.scanner.parallel_scanner import ParallelASTScanner
 from w_agent.lifecycle.graceful_shutdown import GracefulShutdownManager
 from w_agent.tools.langchain_adapter import LangChainToolAdapter
@@ -79,7 +84,9 @@ __all__ = [
     "NsJailSkillSandbox",
     "Skill",
     "BeanNotFoundError",
+    "CircularDependencyError",
     "InjectionError",
+    "SkillSandboxError",
     "ParallelASTScanner",
     "LangChainToolAdapter"
 ]

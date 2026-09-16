@@ -52,7 +52,7 @@ class LLMService:
         """销毁前执行"""
         print("LLMService destroyed")
     
-    @LogEnable(log_args=True, log_result=True, log_duration=True)
+    @LogEnable(log_args=False, log_result=False, log_duration=True)
     async def generate(self, prompt, system_prompt=None):
         """生成文本"""
         if not self.client:

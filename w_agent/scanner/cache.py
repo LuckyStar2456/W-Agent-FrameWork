@@ -1,5 +1,5 @@
 import msgpack
-import zstd
+import zstandard
 from pathlib import Path
 from typing import Optional
 from w_agent.scanner.parallel_scanner import ScanResult
@@ -11,13 +11,13 @@ class ScannerCache:
     
     def _save_cache(self, cache_key: str, result: ScanResult):
         data = msgpack.packb(result.to_dict(), use_bin_type=True)
-        compressed = zstd.compress(data, level=3)
+        compressed = zstandard.ZstdCompressor(level=3).compress(data)
         (self.cache_dir / f"{cache_key}.cmp").write_bytes(compressed)
     
     def _load_cache(self, cache_key: str) -> ScanResult:
         compressed = (self.cache_dir / f"{cache_key}.cmp").read_bytes()
-        data = zstd.decompress(compressed)
-        return ScanResult.from_dict(msgpack.unpackb(data))
+        data = zstandard.ZstdDecompressor().decompress(compressed)
+        return ScanResult.from_dict(msgpack.unpackb(data, raw=False))
     
     def get(self, cache_key: str) -> Optional[ScanResult]:
         """获取缓存"""

@@ -1,6 +1,9 @@
 """OpenTelemetry 日志增强功能"""
 
 import structlog
+import functools
+import inspect
+import time
 from typing import Dict, Any, Optional
 
 # 尝试导入OpenTelemetry
@@ -43,32 +46,42 @@ class LogEnable:
         self.log_duration = log_duration
     
     def __call__(self, func):
-        import time
         logger = structlog.get_logger(func.__module__)
-        
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            
-            # 记录输入参数
+
+        def log_call(args, kwargs):
             if self.log_args:
                 logger.info(f"{func.__name__} called", args=args, kwargs=kwargs)
-            
-            try:
-                result = func(*args, **kwargs)
+
+        def log_completion(start_time, result):
+            duration = (time.perf_counter() - start_time) * 1000
+            if self.log_duration:
+                logger.info(f"{func.__name__} completed", duration_ms=duration)
+            if self.log_result:
+                if isinstance(result, (str, int, float, bool, type(None))):
+                    logger.info(f"{func.__name__} result", result=result)
+                else:
+                    logger.info(
+                        f"{func.__name__} result type",
+                        result_type=type(result).__name__,
+                    )
+
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                start_time = time.perf_counter()
+                log_call(args, kwargs)
+                result = await func(*args, **kwargs)
+                log_completion(start_time, result)
                 return result
-            finally:
-                duration = (time.time() - start_time) * 1000  # 转换为毫秒
-                
-                # 记录执行时间
-                if self.log_duration:
-                    logger.info(f"{func.__name__} completed", duration_ms=duration)
-                
-                # 记录返回结果
-                if self.log_result:
-                    # 避免记录过大的结果
-                    if isinstance(result, (str, int, float, bool, type(None))):
-                        logger.info(f"{func.__name__} result", result=result)
-                    else:
-                        logger.info(f"{func.__name__} result type", result_type=type(result).__name__)
-        
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.perf_counter()
+            log_call(args, kwargs)
+            result = func(*args, **kwargs)
+            log_completion(start_time, result)
+            return result
+
         return wrapper

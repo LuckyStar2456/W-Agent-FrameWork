@@ -1,10 +1,12 @@
 from typing import Dict, Any, List, Optional, Type, Callable
 from pathlib import Path
 from w_agent.lifecycle.manager import LifecycleManager
+from w_agent.lifecycle.order import LifecycleOrder
 from w_agent.container.reflection_cache import _reflection_cache
 from w_agent.observability.tracing import global_tracer
 from w_agent.exceptions.framework_errors import BeanNotFoundError, InjectionError, CircularDependencyError
 import asyncio
+import contextvars
 import inspect
 
 class Scope:
@@ -16,13 +18,15 @@ class BeanDefinition:
     """Bean定义"""
     def __init__(self, name: str, bean_type: Type, scope: str = Scope.SINGLETON, 
                  init_method: Optional[str] = None, destroy_method: Optional[str] = None,
-                 dependencies: List[str] = None):
+                 dependencies: List[str] = None,
+                 lifecycle_order: LifecycleOrder = LifecycleOrder.SERVICE):
         self.name = name
         self.bean_type = bean_type
         self.scope = scope
         self.init_method = init_method
         self.destroy_method = destroy_method
         self.dependencies = dependencies or []
+        self.lifecycle_order = lifecycle_order
 
 class BeanFactory:
     def __init__(self):
@@ -34,99 +38,114 @@ class BeanFactory:
         self._bean_definitions: Dict[str, BeanDefinition] = {}  # Bean定义
         self._lifecycle = LifecycleManager()
         self._graph = DependencyGraph()
+        self._creation_locks: Dict[str, asyncio.Lock] = {}
+        self._creation_stack = contextvars.ContextVar(
+            f"w_agent_creation_stack_{id(self)}", default=()
+        )
     
     def register_bean_definition(self, name: str, definition: BeanDefinition):
         """注册Bean定义"""
         if not name or not isinstance(name, str):
             raise InjectionError("Bean name must be a non-empty string")
         
+        definition.name = name
         self._bean_definitions[name] = definition
+        self._graph.add_node(name)
         # 添加依赖关系到依赖图
         if definition.dependencies:
             for dep in definition.dependencies:
                 if dep and isinstance(dep, str):
                     self._graph.add_dependency(name, dep)
     
-    def register_bean(self, name: str, instance: Any, scope: str = Scope.SINGLETON):
+    def register_bean(
+        self,
+        name: str,
+        instance: Any,
+        scope: str = Scope.SINGLETON,
+        lifecycle_order: LifecycleOrder = LifecycleOrder.SERVICE,
+    ):
         """直接注册Bean实例"""
         if scope == Scope.SINGLETON:
             self._singleton_objects[name] = instance
-            self._lifecycle.register(instance)
+            self._graph.add_node(name)
+            self._lifecycle.register(instance, lifecycle_order)
     
     async def get_bean(self, name: str) -> Any:
         """获取Bean实例"""
         span = global_tracer.start_span("bean_factory.get_bean", attributes={"bean.name": name})
         try:
-            # 先从一级缓存获取
             if name in self._singleton_objects:
-                global_tracer.end_span(span)
                 return self._singleton_objects[name]
-            
-            # 从二级缓存获取
-            if name in self._early_singleton_objects:
-                global_tracer.end_span(span)
+            stack = self._creation_stack.get()
+            if name in self._early_singleton_objects and name in stack:
                 return self._early_singleton_objects[name]
-            
-            # 检查Bean定义是否存在
-            if name not in self._bean_definitions and name not in self._singleton_objects:
+
+            if name not in self._bean_definitions:
                 raise BeanNotFoundError(name)
-            
             definition = self._bean_definitions[name]
-            
-            # 处理原型作用域
+
             if definition.scope == Scope.PROTOTYPE:
-                instance = await self._create_bean(definition)
-                global_tracer.end_span(span)
-                return instance
-            
-            # 处理单例作用域，使用三级缓存解决循环依赖
-            if name not in self._singleton_factories:
-                # 创建Bean工厂
-                async def factory():
-                    return await self._create_bean(definition)
-                
-                self._singleton_factories[name] = factory
-            
-            # 从工厂创建实例
-            instance = await self._singleton_factories[name]()
-            
-            # 移动到一级缓存
-            self._singleton_objects[name] = instance
-            self._early_singleton_objects.pop(name, None)
-            self._singleton_factories.pop(name, None)
-            
-            # 注册到生命周期管理器
-            self._lifecycle.register(instance)
-            
+                return await self._create_bean(definition)
+
+            if name in stack:
+                cycle_start = stack.index(name)
+                raise CircularDependencyError(list(stack[cycle_start:]) + [name])
+
+            lock = self._creation_locks.setdefault(name, asyncio.Lock())
+            async with lock:
+                if name in self._singleton_objects:
+                    return self._singleton_objects[name]
+
+                stack = self._creation_stack.get()
+                if name in stack:
+                    cycle_start = stack.index(name)
+                    raise CircularDependencyError(list(stack[cycle_start:]) + [name])
+                token = self._creation_stack.set(stack + (name,))
+                try:
+                    async def factory():
+                        return await self._create_bean(definition)
+
+                    self._singleton_factories[name] = factory
+                    instance = await factory()
+                    self._singleton_objects[name] = instance
+                    self._early_singleton_objects.pop(name, None)
+                    self._singleton_factories.pop(name, None)
+                    self._lifecycle.register(instance, definition.lifecycle_order)
+                    return instance
+                except Exception:
+                    self._early_singleton_objects.pop(name, None)
+                    self._singleton_factories.pop(name, None)
+                    raise
+                finally:
+                    self._creation_stack.reset(token)
+        finally:
             global_tracer.end_span(span)
-            return instance
-        except Exception as e:
-            global_tracer.end_span(span)
-            raise
     
     async def _create_bean(self, definition: BeanDefinition) -> Any:
         """创建Bean实例"""
         span = global_tracer.start_span("bean_factory.create_bean", attributes={"bean.name": definition.name, "bean.type": definition.bean_type.__name__})
         try:
             # 解析构造器参数
-            constructor_args = await self._resolve_constructor_args(definition.bean_type)
+            constructor_args = await self._resolve_constructor_args(definition)
             
             # 创建实例
             try:
                 instance = definition.bean_type(**constructor_args)
             except Exception as e:
                 raise InjectionError(f"Failed to create bean {definition.name}: {str(e)}")
-            
+
+            if definition.scope == Scope.SINGLETON:
+                self._early_singleton_objects[definition.name] = instance
+
             # 执行字段注入
             await self._inject_fields(instance)
             
             # 执行初始化方法
             if definition.init_method and hasattr(instance, definition.init_method):
                 init_method = getattr(instance, definition.init_method)
-                if asyncio.iscoroutinefunction(init_method):
-                    await init_method()
-                else:
-                    init_method()
+                result = init_method()
+                if inspect.isawaitable(result):
+                    await result
             
             global_tracer.end_span(span)
             return instance
@@ -174,7 +193,8 @@ class BeanFactory:
                     if callable(method) and hasattr(method, "__autowired__"):
                         # 获取方法参数
                         signature = _reflection_cache.get_signature(method)
-                        params = list(signature.parameters.values())[1:]  # 跳过self
+                        # inspect.signature(bound_method) already omits self.
+                        params = list(signature.parameters.values())
                         if params:
                             param = params[0]
                             param_type = param.annotation
@@ -183,22 +203,24 @@ class BeanFactory:
                                 bean_name = await self._find_bean_by_type(param_type)
                                 if bean_name:
                                     bean_instance = await self.get_bean(bean_name)
-                                    if asyncio.iscoroutinefunction(method):
-                                        await method(bean_instance)
-                                    else:
-                                        method(bean_instance)
+                                    result = method(bean_instance)
+                                    if inspect.isawaitable(result):
+                                        await result
                                 else:
                                     raise InjectionError(f"No bean found for setter method {method_name} parameter of type {param_type}")
         except Exception as e:
             raise InjectionError(f"Setter injection failed for {type(instance).__name__}: {str(e)}")
     
-    async def _resolve_constructor_args(self, bean_type: Type) -> Dict[str, Any]:
+    async def _resolve_constructor_args(self, definition: BeanDefinition) -> Dict[str, Any]:
         """解析构造器参数"""
         args = {}
+        bean_type = definition.bean_type
         signature = _reflection_cache.get_signature(bean_type.__init__)
         
         for param_name, param in signature.parameters.items():
             if param_name == "self":
+                continue
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
             
             # 检查是否有@Qualifier注解
@@ -223,11 +245,13 @@ class BeanFactory:
                 try:
                     # 如果有@Qualifier注解，直接使用指定的Bean名称
                     if qualifier_name:
+                        self._graph.add_dependency(definition.name, qualifier_name)
                         args[param_name] = await self.get_bean(qualifier_name)
                     else:
                         # 尝试按类型匹配
                         bean_name = await self._find_bean_by_type(param_type)
                         if bean_name:
+                            self._graph.add_dependency(definition.name, bean_name)
                             args[param_name] = await self.get_bean(bean_name)
                         else:
                             # 如果找不到Bean，使用默认值
@@ -259,22 +283,36 @@ class BeanFactory:
         
         # 尝试接口/抽象基类匹配
         for bean_name, definition in self._bean_definitions.items():
-            if issubclass(definition.bean_type, target_type):
-                return bean_name
+            try:
+                if issubclass(definition.bean_type, target_type):
+                    return bean_name
+            except TypeError:
+                continue
         
         # 尝试单例对象匹配
         for bean_name, instance in self._singleton_objects.items():
-            if isinstance(instance, target_type):
-                return bean_name
+            try:
+                if isinstance(instance, target_type):
+                    return bean_name
+            except TypeError:
+                continue
         
         return None
     
     async def destroy_singletons(self):
         # 获取所有单例 Bean 的销毁顺序（依赖者先销毁）
         order = self._graph.topological_sort(reverse=True)  # 依赖者在前
+        order.extend(name for name in self._singleton_objects if name not in order)
         for name in order:
             instance = self._singleton_objects.get(name)
             if instance:
+                definition = self._bean_definitions.get(name)
+                if definition and definition.destroy_method:
+                    destroy_method = getattr(instance, definition.destroy_method, None)
+                    if destroy_method and not hasattr(destroy_method, "__pre_destroy__"):
+                        result = destroy_method()
+                        if inspect.isawaitable(result):
+                            await result
                 await self.pre_destroy_single(instance)
                 del self._singleton_objects[name]
         
@@ -285,7 +323,7 @@ class BeanFactory:
     def create_snapshot(self, snapshot_path: Path):
         """创建BeanFactory快照"""
         import msgpack
-        import zstd
+        import zstandard
         
         # 序列化BeanDefinition
         snapshot_data = {
@@ -299,24 +337,26 @@ class BeanFactory:
                 "scope": definition.scope,
                 "init_method": definition.init_method,
                 "destroy_method": definition.destroy_method,
-                "dependencies": definition.dependencies
+                "dependencies": definition.dependencies,
+                "lifecycle_order": int(definition.lifecycle_order),
             }
         
         # 压缩并保存
         data = msgpack.packb(snapshot_data, use_bin_type=True)
-        compressed = zstd.compress(data, level=3)
+        compressed = zstandard.ZstdCompressor(level=3).compress(data)
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         snapshot_path.write_bytes(compressed)
     
     @classmethod
     def from_snapshot(cls, snapshot_path: Path):
         """从快照创建BeanFactory"""
         import msgpack
-        import zstd
+        import zstandard
         
         # 读取并解压
         compressed = snapshot_path.read_bytes()
-        data = zstd.decompress(compressed)
-        snapshot_data = msgpack.unpackb(data)
+        data = zstandard.ZstdDecompressor().decompress(compressed)
+        snapshot_data = msgpack.unpackb(data, raw=False)
         
         # 创建BeanFactory
         factory = cls()
@@ -335,7 +375,10 @@ class BeanFactory:
                 scope=def_data["scope"],
                 init_method=def_data["init_method"],
                 destroy_method=def_data["destroy_method"],
-                dependencies=def_data["dependencies"]
+                dependencies=def_data["dependencies"],
+                lifecycle_order=LifecycleOrder(
+                    def_data.get("lifecycle_order", int(LifecycleOrder.SERVICE))
+                ),
             )
             factory.register_bean_definition(name, definition)
         
@@ -348,10 +391,9 @@ class BeanFactory:
             for name in dir(instance):
                 attr = getattr(instance, name)
                 if hasattr(attr, "__pre_destroy__"):
-                    if asyncio.iscoroutinefunction(attr):
-                        await attr()
-                    else:
-                        attr()
+                    result = attr()
+                    if inspect.isawaitable(result):
+                        await result
         except Exception as e:
             raise InjectionError(f"Pre-destroy failed for {type(instance).__name__}: {str(e)}")
     
@@ -359,12 +401,89 @@ class BeanFactory:
         """执行所有Bean的post_construct方法"""
         await self._lifecycle.post_construct_all()
 
+    def list_beans(self) -> List[str]:
+        """List registered definitions and instantiated singletons."""
+        return sorted(set(self._bean_definitions) | set(self._singleton_objects))
+
+    def scan_and_register(self, package_path: Path):
+        """Discover decorated components and register them with this factory.
+
+        Modules are loaded from their file paths. Applications that require
+        package-relative imports should import those modules normally before
+        calling this helper.
+        """
+        import importlib.util
+        import sys
+        from w_agent.scanner.parallel_scanner import ParallelASTScanner
+
+        package_path = Path(package_path).resolve()
+        scan_result = ParallelASTScanner().scan_package(package_path)
+        modules = {}
+        discovered = []
+        order_by_type = {
+            "repository": LifecycleOrder.REPOSITORY,
+            "service": LifecycleOrder.SERVICE,
+            "agent": LifecycleOrder.AGENT,
+            "controller": LifecycleOrder.PRESENTATION,
+            "tool": LifecycleOrder.SERVICE,
+        }
+
+        for component in scan_result.components:
+            file_path = Path(component.file_path).resolve()
+            module = modules.get(file_path)
+            if module is None:
+                module_name = f"w_agent_scanned_{abs(hash(file_path))}"
+                module = sys.modules.get(module_name)
+                if module is None:
+                    spec = importlib.util.spec_from_file_location(module_name, file_path)
+                    if spec is None or spec.loader is None:
+                        raise InjectionError(f"Unable to load component module: {file_path}")
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+                modules[file_path] = module
+
+            attribute_name = component.class_name or component.function_name
+            target = getattr(module, attribute_name)
+            lifecycle_order = order_by_type.get(
+                component.component_type, LifecycleOrder.SERVICE
+            )
+            if inspect.isclass(target):
+                self.register_bean_definition(
+                    component.name,
+                    BeanDefinition(
+                        component.name,
+                        target,
+                        lifecycle_order=lifecycle_order,
+                    ),
+                )
+            else:
+                self.register_bean(
+                    component.name,
+                    target,
+                    lifecycle_order=lifecycle_order,
+                )
+            discovered.append(component.name)
+        return discovered
+
+    async def initialize_singletons(self):
+        """Instantiate all singleton definitions and run lifecycle initializers."""
+        for name, definition in list(self._bean_definitions.items()):
+            if definition.scope == Scope.SINGLETON:
+                await self.get_bean(name)
+        await self.post_construct_all()
+
 class DependencyGraph:
     def __init__(self):
         self._dependencies: Dict[str, List[str]] = {}
     
     def add_dependency(self, bean: str, depends_on: str):
+        self.add_node(bean)
+        self.add_node(depends_on)
         self._dependencies.setdefault(bean, []).append(depends_on)
+
+    def add_node(self, bean: str):
+        self._dependencies.setdefault(bean, [])
     
     def topological_sort(self, reverse: bool = False) -> List[str]:
         # 简单的拓扑排序实现

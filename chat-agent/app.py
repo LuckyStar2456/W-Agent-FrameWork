@@ -43,7 +43,7 @@ def check_api_keys(config_manager):
     llm_api_key = config_manager.get("llm.api_key")
     if not llm_api_key:
         print("警告：LLM API密钥未配置，请在config.json中填写")
-        print("当前将使用模拟响应")
+        print("普通聊天将返回未配置提示；技能仅在安全沙箱可用时执行")
         return False
     return True
 
@@ -76,7 +76,7 @@ async def main():
         return
     
     # 检查API密钥
-    api_available = check_api_keys(config_manager)
+    check_api_keys(config_manager)
     
     # 初始化Bean工厂
     bean_factory = BeanFactory()

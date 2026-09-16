@@ -213,6 +213,7 @@ class DatabaseService:
 **沙箱**：
 - `WasmSkillSandbox`：Wasm 沙箱，安全执行技能
 - `NsJailSkillSandbox`：nsjail 沙箱，提供更强的隔离
+- 两种沙箱都要求真实后端可用；缺失时抛出 `SkillSandboxError`，不会在宿主机降级执行
 
 **使用示例**：
 
@@ -877,7 +878,7 @@ async def chat(prompt: str):
 
 ### 3. 沙箱执行失败
 
-**症状**：`SkillExecutionError` 或执行超时
+**症状**：`SkillSandboxError`、技能执行错误或执行超时
 
 **原因**：
 - Wasm 或 nsjail 未安装

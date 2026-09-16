@@ -46,7 +46,7 @@ class RAGService:
         """销毁前执行"""
         print("RAGService destroyed")
     
-    @LogEnable(log_args=True, log_result=False, log_duration=True)
+    @LogEnable(log_args=False, log_result=False, log_duration=True)
     async def embed_text(self, text):
         """生成文本嵌入"""
         # 检查缓存
@@ -69,7 +69,7 @@ class RAGService:
             print(f"Embed text failed: {e}")
             return None
     
-    @LogEnable(log_args=True, log_result=True, log_duration=True)
+    @LogEnable(log_args=False, log_result=True, log_duration=True)
     async def store_document(self, document_id, text, metadata=None):
         """存储文档"""
         try:
@@ -91,7 +91,7 @@ class RAGService:
                     "embedding": str(embedding),
                     "metadata": metadata or {}
                 }
-                success = self.redis_service.set(key, str(data))
+                success = await self.redis_service.set(key, str(data))
                 if success:
                     # 缓存文档
                     self._document_cache[document_id] = data
@@ -103,7 +103,7 @@ class RAGService:
             print(f"Store document failed: {e}")
             return False
     
-    @LogEnable(log_args=True, log_result=False, log_duration=True)
+    @LogEnable(log_args=False, log_result=False, log_duration=True)
     async def retrieve_documents(self, query, top_k=None):
         """检索相关文档"""
         try:
@@ -143,7 +143,7 @@ class RAGService:
             # 这里使用简化实现，遍历所有文档并计算相似度
             
             # 获取所有文档键
-            keys = self.redis_service.client.keys("doc:*")
+            keys = await self.redis_service.client.keys("doc:*")
             documents = []
             
             if keys:
@@ -154,7 +154,7 @@ class RAGService:
                     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
                 
                 # 批量获取文档数据
-                data_strs = self.redis_service.client.mget(keys)
+                data_strs = await self.redis_service.client.mget(keys)
                 
                 # 遍历所有文档并计算相似度
                 for key, data_str in zip(keys, data_strs):
@@ -223,12 +223,12 @@ class RAGService:
             print(f"Retrieve from memory failed: {e}")
             return []
     
-    @LogEnable(log_args=True, log_result=False, log_duration=True)
+    @LogEnable(log_args=False, log_result=False, log_duration=True)
     async def generate_with_rag(self, query, context=None):
         """使用RAG生成回复"""
         try:
             # 检索相关文档
-            if not context:
+            if context is None:
                 context = await self.retrieve_documents(query)
             
             # 构建提示

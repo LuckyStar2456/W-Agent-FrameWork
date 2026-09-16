@@ -6,16 +6,29 @@ import asyncio
 import sys
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.config.dynamic_config import DynamicConfigManager
-from w_agent.observability.health import HealthCheck
+from w_agent.core.doctor import Doctor
+
+
+def get_version():
+    """Return the installed distribution version, or the package version."""
+    try:
+        from importlib.metadata import version
+        return version("wagent-framework")
+    except Exception:
+        from w_agent import __version__
+        return __version__
 
 def main():
     """CLI主函数"""
-    parser = argparse.ArgumentParser(description='W-Agent Command Line Interface')
+    parser = argparse.ArgumentParser(description='W-Agent Command Line Tool')
+    parser.add_argument('-V', '--version', action='version',
+                        version=f'W-Agent version {get_version()}')
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
     # health 命令
     health_parser = subparsers.add_parser('health', help='Check system health')
+    subparsers.add_parser('doctor', help='Run detailed system diagnostics')
     
     # version 命令
     version_parser = subparsers.add_parser('version', help='Show version')
@@ -33,8 +46,8 @@ def main():
     
     args = parser.parse_args()
     
-    if args.command == 'health':
-        asyncio.run(check_health())
+    if args.command in ('health', 'doctor'):
+        return 0 if asyncio.run(check_health()) else 1
     elif args.command == 'version':
         show_version()
     elif args.command == 'config':
@@ -43,16 +56,15 @@ def main():
         asyncio.run(manage_beans(args))
     else:
         parser.print_help()
+    return 0
 
 async def check_health():
     """检查系统健康状态"""
     print("Checking system health...")
     
-    health = HealthCheck()
-    status = await health.check()
-    
-    print(f"System health: {status}")
-    print("Health check completed successfully!")
+    doctor = Doctor()
+    results = doctor.run_all_checks()
+    return doctor.print_results(results)
 
 async def manage_config(args):
     """管理配置"""
@@ -60,7 +72,7 @@ async def manage_config(args):
     
     if args.action == 'list':
         print("Current configuration:")
-        for key, value in config.config.items():
+        for key, value in config.as_dict().items():
             print(f"{key}: {value}")
     elif args.action == 'get':
         if not args.key:
@@ -81,7 +93,7 @@ async def manage_beans(args):
     
     if args.action == 'list':
         print("Registered beans:")
-        for name, _ in bean_factory._beans.items():
+        for name in bean_factory.list_beans():
             print(f"- {name}")
     elif args.action == 'info':
         if not args.name:
@@ -97,12 +109,7 @@ async def manage_beans(args):
 
 def show_version():
     """显示版本信息"""
-    try:
-        from importlib.metadata import version
-        ver = version("w-agent")
-    except Exception:
-        ver = "1.5.0"
-    print(f"W-Agent version {ver}")
+    print(f"W-Agent version {get_version()}")
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
