@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.md)
 
-This documentation describes both the current 1.5.2 capabilities and the next-generation open agent framework. Every capability must be labeled `Implemented`, `Planned`, `Reserved`, `Experimental`, or `Deprecated`.
+This documentation describes stable 1.5.2, the current `2.0.0a1` source, and the planned next-generation open agent framework. Every capability must be labeled `Implemented`, `Planned`, `Reserved`, `Experimental`, or `Deprecated`.
 
 ## Reading order
 

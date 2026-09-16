@@ -20,9 +20,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 | Capability | Status | Phase |
 |---|---|---|
-| Stable public protocols and state model | `Planned` | Phase 1 |
-| Unified registry and plugin lifecycle | `Planned` | Phase 1 |
-| Dependency resolution, reversible registration, scopes | `Planned` | Phase 1 |
+| Phase 1 microkernel public protocols | `Implemented` | 2.0.0a1 |
+| Unified registry and plugin lifecycle | `Implemented` | 2.0.0a1 |
+| Dependency resolution, reversible registration, scopes, event pipelines | `Implemented` | 2.0.0a1 |
 | Unified model protocol and stream events | `Planned` | Phase 2 |
 | OpenAI, Anthropic, Gemini, OpenAI-compatible, local adapters | `Planned` | Phase 2 |
 | Python and YAML routing | `Planned` | Phase 2 |
@@ -44,12 +44,14 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 0: design and documentation
 
+- Status: `Implemented`.
 - Freeze design principles, protocol boundaries, status labels, and non-goals.
 - Update all Chinese and English documentation.
 - Do not modify existing runtime code.
 
 ### Phase 1: microkernel
 
+- Status: `Implemented` in `2.0.0a1`.
 - Python 3.11+.
 - `PluginSpec`, unified registry, lifecycle, dependency resolution, scopes, and event/pipeline dispatch.
 - Four plugin entry styles converge on one registration process.

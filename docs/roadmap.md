@@ -20,9 +20,9 @@
 
 | 能力 | 状态 | 阶段 |
 |---|---|---|
-| 稳定公共协议和状态模型 | `Planned` | Phase 1 |
-| 统一注册表与插件生命周期 | `Planned` | Phase 1 |
-| 依赖解析、可撤销注册和作用域 | `Planned` | Phase 1 |
+| Phase 1 微内核公共协议 | `Implemented` | 2.0.0a1 |
+| 统一注册表与插件生命周期 | `Implemented` | 2.0.0a1 |
+| 依赖解析、可撤销注册、作用域与事件管线 | `Implemented` | 2.0.0a1 |
 | 统一模型协议与流事件 | `Planned` | Phase 2 |
 | OpenAI、Anthropic、Gemini、OpenAI-compatible、本地模型适配 | `Planned` | Phase 2 |
 | Python/YAML 模型路由 | `Planned` | Phase 2 |
@@ -44,12 +44,14 @@
 
 ### Phase 0：设计和文档
 
+- 状态：`Implemented`。
 - 固化设计原则、协议边界、状态标记和非目标。
 - 更新全部中英文文档。
 - 不改变现有运行时代码。
 
 ### Phase 1：微内核
 
+- 状态：`Implemented`（`2.0.0a1`）。
 - Python 3.11+。
 - `PluginSpec`、统一注册表、生命周期、依赖解析、Scope 和事件/Pipeline。
 - 四种插件接入方式汇聚到同一注册流程。

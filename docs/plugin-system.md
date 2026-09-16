@@ -2,7 +2,7 @@
 
 [English](./plugin-system.en.md) | 简体中文
 
-状态：`Planned`。本文定义下一代插件系统，当前 1.5.2 尚未实现这些 API。
+状态：`Implemented`（`2.0.0a1`）。本文定义当前微内核插件 API；模型、Agent 和 Workflow 等上层插件仍按路线图实现。
 
 ## 目标
 
@@ -18,6 +18,27 @@
 4. Python entry point 发现。
 
 显式 Python 构造是行为基准；其他入口不能拥有额外语义。
+
+最小示例：
+
+```python
+from w_agent import CapabilityDeclaration, PluginManager, ScopePath, plugin
+
+
+@plugin(
+    name="hello-provider",
+    version="1.0.0",
+    provides=(CapabilityDeclaration("example.hello", version="1.0.0"),),
+)
+async def hello_provider(context):
+    context.register("example.hello", "hello", version="1.0.0")
+
+
+manager = PluginManager()
+handle = await manager.load(hello_provider)
+value = manager.registry.resolve("example.hello", ScopePath.application())
+await handle.unload()
+```
 
 ## 清单
 
@@ -36,7 +57,7 @@ conflicts:
 scope: application
 ```
 
-插件可以提供多个能力，但能力键、版本和冲突必须显式声明。配置在加载前完成模式校验。
+插件可以提供多个能力，但能力键、版本和冲突必须显式声明。当前 YAML Loader 校验引用和配置容器结构；插件专属配置模式校验为 `Planned`。
 
 ## 生命周期
 
@@ -58,9 +79,9 @@ ACTIVE → QUIESCING → UNLOADING → DISPOSED
 
 ## 依赖变化与更新
 
-必需依赖消失时，Consumer 先停止接收新工作，再卸载。依赖恢复后，可以重新解析并加载。可选依赖在使用点显式查询，不触发隐式强依赖。
+通过 `PluginManager` 卸载 Provider 时，Manager 会先级联卸载依赖它的活跃 Consumer。直接撤销任意 Provider 注册后的自动卸载、依赖恢复后的自动重新加载为 `Planned`。可选依赖在使用点显式查询，不触发隐式强依赖。
 
-插件更新创建新版本实例。新 Run 使用新解析快照，活跃 Run 保持原快照，直到完成或在支持迁移的静默点显式切换。首版不支持任意执行位置热替换。
+Registry 允许同一 Provider 名称的多个版本并按版本约束解析，也可以创建不可变快照。当前 `PluginManager` 同一时间只允许一个同名活跃插件；协调版本替换、Run 绑定和静默点迁移为 `Planned`。
 
 ## 作用域
 
@@ -68,7 +89,7 @@ ACTIVE → QUIESCING → UNLOADING → DISPOSED
 Application → Workspace → Session → Agent → Run → Step
 ```
 
-下层 Scope 可以覆盖上层 Provider。作用域销毁时撤销其全部注册和资源。框架不内置租户；需要额外隔离维度的插件可以扩展 `ScopePath`。
+下层 Scope 可以覆盖上层 Provider。当前已经实现作用域解析；自动销毁某个 Scope 及其全部资源为 `Planned`。框架不内置租户；需要额外隔离维度的插件可以扩展 `ScopePath`。
 
 ## 失败规则
 
@@ -82,3 +103,10 @@ Application → Workspace → Session → Agent → Run → Step
 ## 与工程装配的关系
 
 `CompositionManifest` 引用插件名称、版本约束和配置，而不是直接修改注册表内部状态。导入编码只产生预览；安装和加载仍是单独、需要确认的操作。
+
+## 当前限制
+
+- `PluginManager` 内同名插件不能同时处于活跃状态。
+- Registry 快照固定解析结果，但尚未拥有 Provider 生命周期租约。
+- 依赖恢复不会自动重新加载 Consumer。
+- YAML 只加载 `module:attribute` 引用和配置，不安装第三方包。

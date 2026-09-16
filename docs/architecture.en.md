@@ -6,7 +6,7 @@ English | [简体中文](./architecture.md)
 
 W-Agent is an open agent framework for local developers, not a hosted platform or a fixed harness. It provides stable protocols, lifecycle management, and default templates required for composition while leaving models, routing, agent loops, workflows, tools, state, sandboxes, and interfaces under developer control.
 
-Version 1.5.2 currently implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The remainder of this document describes the `Planned` next-generation architecture. Unless explicitly marked `Implemented`, a capability in this document must not be presented as available source behavior.
+Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The current `2.0.0a1` source implements the Phase 1 microkernel. The remainder of this document covers both that implemented kernel and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
 
 ## 2. Design principles
 
@@ -39,7 +39,7 @@ Higher-level modules depend on stable protocols or lower-level service definitio
 
 ## 4. Microkernel boundary
 
-The microkernel owns only five `Planned` responsibilities.
+The microkernel owns only five responsibilities, `Implemented` in `2.0.0a1`.
 
 ### 4.1 Plugin lifecycle
 
@@ -71,7 +71,7 @@ A capability has three roles:
 - **Provider**: a concrete protocol implementation.
 - **Consumer**: an agent, tool, or plugin that uses the protocol.
 
-Consumers depend on definitions, not concrete providers. When a dependency disappears, affected plugins quiesce and unload; they may resolve and load again when a provider returns.
+Consumers depend on definitions, not concrete providers. The current `PluginManager` unloads active consumers before unloading a provider plugin. Automatic unload after an arbitrary registration is disposed and automatic reload after provider recovery remain `Planned`.
 
 ### 4.4 Scope
 
@@ -83,7 +83,7 @@ Application → Workspace → Session → Agent → Run → Step
 
 W-Agent does not include a tenant system. `ScopePath` lets plugins add custom dimensions without forcing local developers to understand tenancy. A child scope may override a parent registration, but scoped services cannot leak implicitly into a parent.
 
-Each run captures a resolved plugin and configuration snapshot. Plugin updates affect new runs by default; an active run may migrate only at an explicit quiescent point.
+The current Registry creates immutable `RegistryView` snapshots. Binding snapshots to runs, applying plugin updates only to new runs, and migrating active runs at quiescent points remain `Planned`.
 
 ### 4.5 Events and pipelines
 
@@ -94,7 +94,7 @@ Events provide loose-coupled notification, while pipelines provide composable in
 - `serial`: ordered execution with optional early termination.
 - `pipeline`: listeners explicitly delegate, wrap, or stop execution.
 
-Durable run events and in-process extension events remain separate. Plugin lifecycle also owns event-listener registrations.
+The current `EventDispatcher` implements in-process extension events, with listener registrations owned by plugin lifecycle. Phase 3 adds the separate durable RunEvent stream.
 
 ## 5. Stable and extensible protocols
 
@@ -110,9 +110,8 @@ ModelRequest(
 
 An adapter declares whether each extension is consumed, forwarded, or rejected. Unsupported standard fields fail by default and are never silently discarded. Runtime context is controlled-mutable: formal transitions update core fields, while plugins directly write only their own namespace.
 
-Planned stable protocols include:
+Implemented Phase 1 protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, and `EventDispatcher`. Later `Planned` protocols include:
 
-- `PluginSpec`, `PluginHandle`, `Registry`, and `ScopePath`.
 - `RunContext`, `RunEvent`, `RunResult`, and `StopReason`.
 - `ModelRequest`, `ModelResponse`, `StreamEvent`, and `ModelCapability`.
 - `RouteRequest`, `RouteDecision`, and `RoutingPolicy`.

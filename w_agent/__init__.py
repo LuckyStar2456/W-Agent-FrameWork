@@ -1,6 +1,6 @@
 """W-Agent 框架包"""
 
-__version__ = "1.5.2"
+__version__ = "2.0.0a1"
 __author__ = "LuckyStar2456"
 __license__ = "MIT"
 
@@ -39,6 +39,40 @@ from w_agent.exceptions.framework_errors import (
 from w_agent.scanner.parallel_scanner import ParallelASTScanner
 from w_agent.lifecycle.graceful_shutdown import GracefulShutdownManager
 from w_agent.tools.langchain_adapter import LangChainToolAdapter
+from w_agent.kernel import (
+    AmbiguousCapabilityError,
+    CapabilityDeclaration,
+    CapabilityNotFoundError,
+    CapabilityRequirement,
+    Contribution,
+    EffectScope,
+    EventDispatcher,
+    EventStop,
+    FunctionPlugin,
+    KernelError,
+    Plugin,
+    PluginContext,
+    PluginDependencyError,
+    PluginError,
+    PluginHandle,
+    PluginLoadError,
+    PluginManager,
+    PluginRecord,
+    PluginReference,
+    PluginSpec,
+    PluginState,
+    PluginUnloadError,
+    Registration,
+    RegistrationError,
+    Registry,
+    RegistryView,
+    ScopePath,
+    ScopeSegment,
+    discover_entrypoint_plugins,
+    import_plugin,
+    load_yaml_references,
+    plugin,
+)
 
 __all__ = [
     "BaseAgent",
@@ -88,5 +122,37 @@ __all__ = [
     "InjectionError",
     "SkillSandboxError",
     "ParallelASTScanner",
-    "LangChainToolAdapter"
+    "LangChainToolAdapter",
+    "AmbiguousCapabilityError",
+    "CapabilityDeclaration",
+    "CapabilityNotFoundError",
+    "CapabilityRequirement",
+    "Contribution",
+    "EffectScope",
+    "EventDispatcher",
+    "EventStop",
+    "FunctionPlugin",
+    "KernelError",
+    "Plugin",
+    "PluginContext",
+    "PluginDependencyError",
+    "PluginError",
+    "PluginHandle",
+    "PluginLoadError",
+    "PluginManager",
+    "PluginRecord",
+    "PluginReference",
+    "PluginSpec",
+    "PluginState",
+    "PluginUnloadError",
+    "Registration",
+    "RegistrationError",
+    "Registry",
+    "RegistryView",
+    "ScopePath",
+    "ScopeSegment",
+    "discover_entrypoint_plugins",
+    "import_plugin",
+    "load_yaml_references",
+    "plugin",
 ]

@@ -2,7 +2,7 @@
 
 English | [简体中文](./plugin-system.md)
 
-Status: `Planned`. This document defines the next-generation plugin system. Version 1.5.2 does not implement these APIs.
+Status: `Implemented` in `2.0.0a1`. This document defines the current microkernel plugin API. Higher-level model, agent, and workflow plugins remain on the roadmap.
 
 ## Goal
 
@@ -18,6 +18,27 @@ Four entry styles converge on `PluginSpec`:
 4. Python entry-point discovery.
 
 Explicit Python construction is the behavioral baseline; other entry styles receive no additional semantics.
+
+Minimal example:
+
+```python
+from w_agent import CapabilityDeclaration, PluginManager, ScopePath, plugin
+
+
+@plugin(
+    name="hello-provider",
+    version="1.0.0",
+    provides=(CapabilityDeclaration("example.hello", version="1.0.0"),),
+)
+async def hello_provider(context):
+    context.register("example.hello", "hello", version="1.0.0")
+
+
+manager = PluginManager()
+handle = await manager.load(hello_provider)
+value = manager.registry.resolve("example.hello", ScopePath.application())
+await handle.unload()
+```
 
 ## Manifest
 
@@ -36,7 +57,7 @@ conflicts:
 scope: application
 ```
 
-A plugin may provide several capabilities, but capability keys, versions, and conflicts are explicit. Configuration is schema-validated before loading.
+A plugin may provide several capabilities, but capability keys, versions, and conflicts are explicit. The current YAML loader validates reference and configuration-container structure; plugin-specific configuration-schema validation remains `Planned`.
 
 ## Lifecycle
 
@@ -58,9 +79,9 @@ Registration returns an idempotent `Registration`. Repeated disposal succeeds, a
 
 ## Dependency changes and updates
 
-When a required dependency disappears, a consumer stops accepting work and unloads. It may resolve and load again when the dependency returns. Optional dependencies are queried explicitly at use sites and do not create hidden hard dependencies.
+When a provider is unloaded through `PluginManager`, the manager unloads active consumers first. Automatic unload after an arbitrary provider registration is disposed and automatic reload after dependency recovery remain `Planned`. Optional dependencies are queried explicitly at use sites and do not create hidden hard dependencies.
 
-A plugin update creates a new version instance. New runs use the new resolved snapshot; active runs keep the old snapshot until completion or an explicitly supported quiescent migration point. The first release does not hot-swap arbitrary execution positions.
+The Registry supports several versions under one provider name, resolves version constraints, and creates immutable snapshots. `PluginManager` currently permits only one active plugin per plugin name. Coordinated version replacement, run binding, and quiescent migration remain `Planned`.
 
 ## Scope
 
@@ -68,7 +89,7 @@ A plugin update creates a new version instance. New runs use the new resolved sn
 Application → Workspace → Session → Agent → Run → Step
 ```
 
-A child scope may override a parent provider. Destroying a scope removes all registrations and resources it owns. The framework has no tenant system; plugins that need another isolation dimension may extend `ScopePath`.
+A child scope may override a parent provider. Scoped resolution is implemented; automatically destroying a scope and all resources it owns remains `Planned`. The framework has no tenant system; plugins that need another isolation dimension may extend `ScopePath`.
 
 ## Failure rules
 
@@ -82,3 +103,10 @@ A child scope may override a parent provider. Destroying a scope removes all reg
 ## Relationship to compositions
 
 A `CompositionManifest` references plugin names, version constraints, and configuration rather than mutating registry internals. Importing a code produces only a preview; installation and loading remain separate confirmed actions.
+
+## Current limitations
+
+- One plugin name cannot have multiple active instances in one `PluginManager`.
+- A Registry snapshot fixes resolution results but does not yet own provider lifecycle leases.
+- Dependency recovery does not automatically reload consumers.
+- YAML loads `module:attribute` references and configuration only; it does not install third-party packages.

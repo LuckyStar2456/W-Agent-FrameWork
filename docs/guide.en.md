@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current PyPI release is 1.5.2. IOC, AOP, configuration, lifecycle, resilience, observability, and skill sandboxes are `Implemented`. The next-generation plugin kernel, model protocol, routing, ReAct loop, workflows, Docker sandbox, composition codes, and TUI are `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel. IOC, AOP, configuration, lifecycle, resilience, observability, and skill sandboxes remain `Implemented`. The model protocol, routing, ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
 
 “Current usage” examples work with 1.x. “Planned usage” defines the target experience and is not an executable API today.
 

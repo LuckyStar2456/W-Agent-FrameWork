@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-The current release is `1.5.2`. The existing 1.x engineering foundation is implemented, while the fully plugin-based architecture is being designed and delivered in phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
+The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, the Phase 1 microkernel is implemented, and the remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
 ## Status labels
 
@@ -40,7 +40,15 @@ The following 1.5.2 source capabilities are `Implemented`:
 - Skill loading, signature verification, MCP JWT authentication, and Redis locks.
 - LangChain tool adapters, a FastAPI integration example, and test helpers.
 
-`BaseAgent` remains a minimal abstraction. A unified model protocol, routing, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI are `Planned` and must not be treated as existing features.
+The following Phase 1 capabilities are `Implemented` in the current `2.0.0a1` source:
+
+- `PluginSpec`, decorators, YAML references, and Python entry-point discovery.
+- One version-aware, scoped capability registry with immutable snapshots.
+- Plugin dependency resolution, lifecycle, failed-load rollback, cascading unload, and reversible registrations.
+- `Application → Workspace → Session → Agent → Run → Step` scopes.
+- `publish`, `first`, `serial`, and `pipeline` event modes.
+
+`BaseAgent` remains a minimal abstraction. A unified model protocol, routing, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features.
 
 ## Next-generation module map
 
@@ -67,7 +75,7 @@ pip install "wagent-framework[fastapi,langchain,opentelemetry]"
 pip install "wagent-framework[wasm]"
 ```
 
-The current 1.x metadata supports Python 3.9+. The target minimum for the next-generation plugin kernel and runtime is Python 3.11.
+PyPI 1.x supports Python 3.9+. The current `2.0.0a1` source requires Python 3.11+.
 
 ## Minimal 1.x example
 

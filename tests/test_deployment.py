@@ -29,7 +29,22 @@ async def test_serverless_default_agent_chain(tmp_path, monkeypatch):
 
 
 def test_runtime_version_matches_distribution_metadata():
+    import ast
     import w_agent
-    from importlib.metadata import version
+    from pathlib import Path
 
-    assert w_agent.__version__ == version("wagent-framework")
+    setup_path = Path(__file__).parents[1] / "setup.py"
+    tree = ast.parse(setup_path.read_text(encoding="utf-8"), filename=str(setup_path))
+    setup_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "setup"
+    )
+    version_keyword = next(
+        keyword for keyword in setup_call.keywords if keyword.arg == "version"
+    )
+    distribution_version = ast.literal_eval(version_keyword.value)
+
+    assert w_agent.__version__ == distribution_version

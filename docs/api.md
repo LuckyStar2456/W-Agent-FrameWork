@@ -2,7 +2,7 @@
 
 [English](./api.en.md) | 简体中文
 
-本文区分当前 1.5.2 公共 API 与下一代计划协议。计划协议用于设计评审，当前不能导入。
+本文区分稳定版 1.5.2、当前 `2.0.0a1` 微内核 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
 
 ## 1. 当前顶层 API
 
@@ -34,7 +34,7 @@ class BaseAgent:
 
 ## 2. 下一代导出策略
 
-状态：`Planned`。
+状态：`Implemented` / `Planned`。微内核已经直接导出；示例中的 Agent、模型与 Workflow 类型仍为计划 API。
 
 下一代 API 直接从 `w_agent` 导出，不创建 `w_agent.v2`：
 
@@ -46,7 +46,7 @@ from w_agent import Application, AgentLoop, ModelProvider, WorkflowEngine
 
 ## 3. 微内核协议
 
-状态：`Planned`。
+状态：`Implemented`（`2.0.0a1`）。
 
 ```python
 class Plugin(Protocol):
@@ -62,6 +62,8 @@ class Registry(Protocol):
 ```
 
 `Registration.dispose()` 必须幂等。加载失败时，生命周期管理器撤销该次加载已经产生的所有注册。
+
+当前还导出 `PluginManager`、`PluginContext`、`FunctionPlugin`、`CapabilityDeclaration`、`CapabilityRequirement`、`Contribution`、`RegistryView`、`ScopePath`、`EventDispatcher`、YAML 引用加载和 entry point 发现 API。
 
 ## 4. 模型协议
 

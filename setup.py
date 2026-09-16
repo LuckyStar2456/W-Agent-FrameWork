@@ -8,8 +8,8 @@ with open(os.path.join(here, 'README.md'), 'r', encoding='utf-8') as f:
 
 setup(
     name="wagent-framework",
-    version="1.5.2",
-    description="Python enterprise agent framework with AOP, IOC, and sandbox security",
+    version="2.0.0a1",
+    description="Open, composable Python framework for building agents",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/LuckyStar2456/W-Agent-FrameWork",
@@ -25,7 +25,9 @@ setup(
         "zstandard",
         "pyjwt",
         "asgiref",
-        "redis"
+        "redis",
+        "packaging>=23",
+        "pyyaml>=6"
     ],
     extras_require={
         "fastapi": ["fastapi", "uvicorn"],
@@ -43,14 +45,13 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: Software Development :: Libraries :: Application Frameworks",
         "Topic :: Software Development :: Libraries :: Python Modules"
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.11",
     keywords="agent framework AOP IOC sandbox",
     project_urls={
         "Bug Reports": "https://github.com/LuckyStar2456/W-Agent-FrameWork/issues",

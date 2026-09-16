@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 版本为 1.5.2。IOC、AOP、配置、生命周期、弹性、观测和技能沙箱为 `Implemented`；下一代插件内核、模型协议、路由、ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核。IOC、AOP、配置、生命周期、弹性、观测和技能沙箱继续为 `Implemented`；模型协议、路由、ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
 
 本指南中的“当前用法”可以在 1.x 使用；“计划用法”用于约束后续实现，不是当前可执行 API。
 

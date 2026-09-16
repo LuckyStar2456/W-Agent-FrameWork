@@ -6,7 +6,7 @@
 
 W-Agent 是面向本地开发者的开放式 Agent 框架，不是托管平台，也不是固定 Harness。框架提供模块组合所需的稳定协议、生命周期和默认模板，开发者拥有模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面的最终控制权。
 
-当前 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座。本文其余部分描述 `Planned` 的下一代架构；除非明确标记为 `Implemented`，不得据此宣称源码已经提供相应能力。
+稳定版 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座。当前 `2.0.0a1` 源码已经实现 Phase 1 微内核；本文其余部分同时描述已实现内核和 `Planned` 的后续架构，未标记 `Implemented` 的能力不得宣称已经提供。
 
 ## 2. 设计原则
 
@@ -39,7 +39,7 @@ W-Agent 是面向本地开发者的开放式 Agent 框架，不是托管平台�
 
 ## 4. 微内核边界
 
-微内核只拥有五类职责，状态为 `Planned`：
+微内核只拥有五类职责，状态为 `Implemented`（`2.0.0a1`）：
 
 ### 4.1 Plugin Lifecycle
 
@@ -71,7 +71,7 @@ ACTIVE → QUIESCING → UNLOADING → DISPOSED
 - **Provider**：协议的具体实现。
 - **Consumer**：通过协议使用能力的 Agent、工具或其他插件。
 
-Consumer 依赖 Definition，不依赖具体 Provider。依赖消失时，受影响插件进入静默和卸载；Provider 恢复后可以重新解析和装载。
+Consumer 依赖 Definition，不依赖具体 Provider。当前 `PluginManager` 在卸载 Provider 插件时先级联卸载依赖它的活跃 Consumer。任意注册被直接撤销后的自动卸载，以及 Provider 恢复后的自动重新装载为 `Planned`。
 
 ### 4.4 Scope
 
@@ -83,7 +83,7 @@ Application → Workspace → Session → Agent → Run → Step
 
 W-Agent 不内置 Tenant。`ScopePath` 允许插件增加自定义作用域维度，但本地开发者不需要租户概念。下层可以覆盖上层注册；作用域内服务不能隐式泄漏到父作用域。
 
-每个 Run 固定一份解析后的插件与配置快照。插件更新默认只影响新 Run；活跃 Run 只有在明确的静默点才能迁移。
+当前 Registry 可以创建不可变 `RegistryView` 快照。将快照绑定到 Run、让插件更新只影响新 Run，以及活跃 Run 的静默点迁移为 `Planned`。
 
 ### 4.5 Events and Pipelines
 
@@ -94,7 +94,7 @@ W-Agent 不内置 Tenant。`ScopePath` 允许插件增加自定义作用域维�
 - `serial`：顺序执行，可提前结束。
 - `pipeline`：监听器显式调用下一层，可包裹或中止执行。
 
-持久化运行事件与进程内扩展事件分开。事件处理器的注册同样由插件生命周期管理。
+当前 `EventDispatcher` 实现进程内扩展事件，事件处理器注册由插件生命周期管理。持久化 RunEvent 与实时事件的分离在 Phase 3 实现。
 
 ## 5. 稳定且可扩展的协议
 
@@ -110,9 +110,8 @@ ModelRequest(
 
 适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-计划中的稳定协议包括：
+已经实现的 Phase 1 协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration` 和 `EventDispatcher`。后续 `Planned` 协议包括：
 
-- `PluginSpec`、`PluginHandle`、`Registry`、`ScopePath`。
 - `RunContext`、`RunEvent`、`RunResult`、`StopReason`。
 - `ModelRequest`、`ModelResponse`、`StreamEvent`、`ModelCapability`。
 - `RouteRequest`、`RouteDecision`、`RoutingPolicy`。

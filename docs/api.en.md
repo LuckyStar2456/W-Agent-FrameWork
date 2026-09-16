@@ -2,7 +2,7 @@
 
 English | [简体中文](./api.md)
 
-This document separates current 1.5.2 public APIs from planned next-generation protocols. Planned protocols are design material and cannot be imported today.
+This document separates stable 1.5.2 APIs, the current `2.0.0a1` microkernel API, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
 
 ## 1. Current top-level API
 
@@ -34,7 +34,7 @@ It has no unified model, tool, session, checkpoint, or streaming-event protocol.
 
 ## 2. Next-generation export strategy
 
-Status: `Planned`.
+Status: `Implemented` / `Planned`. Microkernel APIs are exported directly; the agent, model, and workflow names in the example remain planned.
 
 Next-generation APIs are exported directly from `w_agent`; there is no `w_agent.v2` namespace:
 
@@ -46,7 +46,7 @@ Until migration is complete, top-level exports avoid ambiguous behavior between 
 
 ## 3. Microkernel protocols
 
-Status: `Planned`.
+Status: `Implemented` in `2.0.0a1`.
 
 ```python
 class Plugin(Protocol):
@@ -62,6 +62,8 @@ class Registry(Protocol):
 ```
 
 `Registration.dispose()` is idempotent. When loading fails, the lifecycle manager removes every registration produced by that load attempt.
+
+Current exports also include `PluginManager`, `PluginContext`, `FunctionPlugin`, `CapabilityDeclaration`, `CapabilityRequirement`, `Contribution`, `RegistryView`, `ScopePath`, `EventDispatcher`, YAML-reference loading, and entry-point discovery APIs.
 
 ## 4. Model protocols
 

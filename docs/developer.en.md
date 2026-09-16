@@ -4,7 +4,7 @@ English | [简体中文](./developer.md)
 
 ## 1. Development baseline
 
-The current repository release is 1.5.2. Until the next-generation architecture is implemented, the existing 1.x APIs remain the source of truth. Every new capability updates both Chinese and English documentation and receives a status label.
+The current repository version is `2.0.0a1`: the Phase 1 microkernel is implemented and 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
 
 Next-generation targets:
 
@@ -40,7 +40,7 @@ The planned microkernel and runtime will progressively refactor this foundation;
 
 ## 3. Plugin design rules
 
-Status: `Planned`.
+Status: `Implemented` in `2.0.0a1`.
 
 Every capability distinguishes Definition, Provider, and Consumer roles. Plugins depend on stable definitions rather than concrete providers.
 
