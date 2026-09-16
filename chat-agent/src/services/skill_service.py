@@ -31,8 +31,9 @@ class SkillService:
         print(f"SkillService initialized with {len(self.skills)} skills")
     
     @PreDestroy(order=1)
-    def destroy(self):
+    async def destroy(self):
         """销毁前执行"""
+        await self.sandbox.close()
         print("SkillService destroyed")
     
     def _load_skills(self):

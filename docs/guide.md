@@ -215,16 +215,26 @@ pool.stop()
 
 Wasm 与 nsjail 都要求真实隔离后端可用。后端缺失或不完整时，执行会抛出 `SkillSandboxError` 并失败关闭，不会降级到宿主机执行。
 
+Wasm 后端要求 Linux/macOS 环境中的 `wasmer-sdk`；Windows 请在 WSL2 中运行。安装命令：`pip install "wagent-framework[wasm]"`。
+
 ### 7.1 Wasm 沙箱
 
 ```python
 from w_agent import WasmSkillSandbox
 from pathlib import Path
 
-sandbox = WasmSkillSandbox(precompiled_path=Path("./wasm"))
-
-result = await sandbox.execute(skill, "script_name", {"arg": "value"})
+sandbox = WasmSkillSandbox(
+    cache_root=Path(".cache/wasmer"),
+    python_package="python/python@=3.13.18",
+    max_execution_seconds=30,
+)
+try:
+    result = await sandbox.execute(skill, "script_name", {"arg": "value"})
+finally:
+    await sandbox.close()
 ```
+
+安装真实后端后，可运行 `python tests/integration_wasmer_smoke.py` 验证正常执行、默认禁网、宿主超时和资源关闭。
 
 ### 7.2 NsJail 沙箱
 

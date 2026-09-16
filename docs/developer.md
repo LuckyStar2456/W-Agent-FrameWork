@@ -211,7 +211,7 @@ class DatabaseService:
 **定义**：技能，可被 Agent 调用的功能模块
 
 **沙箱**：
-- `WasmSkillSandbox`：Wasm 沙箱，安全执行技能
+- `WasmSkillSandbox`：通过 `wasmer-sdk` 和固定 Python WASIX package 安全执行技能
 - `NsJailSkillSandbox`：nsjail 沙箱，提供更强的隔离
 - 两种沙箱都要求真实后端可用；缺失时抛出 `SkillSandboxError`，不会在宿主机降级执行
 
@@ -230,7 +230,10 @@ skill = Skill(
 
 # 执行技能
 sandbox = WasmSkillSandbox()
-result = await sandbox.execute(skill, "test", {"name": "World"})
+try:
+    result = await sandbox.execute(skill, "test", {"name": "World"})
+finally:
+    await sandbox.close()
 ```
 
 ## 🔧 开发流程
@@ -554,8 +557,11 @@ skill = Skill(
 
 # 执行技能
 sandbox = WasmSkillSandbox()
-result = await sandbox.execute(skill, "query", {"city": "北京"})
-print(f"技能执行结果: {result}")
+try:
+    result = await sandbox.execute(skill, "query", {"city": "北京"})
+    print(f"技能执行结果: {result}")
+finally:
+    await sandbox.close()
 ```
 
 ### 4. LangChain 集成
@@ -881,12 +887,14 @@ async def chat(prompt: str):
 **症状**：`SkillSandboxError`、技能执行错误或执行超时
 
 **原因**：
-- Wasm 或 nsjail 未安装
+- `wasmer-sdk` 未安装或运行在不受支持的原生 Windows 环境
+- nsjail 或隔离 rootfs 未安装
 - 技能脚本有错误
 - 资源限制过严
 
 **解决**：
-- 确保 Wasm 或 nsjail 已正确安装
+- 在 Linux/macOS（Windows 使用 WSL2）安装 `wagent-framework[wasm]`
+- 确保 nsjail 与隔离 rootfs 已正确安装
 - 检查技能脚本是否正确
 - 调整沙箱资源限制
 

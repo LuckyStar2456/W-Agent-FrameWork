@@ -262,18 +262,26 @@ status = await health.check()
 
 ### 沙箱
 
-沙箱执行采用失败关闭策略：真实 Wasm/nsjail 后端不可用时抛出 `SkillSandboxError`，不会使用宿主机执行作为降级方案。
+沙箱执行采用失败关闭策略：真实 Wasm/nsjail 后端不可用时抛出 `SkillSandboxError`，不会使用宿主机执行作为降级方案。Wasm 后端依赖 Linux/macOS 上的 `wasmer-sdk`；Windows 请使用 WSL2。
 
 #### WasmSkillSandbox
 
 Wasm 沙箱。
 
 ```python
+from pathlib import Path
 from w_agent import WasmSkillSandbox
 
-sandbox = WasmSkillSandbox(precompiled_path=Path("./wasm"))
+sandbox = WasmSkillSandbox(
+    cache_root=Path(".cache/wasmer"),
+    python_package="python/python@=3.13.18",
+    max_execution_seconds=30,
+)
 
-result = await sandbox.execute(skill, "script_name", {"arg": "value"})
+try:
+    result = await sandbox.execute(skill, "script_name", {"arg": "value"})
+finally:
+    await sandbox.close()
 ```
 
 #### NsJailSkillSandbox

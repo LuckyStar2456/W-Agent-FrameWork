@@ -1,21 +1,24 @@
-"""Fail-closed WebAssembly sandbox for skill execution.
+"""Fail-closed Wasmer SDK sandbox for Python skill execution.
 
-Python source is executed only after compilation to a real Wasm module and
-only when a Wasm runtime is available. Host-interpreter ``exec`` fallback is
+Skill source is copied into an isolated WASIX workspace and executed by the
+Python package inside that sandbox. Host ``exec`` and subprocess fallbacks are
 deliberately forbidden.
 """
 
 from __future__ import annotations
 
-import hashlib
-import importlib.util
+import asyncio
+import inspect
 import json
-import subprocess
-import tempfile
+import logging
+import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from w_agent.exceptions.framework_errors import SkillSandboxError
+
+
+logger = logging.getLogger(__name__)
 
 
 class SkillSandbox:
@@ -26,45 +29,99 @@ class SkillSandbox:
 
 
 class WasmSkillSandbox(SkillSandbox):
-    """Execute a Python skill only through a real Wasm toolchain/runtime."""
+    """Run Python skills in an isolated Wasmer/WASIX sandbox."""
 
-    def __init__(self, precompiled_path: Path | None = None):
-        self.forbidden_modules = ("os", "subprocess", "ctypes")
-        self.cache_dir = Path(tempfile.gettempdir()) / "w_agent_wasm_cache"
-        self.cache_dir.mkdir(exist_ok=True)
+    _RUNNER_SOURCE = r'''
+import asyncio
+import contextlib
+import inspect
+import io
+import json
+import runpy
+
+
+def emit(payload):
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+try:
+    with open("/workspace/args.json", "r", encoding="utf-8") as args_file:
+        args = json.load(args_file)
+
+    captured_output = io.StringIO()
+    with contextlib.redirect_stdout(captured_output), contextlib.redirect_stderr(captured_output):
+        namespace = runpy.run_path(
+            "/workspace/skill.py", init_globals={"args": args}
+        )
+        execute = namespace.get("execute")
+        if callable(execute):
+            result = execute(args)
+            if inspect.isawaitable(result):
+                result = asyncio.run(result)
+        else:
+            result = namespace.get("result")
+
+    emit({"ok": True, "result": result})
+except BaseException as exc:
+    emit({
+        "ok": False,
+        "error_type": type(exc).__name__,
+        "error": str(exc),
+    })
+'''.lstrip()
+
+    def __init__(
+        self,
+        precompiled_path: Path | None = None,
+        *,
+        cache_root: Path | None = None,
+        python_package: str = "python/python@=3.13.18",
+        max_execution_seconds: float = 30.0,
+        client_factory: Callable[..., Any] | None = None,
+    ):
+        if precompiled_path is not None and cache_root is not None:
+            raise ValueError("use either precompiled_path or cache_root, not both")
+        if not python_package:
+            raise ValueError("python_package must not be empty")
+        if max_execution_seconds <= 0:
+            raise ValueError("max_execution_seconds must be positive")
+
+        configured_cache = cache_root or precompiled_path
+        default_cache = Path(
+            os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+        ) / "w-agent" / "wasmer"
+        self.cache_dir = Path(configured_cache or default_cache).resolve()
+        # Compatibility alias for callers of the previous implementation.
         self.precompiled_path = Path(precompiled_path) if precompiled_path else None
-        self.pyodide_available = self._check_pyodide_available()
-        self.wasmer_available = self._check_wasmer_available()
+        self.python_package = python_package
+        self.max_execution_seconds = max_execution_seconds
+        self._client = None
+        self._client_lock = asyncio.Lock()
+        self.backend_error: str | None = None
+
+        if client_factory is not None:
+            self._client_factory = client_factory
+        else:
+            self._client_factory = self._load_client_factory()
+
+        self.wasmer_sdk_available = self._client_factory is not None
+        # Compatibility attributes retained for existing diagnostics/users.
+        self.wasmer_available = self.wasmer_sdk_available
+        self.pyodide_available = False
+
+    def _load_client_factory(self):
+        try:
+            from wasmer_sdk import Wasmer
+
+            return Wasmer
+        except Exception as exc:
+            self.backend_error = f"{type(exc).__name__}: {exc}"
+            return None
 
     @property
     def available(self) -> bool:
-        """Whether both compilation and execution backends are available."""
-        return self.pyodide_available and self.wasmer_available
-
-    def _check_pyodide_available(self) -> bool:
-        if importlib.util.find_spec("pyodide") is not None:
-            try:
-                from pyodide import compile_python  # noqa: F401
-                return True
-            except (ImportError, AttributeError):
-                pass
-        try:
-            result = subprocess.run(
-                ["pyodide", "--version"],
-                capture_output=True,
-                check=False,
-                timeout=5,
-            )
-            return result.returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
-
-    @staticmethod
-    def _check_wasmer_available() -> bool:
-        return (
-            importlib.util.find_spec("wasmer") is not None
-            and importlib.util.find_spec("wasmer_compiler_cranelift") is not None
-        )
+        """Whether the modern Wasmer Python SDK can be imported."""
+        return self.wasmer_sdk_available
 
     @staticmethod
     def _validate_request(skill: Any, script_name: str, args: Dict) -> Path:
@@ -83,103 +140,120 @@ class WasmSkillSandbox(SkillSandbox):
             try:
                 script_path.relative_to(Path(skill_dir).resolve())
             except ValueError as exc:
-                raise SkillSandboxError("Skill script is outside its skill directory") from exc
+                raise SkillSandboxError(
+                    "Skill script is outside its skill directory"
+                ) from exc
         return script_path
 
-    async def execute(self, skill: Any, script_name: str, args: Dict) -> Dict[str, Any]:
+    async def _get_client(self):
+        if self._client is not None:
+            return self._client
+        async with self._client_lock:
+            if self._client is None:
+                if self._client_factory is None:
+                    raise SkillSandboxError("Wasmer SDK is unavailable")
+                try:
+                    self.cache_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+                    self._client = self._client_factory(
+                        cache_root=str(self.cache_dir)
+                    )
+                except Exception as exc:
+                    raise SkillSandboxError(
+                        f"Wasmer SDK initialization failed: {exc}"
+                    ) from exc
+        return self._client
+
+    async def execute(
+        self, skill: Any, script_name: str, args: Dict
+    ) -> Dict[str, Any]:
         script_path = self._validate_request(skill, script_name, args)
         if not self.available:
-            missing = []
-            if not self.pyodide_available:
-                missing.append("Pyodide compiler")
-            if not self.wasmer_available:
-                missing.append("Wasmer runtime")
+            detail = f" ({self.backend_error})" if self.backend_error else ""
             raise SkillSandboxError(
-                "Wasm sandbox unavailable; missing " + " and ".join(missing)
+                "Wasm sandbox unavailable; missing wasmer-sdk" + detail
             )
 
-        wasm_path: Path | None = None
         try:
-            wasm_path = await self._compile_to_wasm(script_path)
-            return await self._execute_wasm(wasm_path, args)
+            args_json = json.dumps(args, ensure_ascii=False)
+        except (TypeError, ValueError) as exc:
+            raise SkillSandboxError(f"Skill args are not JSON serializable: {exc}") from exc
+
+        try:
+            return await asyncio.wait_for(
+                self._execute_once(script_path, args_json),
+                timeout=self.max_execution_seconds,
+            )
+        except asyncio.TimeoutError as exc:
+            raise SkillSandboxError(
+                f"Wasm skill exceeded timeout {self.max_execution_seconds}s"
+            ) from exc
         except SkillSandboxError:
             raise
         except Exception as exc:
             raise SkillSandboxError(f"Wasm skill execution failed: {exc}") from exc
+
+    async def _execute_once(
+        self, script_path: Path, args_json: str
+    ) -> Dict[str, Any]:
+        client = await self._get_client()
+        sandbox = None
+        try:
+            # Omitting ``network`` intentionally keeps guest networking disabled.
+            sandbox = await client.sandboxes.create(
+                packages=[self.python_package],
+                files={
+                    "skill.py": script_path.read_text(encoding="utf-8"),
+                    "runner.py": self._RUNNER_SOURCE,
+                    "args.json": args_json,
+                },
+            )
+            output = await sandbox.command(
+                "python", ["/workspace/runner.py"]
+            ).run()
+            return self._decode_output(output)
         finally:
-            if wasm_path and wasm_path.exists() and wasm_path.parent == self.cache_dir:
-                wasm_path.unlink(missing_ok=True)
+            if sandbox is not None:
+                try:
+                    close_result = sandbox.close()
+                    if inspect.isawaitable(close_result):
+                        await close_result
+                except Exception as exc:
+                    logger.warning("Failed to close Wasmer sandbox: %s", exc)
 
-    async def _compile_to_wasm(self, script_path: Path) -> Path:
-        script_content = script_path.read_text(encoding="utf-8")
-        wrapper = f"""
-import builtins
-import json
-
-builtins.eval = None
-builtins.exec = None
-original_import = builtins.__import__
-def safe_import(name, *args, **kwargs):
-    forbidden = {self.forbidden_modules!r}
-    if name.split('.')[0] in forbidden:
-        raise ImportError(f"Module {{name}} forbidden")
-    return original_import(name, *args, **kwargs)
-builtins.__import__ = safe_import
-
-args = json.loads(input())
-{script_content}
-if 'execute' in locals():
-    result = execute(args)
-print(json.dumps({{"result": result if 'result' in locals() else None}}))
-"""
-        content_hash = hashlib.sha256(wrapper.encode("utf-8")).hexdigest()
-        cached_wasm = self.cache_dir / f"skill_{content_hash}.wasm"
-
-        if self.precompiled_path:
-            precompiled = self.precompiled_path / cached_wasm.name
-            if precompiled.is_file():
-                return precompiled
-        if cached_wasm.is_file():
-            return cached_wasm
-
+    @staticmethod
+    def _decode_output(output: Any) -> Dict[str, Any]:
         try:
-            from pyodide import compile_python
+            raw_output = output.text()
+            payload = json.loads(raw_output.strip())
+        except (AttributeError, TypeError, json.JSONDecodeError) as exc:
+            raise SkillSandboxError("Wasmer sandbox returned invalid JSON") from exc
+        if not isinstance(payload, dict) or "ok" not in payload:
+            raise SkillSandboxError("Wasmer sandbox returned an invalid envelope")
+        if not payload["ok"]:
+            error_type = payload.get("error_type", "SkillError")
+            error = payload.get("error", "unknown error")
+            raise SkillSandboxError(f"Guest {error_type}: {error}")
+        return {"result": payload.get("result")}
 
-            cached_wasm.write_bytes(compile_python(wrapper))
-        except (ImportError, AttributeError):
-            temp_py = self.cache_dir / f"skill_{content_hash}.py"
+    async def close(self):
+        """Close the shared Wasmer client and release runtime resources."""
+        async with self._client_lock:
+            client, self._client = self._client, None
+        if client is not None:
             try:
-                temp_py.write_text(wrapper, encoding="utf-8")
-                result = subprocess.run(
-                    ["pyodide", "build", str(temp_py), "--output", str(cached_wasm)],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if result.returncode != 0 or not cached_wasm.is_file():
-                    raise SkillSandboxError(
-                        f"Pyodide compilation failed: {result.stderr.strip()}"
-                    )
-            finally:
-                temp_py.unlink(missing_ok=True)
-        return cached_wasm
+                close_result = client.close()
+                if inspect.isawaitable(close_result):
+                    await close_result
+            except Exception as exc:
+                raise SkillSandboxError(
+                    f"Wasmer SDK shutdown failed: {exc}"
+                ) from exc
 
-    async def _execute_wasm(self, wasm_path: Path, args: Dict) -> Dict[str, Any]:
-        try:
-            from wasmer import Instance, Module, Store, engine
-            from wasmer_compiler_cranelift import Compiler
-        except ImportError as exc:
-            raise SkillSandboxError("Wasmer runtime is unavailable") from exc
+    async def __aenter__(self):
+        if not self.available:
+            raise SkillSandboxError("Wasm sandbox unavailable; missing wasmer-sdk")
+        await self._get_client()
+        return self
 
-        try:
-            store = Store(engine.JIT(Compiler))
-            module = Module(store, wasm_path.read_bytes())
-            instance = Instance(module)
-            if not hasattr(instance.exports, "main"):
-                raise SkillSandboxError("Wasm module does not export main")
-            result = instance.exports.main(json.dumps(args))
-            return {"result": result}
-        except SkillSandboxError:
-            raise
-        except Exception as exc:
-            raise SkillSandboxError(f"Wasm runtime failed: {exc}") from exc
+    async def __aexit__(self, exc_type, exc, traceback):
+        await self.close()

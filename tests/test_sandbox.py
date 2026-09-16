@@ -39,12 +39,169 @@ class TestSandbox:
             with pytest.raises(SkillSandboxError, match="refusing unsafe fallback"):
                 await sandbox.execute(self.skill, "test", {"name": "test"})
     
-    async def test_wasm_sandbox(self):
-        """Wasm工具链不完整时必须拒绝执行"""
+    async def test_wasm_sandbox(self, monkeypatch):
+        """wasmer-sdk不可用时必须拒绝执行"""
+        monkeypatch.setattr(
+            WasmSkillSandbox, "_load_client_factory", lambda _self: None
+        )
         sandbox = WasmSkillSandbox()
-        if not sandbox.available:
-            with pytest.raises(SkillSandboxError, match="Wasm sandbox unavailable"):
-                await sandbox.execute(self.skill, "test", {"name": "test"})
+        with pytest.raises(SkillSandboxError, match="missing wasmer-sdk"):
+            await sandbox.execute(self.skill, "test", {"name": "test"})
+
+    async def test_wasm_sdk_execution_and_cleanup(self, tmp_path):
+        captured = {}
+
+        class FakeOutput:
+            def text(self):
+                return '{"ok": true, "result": "Hello, test!"}'
+
+        class FakeCommand:
+            async def run(self):
+                return FakeOutput()
+
+        class FakeSandbox:
+            def __init__(self):
+                self.closed = False
+
+            def command(self, executable, arguments):
+                captured["command"] = (executable, arguments)
+                return FakeCommand()
+
+            async def close(self):
+                self.closed = True
+
+        fake_sandbox = FakeSandbox()
+
+        class FakeSandboxes:
+            async def create(self, **kwargs):
+                captured["create"] = kwargs
+                return fake_sandbox
+
+        class FakeClient:
+            def __init__(self, cache_root):
+                captured["cache_root"] = cache_root
+                self.sandboxes = FakeSandboxes()
+                self.closed = False
+
+            async def close(self):
+                self.closed = True
+
+        client_holder = {}
+
+        def client_factory(**kwargs):
+            client_holder["client"] = FakeClient(**kwargs)
+            return client_holder["client"]
+
+        sandbox = WasmSkillSandbox(
+            cache_root=tmp_path / "cache",
+            client_factory=client_factory,
+        )
+        result = await sandbox.execute(self.skill, "test", {"name": "test"})
+
+        assert result == {"result": "Hello, test!"}
+        assert captured["create"]["packages"] == ["python/python@=3.13.18"]
+        assert set(captured["create"]["files"]) == {
+            "skill.py", "runner.py", "args.json"
+        }
+        assert "network" not in captured["create"]
+        assert captured["command"] == (
+            "python", ["/workspace/runner.py"]
+        )
+        assert fake_sandbox.closed
+        assert not client_holder["client"].closed
+
+        await sandbox.close()
+        assert client_holder["client"].closed
+
+    async def test_wasm_guest_error_is_mapped(self, tmp_path):
+        class FakeOutput:
+            def text(self):
+                return '{"ok": false, "error_type": "ValueError", "error": "bad"}'
+
+        class FakeCommand:
+            async def run(self):
+                return FakeOutput()
+
+        class FakeSandbox:
+            def command(self, *_args):
+                return FakeCommand()
+
+            async def close(self):
+                pass
+
+        class FakeClient:
+            def __init__(self, **_kwargs):
+                self.sandboxes = self
+
+            async def create(self, **_kwargs):
+                return FakeSandbox()
+
+            async def close(self):
+                pass
+
+        sandbox = WasmSkillSandbox(
+            cache_root=tmp_path / "cache",
+            client_factory=FakeClient,
+        )
+        with pytest.raises(SkillSandboxError, match="Guest ValueError: bad"):
+            await sandbox.execute(self.skill, "test", {})
+        await sandbox.close()
+
+    def test_wasm_guest_runner_compiles(self):
+        compile(WasmSkillSandbox._RUNNER_SOURCE, "<wasmer-runner>", "exec")
+
+    async def test_wasm_timeout_closes_sandbox(self, tmp_path):
+        class SlowCommand:
+            async def run(self):
+                await asyncio.sleep(10)
+
+        class FakeSandbox:
+            def __init__(self):
+                self.closed = False
+
+            def command(self, *_args):
+                return SlowCommand()
+
+            async def close(self):
+                self.closed = True
+
+        fake_sandbox = FakeSandbox()
+
+        class FakeClient:
+            def __init__(self, **_kwargs):
+                self.sandboxes = self
+
+            async def create(self, **_kwargs):
+                return fake_sandbox
+
+            async def close(self):
+                pass
+
+        sandbox = WasmSkillSandbox(
+            cache_root=tmp_path / "cache",
+            max_execution_seconds=0.01,
+            client_factory=FakeClient,
+        )
+        with pytest.raises(SkillSandboxError, match="exceeded timeout"):
+            await sandbox.execute(self.skill, "test", {})
+        assert fake_sandbox.closed
+        await sandbox.close()
+
+    async def test_wasm_rejects_non_json_args_before_sdk_call(self, tmp_path):
+        called = False
+
+        def client_factory(**_kwargs):
+            nonlocal called
+            called = True
+            raise AssertionError("client must not be created")
+
+        sandbox = WasmSkillSandbox(
+            cache_root=tmp_path / "cache",
+            client_factory=client_factory,
+        )
+        with pytest.raises(SkillSandboxError, match="not JSON serializable"):
+            await sandbox.execute(self.skill, "test", {"value": object()})
+        assert not called
     
     async def test_sandbox_fallback(self):
         """显式验证普通子进程fallback已被移除"""
@@ -96,10 +253,4 @@ class TestSandbox:
         assert "--disable_clone_newnet" not in command
 
 if __name__ == "__main__":
-    test = TestSandbox()
-    test.setup_method()
-    asyncio.run(test.test_nsjail_sandbox())
-    asyncio.run(test.test_wasm_sandbox())
-    asyncio.run(test.test_sandbox_fallback())
-    test.teardown_method()
-    print("All sandbox tests passed!")
+    raise SystemExit("Run this module with pytest")

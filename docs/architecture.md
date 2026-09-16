@@ -148,9 +148,10 @@ with tracer.start_span("operation") as span:
 两种方案都采用失败关闭策略。真实隔离后端不可用时拒绝执行，禁止回退到宿主机 Python 或普通子进程。
 
 - **Wasm 沙箱**：
-  - 使用 Pyodide 将 Python 编译为 Wasm
-  - 安全的模块导入限制
-  - 内存限制
+  - 使用 `wasmer-sdk` 创建独立 WASIX workspace
+  - 通过固定版本的 `python/python` Wasmer package 执行技能
+  - 默认不授予访客网络权限
+  - 宿主总超时、逐次 sandbox 关闭、共享 client 显式关闭
 
 - **nsjail 沙箱**：
   - seccomp 过滤

@@ -4,6 +4,7 @@ W-Agent框架核心功能综合测试
 """
 
 import asyncio
+import pytest
 from w_agent.core.agent import BaseAgent
 from w_agent.core.decorators import AgentComponent, ServiceComponent, PostConstruct, PreDestroy
 from w_agent.container.bean_factory import BeanFactory
@@ -14,6 +15,7 @@ from w_agent.core.event_bus import EventBus
 from w_agent.resilience.bulkhead import ResilienceManager
 from w_agent.skills.skill import Skill
 from w_agent.skills.sandbox.wasm_sandbox import WasmSkillSandbox
+from w_agent.exceptions.framework_errors import SkillSandboxError
 
 class TestService:
     """测试服务"""
@@ -214,18 +216,16 @@ async def test_resilience_patterns():
     except Exception:
         pass
 
-async def test_wasm_sandbox():
-    """测试Wasm沙箱"""
+async def test_wasm_sandbox(monkeypatch):
+    """测试Wasm沙箱在SDK缺失时失败关闭"""
+    monkeypatch.setattr(
+        WasmSkillSandbox, "_load_client_factory", lambda _self: None
+    )
     sandbox = WasmSkillSandbox()
     skill = TestSkill()
-    
-    # 测试执行技能
-    try:
-        result = await sandbox.execute(skill, "test", {"param": "value"})
-        assert isinstance(result, str)
-    except Exception as e:
-        # Wasm沙箱可能需要外部依赖，允许跳过
-        print(f"Wasm sandbox test skipped: {e}")
+
+    with pytest.raises(SkillSandboxError, match="missing wasmer-sdk"):
+        await sandbox.execute(skill, "test", {"param": "value"})
 
 async def test_cli_functionality():
     """测试CLI功能"""

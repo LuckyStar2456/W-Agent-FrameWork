@@ -30,7 +30,7 @@ setup(
     extras_require={
         "fastapi": ["fastapi", "uvicorn"],
         "langchain": ["langchain"],
-        "wasm": ["wasmer"],
+        "wasm": ["wasmer-sdk>=0.1.2,<0.2; platform_system != 'Windows'"],
         "opentelemetry": ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-exporter-otlp"],
         "testing": ["pytest", "pytest-asyncio"]
     },

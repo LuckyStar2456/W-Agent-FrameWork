@@ -421,6 +421,12 @@ asyncio.run(main())
 
 The sandbox supports Wasm and nsjail isolation backends. A real backend must be installed and configured before execution; otherwise `SkillSandboxError` is raised and the code is never executed by host Python or an ordinary subprocess.
 
+The Wasm backend uses the modern `wasmer-sdk`. Its Python wheels currently support Linux/macOS; use WSL2 for Windows development:
+
+```bash
+pip install "wagent-framework[wasm]"
+```
+
 ```python
 from w_agent import WasmSkillSandbox, NsJailSkillSandbox, Skill
 from pathlib import Path
@@ -432,15 +438,27 @@ skill = Skill(
     scripts={"test": Path("test.py")}
 )
 
-# Use Wasm sandbox
-wasm_sandbox = WasmSkillSandbox()
-result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
-print(f"Wasm sandbox result: {result}")
+# Use the Wasm/WASIX sandbox; guest networking is disabled by default
+wasm_sandbox = WasmSkillSandbox(
+    cache_root=Path(".cache/wasmer"),
+    max_execution_seconds=30,
+)
+try:
+    result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
+    print(f"Wasm sandbox result: {result}")
+finally:
+    await wasm_sandbox.close()
 
 # Use nsjail sandbox (or configure W_AGENT_NSJAIL_ROOTFS)
 nsjail_sandbox = NsJailSkillSandbox(rootfs_path=Path("/opt/w-agent-rootfs"))
 result = await nsjail_sandbox.execute(skill, "test", {"name": "World"})
 print(f"NsJail sandbox result: {result}")
+```
+
+Real backend smoke test on Linux/WSL2:
+
+```bash
+python tests/integration_wasmer_smoke.py
 ```
 
 ## ⚙️ Configuration Guide

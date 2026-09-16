@@ -422,6 +422,12 @@ asyncio.run(main())
 
 沙箱提供 Wasm 和 nsjail 两种隔离后端。执行前必须安装并配置对应的真实后端；后端不可用时会抛出 `SkillSandboxError`，不会回退到宿主机 Python 或普通子进程执行。
 
+Wasm 后端使用新版 `wasmer-sdk`。其 Python wheel 当前支持 Linux/macOS；Windows 开发环境请使用 WSL2：
+
+```bash
+pip install "wagent-framework[wasm]"
+```
+
 ```python
 from w_agent import WasmSkillSandbox, NsJailSkillSandbox, Skill
 from pathlib import Path
@@ -433,15 +439,27 @@ skill = Skill(
     scripts={"test": Path("test.py")}
 )
 
-# 使用 Wasm 沙箱
-wasm_sandbox = WasmSkillSandbox()
-result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
-print(f"Wasm sandbox result: {result}")
+# 使用 Wasm/WASIX 沙箱；访客网络默认关闭
+wasm_sandbox = WasmSkillSandbox(
+    cache_root=Path(".cache/wasmer"),
+    max_execution_seconds=30,
+)
+try:
+    result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
+    print(f"Wasm sandbox result: {result}")
+finally:
+    await wasm_sandbox.close()
 
 # 使用 nsjail 沙箱（也可通过 W_AGENT_NSJAIL_ROOTFS 配置）
 nsjail_sandbox = NsJailSkillSandbox(rootfs_path=Path("/opt/w-agent-rootfs"))
 result = await nsjail_sandbox.execute(skill, "test", {"name": "World"})
 print(f"NsJail sandbox result: {result}")
+```
+
+Linux/WSL2 真实后端冒烟测试：
+
+```bash
+python tests/integration_wasmer_smoke.py
 ```
 
 ## ⚙️ 配置指南

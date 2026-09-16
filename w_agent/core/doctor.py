@@ -63,12 +63,9 @@ class Doctor:
         try:
             sandbox = WasmSkillSandbox()
             if not sandbox.available:
-                return False, (
-                    "WasmSandbox unavailable "
-                    f"(Pyodide compiler: {sandbox.pyodide_available}, "
-                    f"Wasmer runtime: {sandbox.wasmer_available})"
-                )
-            return True, "WasmSandbox compiler and runtime are available"
+                detail = f": {sandbox.backend_error}" if sandbox.backend_error else ""
+                return False, "WasmSandbox unavailable: wasmer-sdk not loadable" + detail
+            return True, "WasmSandbox wasmer-sdk backend is available"
         except Exception as e:
             return False, f"WasmSandbox initialization failed: {e}"
     

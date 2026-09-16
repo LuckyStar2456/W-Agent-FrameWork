@@ -140,18 +140,20 @@ async def test_wasm_sandbox_startup():
         
         # 第一次执行（冷启动）
         sandbox = WasmSkillSandbox()
-        start_time = time.time()
-        result1 = await sandbox.execute(skill, "test", {})
-        cold_elapsed = (time.time() - start_time) * 1000
-        
-        # 第二次执行（热启动）
-        start_time = time.time()
-        result2 = await sandbox.execute(skill, "test", {})
-        hot_elapsed = (time.time() - start_time) * 1000
+        try:
+            start_time = time.time()
+            result1 = await sandbox.execute(skill, "test", {})
+            cold_elapsed = (time.time() - start_time) * 1000
+
+            # 第二次执行（热启动）
+            start_time = time.time()
+            result2 = await sandbox.execute(skill, "test", {})
+            hot_elapsed = (time.time() - start_time) * 1000
+        finally:
+            await sandbox.close()
         
         print(f"Wasm沙箱冷启动时间: {cold_elapsed:.2f} ms")
         print(f"Wasm沙箱热启动时间: {hot_elapsed:.2f} ms")
-        # 注意：由于我们使用的是占位实现，实际时间会更短
         # assert cold_elapsed < 200, f"Wasm沙箱冷启动时间超过200ms: {cold_elapsed:.2f}ms"
         # assert hot_elapsed < 20, f"Wasm沙箱热启动时间超过20ms: {hot_elapsed:.2f}ms"
 
