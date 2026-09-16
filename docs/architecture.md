@@ -1,240 +1,201 @@
 # W-Agent 架构设计
 
-## 一、整体架构
+[English](./architecture.en.md) | 简体中文
 
-W-Agent 是一个基于 Python 的企业级智能体框架，采用模块化设计，支持 AOP、IOC、可观测性等企业级特性。
+## 1. 定位
 
+W-Agent 是面向本地开发者的开放式 Agent 框架，不是托管平台，也不是固定 Harness。框架提供模块组合所需的稳定协议、生命周期和默认模板，开发者拥有模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面的最终控制权。
+
+当前 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座。本文其余部分描述 `Planned` 的下一代架构；除非明确标记为 `Implemented`，不得据此宣称源码已经提供相应能力。
+
+## 2. 设计原则
+
+1. **协议稳定，策略开放**：公共协议保持兼容，具体实现可以替换或扩展。
+2. **默认实现无特权**：官方插件只使用第三方插件也能使用的接口。
+3. **组合优于继承**：Agent 由能力装配形成，不要求继承庞大的框架基类。
+4. **显式优于隐式**：依赖、作用域、版本、失败模式和副作用必须可见。
+5. **异步优先**：模型流、工具、Workflow 和运行时使用异步协议，同步 API 仅作为边界便捷层。
+6. **失败关闭**：沙箱、权限和依赖不可用时拒绝高风险操作，不静默降低安全等级。
+7. **本地优先**：不引入租户、计费或云控制面概念；远程能力通过普通插件接入。
+8. **状态诚实**：文档严格区分已实现、计划、保留、实验和弃用能力。
+
+## 3. 总体分层
+
+```text
+┌────────────────────────────────────────────────────────────┐
+│ Applications: CustomerSupport / Coding / User Composition  │
+├────────────────────────────────────────────────────────────┤
+│ Runtime: Agent Loop / Workflow / Session / Checkpoint      │
+├────────────────────────────────────────────────────────────┤
+│ Capabilities: Model / Router / Tool / RAG / Sandbox        │
+├────────────────────────────────────────────────────────────┤
+│ Microkernel: Plugin / Registry / Lifecycle / Scope / Event │
+├────────────────────────────────────────────────────────────┤
+│ Adapters: Storage / Telemetry / CLI / TUI / Evaluation     │
+└────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Application Layer                        │
-├─────────────────────────────────────────────────────────────┤
-│  Agent  │  Skills  │  Services  │  Controllers             │
-├─────────────────────────────────────────────────────────────┤
-│                      Core Framework                          │
-├──────────┬──────────┬──────────┬──────────┬───────────────┤
-│   AOP    │   IOC    │ Config   │ Resilience│ Observability │
-├──────────┴──────────┴──────────┴──────────┴───────────────┤
-│                    Infrastructure Layer                       │
-├─────────────────────────────────────────────────────────────┤
-│  Lifecycle  │  Scanner  │  Security  │  Distributed        │
-└─────────────────────────────────────────────────────────────┘
+
+高层模块只能依赖稳定协议或低层服务定义，不依赖某个具体 Provider。组合模板可以选择具体实现，但具体实现不能反向成为核心协议的一部分。
+
+## 4. 微内核边界
+
+微内核只拥有五类职责，状态为 `Planned`：
+
+### 4.1 Plugin Lifecycle
+
+插件使用统一生命周期：
+
+```text
+DISCOVERED → RESOLVING → LOADING → ACTIVE
+                         ↘ FAILED
+ACTIVE → QUIESCING → UNLOADING → DISPOSED
 ```
 
-## 二、核心模块
+- `RESOLVING` 校验 API 版本、依赖、冲突和作用域。
+- `LOADING` 创建服务和注册效果。
+- `QUIESCING` 停止接收新工作并等待受影响操作进入安全点。
+- `UNLOADING` 以确定性规则撤销注册和释放资源。
+- 加载失败不得留下半注册服务。
 
-### 2.1 AOP（面向切面编程）
+### 4.2 Unified Registry
 
-AOP 模块提供完整的切面编程支持，包括：
+显式 Python 装配、装饰器、YAML 配置和 Python entry point 全部产生同一种 `PluginSpec`，进入统一注册表。注册操作返回可撤销句柄；卸载插件时，由该插件拥有的注册全部撤销。
 
-- **切点表达式解析**：支持 AspectJ 风格的切点表达式
-  - `execution()` - 方法执行切点
-  - `within()` - 类型匹配切点
-  - `@annotation()` - 注解匹配切点
-  - `bean()` - Bean 名称匹配
-  - `args()` - 参数类型匹配
+插件清单至少包含名称、版本、核心 API 版本、提供能力、必需依赖、可选依赖、冲突项和默认作用域。版本不兼容、依赖缺失和能力冲突必须尽早报错。
 
-- **通知类型**：
-  - `@Before` - 前置通知
-  - `@After` - 后置通知
-  - `@Around` - 环绕通知
+### 4.3 Dependency Resolution
 
-- **切面实现**：
-  - `RetryAspect` - 重试切面，支持指数退避
-  - `CircuitBreakerAspect` - 断路器切面，支持 CLOSED/OPEN/HALF_OPEN 状态转换
+能力采用三个角色：
+
+- **Definition**：稳定协议和数据类型。
+- **Provider**：协议的具体实现。
+- **Consumer**：通过协议使用能力的 Agent、工具或其他插件。
+
+Consumer 依赖 Definition，不依赖具体 Provider。依赖消失时，受影响插件进入静默和卸载；Provider 恢复后可以重新解析和装载。
+
+### 4.4 Scope
+
+内置作用域层级：
+
+```text
+Application → Workspace → Session → Agent → Run → Step
+```
+
+W-Agent 不内置 Tenant。`ScopePath` 允许插件增加自定义作用域维度，但本地开发者不需要租户概念。下层可以覆盖上层注册；作用域内服务不能隐式泄漏到父作用域。
+
+每个 Run 固定一份解析后的插件与配置快照。插件更新默认只影响新 Run；活跃 Run 只有在明确的静默点才能迁移。
+
+### 4.5 Events and Pipelines
+
+事件用于松耦合通知，Pipeline 用于可组合拦截。首版计划提供：
+
+- `publish`：广播通知。
+- `first`：首个明确结果胜出。
+- `serial`：顺序执行，可提前结束。
+- `pipeline`：监听器显式调用下一层，可包裹或中止执行。
+
+持久化运行事件与进程内扩展事件分开。事件处理器的注册同样由插件生命周期管理。
+
+## 5. 稳定且可扩展的协议
+
+公共协议采用类型化核心字段加命名空间扩展：
 
 ```python
-# 切点表达式示例
-aspect = AspectJPointcut("execution(* com.example.*.*(..))")
-
-# 使用重试切面
-@Retry(max_attempts=3, delay=0.1, backoff=2.0)
-async def unreliable_operation():
-    pass
+ModelRequest(
+    messages=messages,
+    temperature=0.2,
+    extensions={"vendor.reasoning_effort": "high"},
+)
 ```
 
-### 2.2 IOC（控制反转）
+适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-IOC 模块提供依赖注入容器，通过三级缓存处理字段/Setter 注入的单例循环依赖；构造器循环依赖会被检测并以明确错误终止：
+计划中的稳定协议包括：
 
-- **三级缓存机制**：
-  - 一级缓存：`singleton_objects` - 完全成生的单例对象
-  - 二级缓存：`early_singleton_objects` - 提前暴露的单例对象
-  - 三级缓存：`singleton_factories` - 单例工厂
+- `PluginSpec`、`PluginHandle`、`Registry`、`ScopePath`。
+- `RunContext`、`RunEvent`、`RunResult`、`StopReason`。
+- `ModelRequest`、`ModelResponse`、`StreamEvent`、`ModelCapability`。
+- `RouteRequest`、`RouteDecision`、`RoutingPolicy`。
+- `ToolDefinition`、`ToolCall`、`ToolResult`、`ToolExecutor`。
+- `AgentDefinition`、`AgentLoop`、`AgentHandle`。
+- `WorkflowDefinition`、`WorkflowEngine`、`Checkpoint`。
+- `SandboxRequest`、`SandboxHandle`、`SandboxProvider`。
 
-- **注入方式**：
-  - 构造器注入
-  - 字段注入（@Autowired）
-  - Setter 注入（@Qualifier）
+## 6. 模型、路由与探测
 
-- **作用域**：
-  - Singleton - 单例作用域
-  - Prototype - 原型作用域
+模型协议支持 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集。
 
-```python
-# Bean 定义示例
-bean_factory.register_bean_definition("user_service", BeanDefinition(
-    name="user_service",
-    bean_type=UserService,
-    scope=Scope.SINGLETON,
-    dependencies=["db_connection"]
-))
+路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分、选择、调用和故障转移。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。
+
+接口探测分为网络、鉴权、协议、模型目录、文本生成、流式、工具调用、结构化输出和多模态级别。手动、注册时和周期性探测均被支持；可能产生费用的主动探测必须显式开启。
+
+详细设计见[模型、路由与接口探测](./model-routing.md)。
+
+## 7. Agent Runtime
+
+Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和结果，不规定唯一推理策略。首版提供一个可用 ReAct 模板，用户可以：
+
+- 替换整个 `AgentLoop`。
+- 在 Loop 阶段间插入 Pipeline。
+- 增加步骤类型。
+- 动态选择下一步。
+- 从 Agent 调用 Workflow。
+
+模型可见内容必须能从持久化事件重建。默认事件包括 Run、模型请求、流式输出、工具调用、状态变更和结束原因。自定义 Loop 可以增加事件类型，但必须保持可序列化。
+
+## 8. Workflow
+
+Agent Loop 与 Workflow 共享 `RunContext`、事件、取消和结果协议，但保持独立实现。Workflow 支持三种前端：静态 DAG、有状态图和 Python 控制流；它们编译或适配到统一 Workflow Engine 协议。
+
+首版 Checkpoint 仅保证节点边界和显式 `checkpoint()` 位置恢复，不承诺恢复任意 Python 指令位置。首版支持暂停、恢复、取消和节点完成后的状态持久化。嵌套 Workflow、多 Agent 编排和分布式调度为 `Reserved`。
+
+## 9. Tools
+
+工具定义、执行、权限和结果彼此分离：
+
+```text
+ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-### 2.3 配置管理
+首版提供 Python 函数与 HTTP 工具模板，并为 MCP、命令行和远程执行器保留协议。工具调用包含稳定调用 ID、参数、作用域、取消信号和副作用级别。审批、审计和沙箱在执行路径中强制生效，不能只依赖提示词或工具可见性。
 
-动态配置管理支持热更新：
+## 10. Sandbox
 
-- **配置绑定**：将配置值绑定到对象的属性
-- **配置变更事件**：配置变更时自动通知监听器
-- **多种配置源**：
-  - 配置文件（JSON/YAML）
-  - 环境变量
-  - 代码配置
+首版默认编码环境采用 Docker/OCI。nsjail 和 Wasm 延续各自适用场景，Remote Sandbox 保留协议。Windows 通过 Docker Desktop 或 WSL2 使用隔离后端。
 
-```python
-# 配置绑定示例
-config_manager.bind("api_key", service, "api_key")
+`UnsafeLocalSandbox` 是明确命名的开发模式。它只能由用户主动启用，CLI/TUI 必须展示宿主机执行风险，授权不得由导入的工程装配编码自动开启。安全后端不可用时，默认失败关闭。
 
-# 配置变更监听
-async def on_config_change(key, new_value, old_value):
-    print(f"Config {key} changed from {old_value} to {new_value}")
-```
+详细设计见[沙箱与本地执行](./sandbox.md)。
 
-### 2.4 弹性模式
+## 11. 工程装配分享
 
-提供重试和断路器等弹性模式：
+开发者可以将插件、版本约束、配置、路由、Workflow 引用和沙箱策略组成命名、版本化的 `CompositionManifest`，导出为带模式版本和校验值的可复制编码。
 
-- **重试策略**：
-  - 最大重试次数
-  - 初始延迟
-  - 指数退避
-  - 重试异常类型
+编码不包含密钥，不默认嵌入任意源码，不自动授予本地执行权。导入流程必须先解码、校验、预览依赖与风险，再由用户确认安装和加载。详细设计见[工程装配分享](./project-sharing.md)。
 
-- **断路器状态机**：
-  - CLOSED - 正常状态
-  - OPEN - 熔断状态
-  - HALF_OPEN - 半开状态
+## 12. CLI、TUI 与评测
 
-```python
-# 断路器示例
-@CircuitBreaker(failure_threshold=5, recovery_timeout=30.0, fallback_method="fallback")
-async def protected_operation():
-    pass
+CLI 和 Textual TUI 都通过公开 Python API 使用框架，不形成私有控制面。首版覆盖初始化、配置校验、插件检查、模型探测、Profile 解析、运行、Checkpoint 恢复、沙箱授权和事件查看。
 
-async def fallback(*args, **kwargs):
-    return "Fallback response"
-```
+本地评测提供 Mock、测试上下文、事件录制与回放、模板基准任务，以及 Token、费用、延迟和工具成功率统计。在线评测平台不属于项目目标。
 
-### 2.5 可观测性
+## 13. 1.x 兼容
 
-集成 OpenTelemetry 提供完整的可观测性支持：
+下一代公共 API 直接覆盖 `w_agent` 顶层导出，不创建 `w_agent.v2`。`BaseAgent.arun()` 等必要 1.x 接口通过最小兼容适配器继续运行，但不会承载新的模型、Workflow 或插件特性。迁移细节见[1.x 迁移](./migration-1x.md)。
 
-- **链路追踪**：追踪请求在系统中的完整路径
-- **指标监控**：收集和导出指标数据
-- **健康检查**：检查系统各组件的健康状态
+## 14. 非目标与保留能力
 
-```python
-# 开启追踪
-tracer = global_tracer
-with tracer.start_span("operation") as span:
-    # 执行操作
-    pass
-```
+明确非目标：
 
-### 2.6 沙箱安全
+- 托管 Agent 服务、云控制面、租户、组织和计费。
+- 未经确认自动安装、更新或运行第三方代码。
+- 将官方 ReAct 或 Workflow 实现设为不可替换的内核。
 
-提供 Wasm 和 nsjail 两种沙箱隔离方案：
+`Reserved`：
 
-两种方案都采用失败关闭策略。真实隔离后端不可用时拒绝执行，禁止回退到宿主机 Python 或普通子进程。
-
-- **Wasm 沙箱**：
-  - 使用 `wasmer-sdk` 创建独立 WASIX workspace
-  - 通过固定版本的 `python/python` Wasmer package 执行技能
-  - 默认不授予访客网络权限
-  - 宿主总超时、逐次 sandbox 关闭、共享 client 显式关闭
-
-- **nsjail 沙箱**：
-  - seccomp 过滤
-  - 资源限制（CPU、内存）
-  - 能力禁用
-
-## 三、生命周期管理
-
-框架提供完整的生命周期管理：
-
-1. **初始化阶段**：
-   - 扫描组件
-   - 注册 Bean
-   - 执行依赖注入
-   - 调用 @PostConstruct
-
-2. **运行阶段**：
-   - 处理请求
-   - 事件驱动
-
-3. **销毁阶段**：
-   - 调用 @PreDestroy
-   - 释放资源
-   - 关闭连接
-
-```python
-class LifecycleOrder(IntEnum):
-    INFRASTRUCTURE = 0    # 配置中心、日志、监控
-    CONNECTION_POOL = 10  # 数据库、Redis 连接池
-    REPOSITORY = 20       # 数据访问层
-    SERVICE = 30          # 业务服务
-    AGENT = 40            # Agent 组件
-    PRESENTATION = 50     # 控制器、端点
-```
-
-## 四、分布式支持
-
-- **分布式锁**：基于 Redis 的分布式锁实现
-- **锁续期池**：自动续期防止锁过期
-- **连接池管理**：Redis、MySQL 连接池
-
-## 五、项目结构
-
-```
-w_agent/
-├── aop/                    # 面向切面编程
-│   ├── aspects.py          # 切面实现
-│   ├── joinpoint.py        # 连接点
-│   ├── pointcut.py         # 切点解析
-│   └── proxy_factory.py    # 代理工厂
-├── config/                 # 配置管理
-│   └── dynamic_config.py   # 动态配置
-├── container/              # 依赖注入容器
-│   ├── bean_factory.py     # Bean 工厂
-│   └── reflection_cache.py # 反射缓存
-├── core/                   # 核心功能
-│   ├── agent.py            # Agent 基类
-│   ├── event_bus.py        # 事件总线
-│   └── decorators.py       # 装饰器
-├── lifecycle/              # 生命周期管理
-│   ├── manager.py          # 生命周期管理器
-│   └── order.py            # 生命周期顺序
-├── observability/          # 可观测性
-│   ├── tracing.py          # 链路追踪
-│   ├── metrics.py          # 指标监控
-│   └── health.py           # 健康检查
-├── resilience/             # 弹性模式
-│   ├── bulkhead.py         # 舱壁隔离
-│   └── timeout.py          # 超时控制
-├── scanner/                # AST 扫描
-│   └── parallel_scanner.py # 并行扫描
-├── skills/                 # 技能系统
-│   └── sandbox/            # 沙箱
-└── distributed/            # 分布式支持
-    ├── lock.py             # 分布式锁
-    └── lock_pool.py        # 锁续期池
-```
-
-## 六、设计原则
-
-1. **模块化设计**：各模块职责明确，便于维护和扩展
-2. **接口隔离**：使用抽象接口解耦具体实现
-3. **依赖注入**：通过 IOC 容器管理依赖关系
-4. **面向切面**：将横切关注点分离出来
-5. **可配置性**：提供丰富的配置选项
-6. **可观测性**：内置追踪、指标、日志支持
+- 进程外多语言插件 SDK。
+- Remote Sandbox 官方 Provider。
+- 多 Agent、委派和人工协作协议。
+- 分布式 Workflow 调度。
+- 装配编码签名与信任网络。
+- 完整在线评测和远程运行面板。

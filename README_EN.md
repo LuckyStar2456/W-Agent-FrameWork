@@ -1,678 +1,146 @@
-# W-Agent v1.5.2
+# W-Agent
 
-[English](./README_EN.md) | [简体中文](./README.md)
+English | [简体中文](./README.md)
 
-Python Enterprise Agent Framework, Complete Technical Architecture Solution.
+W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/LuckyStar2456/W-Agent-FrameWork?style=social)](https://github.com/LuckyStar2456/W-Agent-FrameWork)
+The current release is `1.5.2`. The existing 1.x engineering foundation is implemented, while the fully plugin-based architecture is being designed and delivered in phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
-## 📚 Table of Contents
+## Status labels
 
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Project Structure](#-project-structure)
-- [Core Modules](#-core-modules)
-- [Configuration Guide](#-configuration-guide)
-- [Example Project](#-example-project)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [License](#-license)
+| Label | Meaning |
+|---|---|
+| `Implemented` | Source exists with corresponding tests or an executable entry point |
+| `Planned` | Accepted for implementation and assigned to the roadmap |
+| `Reserved` | A protocol or extension point is reserved without a committed release |
+| `Experimental` | Available for evaluation but not compatibility-stable |
+| `Deprecated` | Retained only for migration and no longer extended |
 
-## ✨ Features
+## Positioning
 
-| Feature | Description |
-|---------|-------------|
-| **AOP Aspect-Oriented Programming** | Supports AspectJ pointcut expressions (execution, within, @annotation, bean, args), provides retry, circuit breaker aspects |
-| **IOC Dependency Injection** | Three-level caching, constructor/field/setter injection, @Autowired/@Qualifier annotations, component scanning |
-| **Sandbox Security** | Real Wasm/nsjail isolation backends, seccomp filtering, and resource limits; fails closed instead of executing on the host |
-| **Resilience Patterns** | Retry (with backoff), Circuit Breaker (CLOSED/OPEN/HALF_OPEN states), timeout control |
-| **Observability** | OpenTelemetry integration, distributed tracing, metrics monitoring, health checks |
-| **RAG Integration** | Vector search (Redis/memory), similarity search, document storage and retrieval-augmented generation |
-| **Hot Config Reload** | Dynamic configuration management, config change events, runtime config updates |
-| **Event Bus** | Async event publish/subscribe, event-driven architecture |
-| **Lifecycle Management** | Component lifecycle, graceful startup and shutdown, dependency order management |
-| **Distributed Lock** | Redis distributed lock, lock renewal and timeout control |
-| **Skills System** | Extensible skills system, skill registration and execution |
+W-Agent follows these principles:
 
-## 🚀 Quick Start
+- Core protocols are stable and extensible; concrete policies are replaceable.
+- Built-in implementations use public extension APIs and receive no private privileges.
+- Explicit Python composition, decorators, configuration, and Python entry points all converge on one registry.
+- Agent loops and workflows interoperate without being forced into one abstraction.
+- Local development comes first; tenancy, billing, and a hosted control plane are not built in.
+- Untrusted execution uses a sandbox by default; host execution requires explicit user authorization.
+- Implemented, planned, and reserved capabilities are distinguished in every document.
 
-### Installation
+## Current capabilities
 
-```bash
-# Install from PyPI
-pip install wagent-framework
+The following 1.5.2 source capabilities are `Implemented`:
 
-# Install optional dependencies
-pip install wagent-framework[fastapi,langchain,redis,opentelemetry]
+- The basic `BaseAgent.arun()` abstraction.
+- IOC container, component scanning, lifecycle handling, and dependency injection.
+- AOP, retry, circuit breaker, timeout, and bulkhead helpers.
+- Dynamic configuration, event bus, health checks, logging, metrics, and tracing.
+- Wasm and nsjail skill sandboxes that fail closed when their backend is unavailable.
+- Skill loading, signature verification, MCP JWT authentication, and Redis locks.
+- LangChain tool adapters, a FastAPI integration example, and test helpers.
 
-# Install from source
-pip install -e .
+`BaseAgent` remains a minimal abstraction. A unified model protocol, routing, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI are `Planned` and must not be treated as existing features.
+
+## Next-generation module map
+
+```text
+Applications        Customer support / Coding / User compositions
+Runtime             Agent Loop / Workflow / Session / Checkpoint
+Capabilities        Models / Router / Tools / RAG / Memory / Sandbox
+Microkernel         Plugin / Registry / Lifecycle / Scope / Events
+Infrastructure      Storage / Telemetry / CLI / TUI / Evaluation
 ```
 
-### Create Your First Agent
+Next-generation APIs will be exported directly from `w_agent`; no `w_agent.v2` namespace will be introduced. A minimal compatibility layer will keep essential 1.x APIs available.
+
+## Install the current release
+
+```bash
+pip install wagent-framework
+```
+
+Optional dependencies:
+
+```bash
+pip install "wagent-framework[fastapi,langchain,opentelemetry]"
+pip install "wagent-framework[wasm]"
+```
+
+The current 1.x metadata supports Python 3.9+. The target minimum for the next-generation plugin kernel and runtime is Python 3.11.
+
+## Minimal 1.x example
 
 ```python
 import asyncio
-from w_agent import BaseAgent, BeanFactory, AgentComponent
+
+from w_agent import AgentComponent, BaseAgent, BeanFactory
+
 
 @AgentComponent(name="hello_agent")
 class HelloAgent(BaseAgent):
     async def arun(self, prompt: str) -> str:
         return f"Hello, {prompt}!"
 
-async def main():
-    # Create Bean factory
-    bean_factory = BeanFactory()
 
-    # Register Agent
-    agent = HelloAgent()
-    bean_factory.register_bean("hello_agent", agent)
+async def main() -> None:
+    factory = BeanFactory()
+    factory.register_bean("hello_agent", HelloAgent())
+    agent = await factory.get_bean("hello_agent")
+    print(await agent.arun("W-Agent"))
 
-    # Use Agent
-    agent = await bean_factory.get_bean("hello_agent")
-    result = await agent.arun("World")
-    print(result)  # Output: Hello, World!
 
 asyncio.run(main())
 ```
 
-### Using Hot Config Reload
+This is a 1.x compatibility example; it does not imply that the next-generation agent runtime is implemented.
 
-```python
-import asyncio
-from w_agent import DynamicConfigManager
+## Planned local developer experience
 
-async def main():
-    config_manager = DynamicConfigManager()
+The following commands are `Planned` and are not all available in the current release:
 
-    # Set config
-    config_manager.set("api_key", "your-api-key")
-
-    # Bind config to property
-    class MyService:
-        def __init__(self):
-            self.api_key = None
-            config_manager.bind("api_key", self, "api_key")
-
-        async def on_config_change(self, key, new_value, old_value):
-            print(f"Config changed: {key} = {new_value}")
-
-    service = MyService()
-    print(service.api_key)  # Output: your-api-key
-
-    # Dynamically update config
-    await config_manager.update_batch({"api_key": "new-api-key"})
-    print(service.api_key)  # Output: new-api-key
-
-asyncio.run(main())
+```text
+wagent init
+wagent config validate
+wagent plugins list
+wagent profile resolve
+wagent probe
+wagent doctor
+wagent run
+wagent tui
+wagent composition export
+wagent composition import
 ```
 
-### Using AOP Aspect-Oriented Programming
+The CLI and TUI will use only public Python APIs. The TUI is planned to cover model configuration and probing, plugin management, profile selection, interactive runs, workflow state, checkpoint recovery, sandbox approvals, and event inspection.
 
-```python
-import asyncio
-from w_agent import Retry, CircuitBreaker
+## Portable project compositions
 
-# Using retry decorator
-@Retry(max_attempts=3, delay=0.1, backoff=2.0)
-async def unreliable_operation():
-    print("Executing unstable operation...")
-    # Simulate failure
-    raise Exception("Temporary failure")
+`Planned`: developers will be able to name and version a framework composition, then export it as a copyable code. Import first previews, validates, and resolves dependencies, after which the user explicitly confirms installation or loading.
 
-# Using circuit breaker
-@CircuitBreaker(failure_threshold=5, recovery_timeout=30.0)
-async def protected_operation():
-    print("Executing protected operation...")
-    # Simulate failure
-    raise Exception("Service unavailable")
+A composition code carries a portable manifest, never secrets. It does not bundle arbitrary source by default and never executes untrusted plugins automatically during import. See [Portable project compositions](./docs/project-sharing.en.md).
 
-async def main():
-    try:
-        await unreliable_operation()
-    except Exception as e:
-        print(f"Final failure: {e}")
+## Documentation
 
-asyncio.run(main())
-```
+- [Documentation index](./docs/README.en.md)
+- [Architecture](./docs/architecture.en.md)
+- [Roadmap and capability status](./docs/roadmap.en.md)
+- [User guide](./docs/guide.en.md)
+- [Developer guide](./docs/developer.en.md)
+- [API status and plan](./docs/api.en.md)
+- [Plugin system](./docs/plugin-system.en.md)
+- [Models, routing, and endpoint probing](./docs/model-routing.en.md)
+- [Sandbox and local execution](./docs/sandbox.en.md)
+- [CLI and TUI](./docs/tui.en.md)
+- [1.x migration](./docs/migration-1x.en.md)
 
-### Using Event Bus
+## Explicit non-goals
 
-```python
-import asyncio
-from w_agent import EventBus, Event
+- W-Agent does not provide a hosted service or cloud control plane.
+- The first release does not include tenants, organizations, billing, or SaaS administration.
+- No ReAct, workflow, or model protocol implementation is hard-coded as the only option.
+- Third-party plugins are never installed, upgraded, or executed without confirmation.
 
-event_bus = EventBus()
+## License
 
-@event_bus.on("user.created")
-async def on_user_created(event):
-    print(f"User created: {event.payload}")
-
-@event_bus.on("user.updated")
-async def on_user_updated(event):
-    print(f"User updated: {event.payload}")
-
-async def main():
-    # Publish user created event
-    await event_bus.emit(Event("user.created", {"user_id": 123, "name": "John"}))
-
-    # Publish user updated event
-    await event_bus.emit(Event("user.updated", {"user_id": 123, "name": "John Doe"}))
-
-asyncio.run(main())
-```
-
-## 📁 Project Structure
-
-```
-w_agent/
-├── aop/                    # Aspect-Oriented Programming
-│   ├── aspects.py          # Aspect implementations (retry, circuit breaker)
-│   ├── joinpoint.py       # Join point
-│   ├── pointcut.py        # Pointcut expression parser
-│   └── proxy_factory.py   # Proxy factory
-├── config/                 # Configuration Management
-│   └── dynamic_config.py  # Dynamic configuration
-├── container/              # Dependency Injection Container
-│   ├── bean_factory.py    # Bean factory
-│   └── reflection_cache.py # Reflection cache
-├── core/                   # Core Features
-│   ├── agent.py           # Agent base class
-│   ├── decorators.py      # Decorators
-│   ├── doctor.py          # System check
-│   └── event_bus.py       # Event bus
-├── deployment/             # Deployment
-│   └── fastapi_depends.py # FastAPI dependency injection
-├── distributed/            # Distributed Features
-│   ├── lock.py           # Distributed lock
-│   └── lock_pool.py      # Lock pool management
-├── exceptions/             # Exception Handling
-│   └── framework_errors.py # Framework error definitions
-├── lifecycle/              # Lifecycle Management
-│   ├── graceful_shutdown.py # Graceful shutdown
-│   ├── manager.py        # Lifecycle manager
-│   └── order.py          # Lifecycle order
-├── observability/          # Observability
-│   ├── health.py         # Health check
-│   ├── logging.py        # Logging management
-│   ├── metrics.py        # Metrics monitoring
-│   └── tracing.py        # Distributed tracing
-├── resilience/             # Resilience Patterns
-│   ├── bulkhead.py       # Bulkhead pattern
-│   └── timeout.py        # Timeout control
-├── scanner/                # Component Scanning
-│   ├── cache.py          # Scan cache
-│   └── parallel_scanner.py # Parallel scanning
-├── security/               # Security
-│   └── mcp_auth.py       # MCP authentication
-├── skills/                # Skills System
-│   ├── sandbox/           # Sandbox
-│   │   ├── nsjail_sandbox.py
-│   │   └── wasm_sandbox.py
-│   ├── signature.py      # Skill signature
-│   └── skill.py          # Skill base class
-├── testing/                # Testing Tools
-│   └── mock_utils.py      # Mock utilities
-├── tools/                  # Utilities
-│   └── langchain_adapter.py # LangChain adapter
-├── __init__.py           # Package initialization
-├── __main__.py           # Main entry
-└── cli.py                # CLI tool
-```
-
-## 🔧 Core Modules
-
-### AOP Aspect-Oriented Programming
-
-AOP allows you to add cross-cutting concerns without modifying existing code.
-
-```python
-from w_agent import AspectJPointcut, BeforeAdvice, AfterAdvice, AroundAdvice, ProxyFactory
-
-# Define target class
-class Target:
-    def do_something(self, value):
-        return f"Result: {value}"
-
-# Create advices
-execution_order = []
-
-async def before_advice(joinpoint):
-    execution_order.append("before")
-
-async def after_advice(joinpoint, result):
-    execution_order.append("after")
-
-async def around_advice(joinpoint, proceed):
-    execution_order.append("around_before")
-    result = await proceed()
-    execution_order.append("around_after")
-    return result
-
-# Create proxy
-proxy_factory = ProxyFactory()
-target = Target()
-advices = [
-    BeforeAdvice(before_advice),
-    AroundAdvice(around_advice),
-    AfterAdvice(after_advice)
-]
-proxy = proxy_factory.create_proxy(target, {"do_something": advices})
-
-# Call method
-result = await proxy.do_something("test")
-print(f"Result: {result}")
-print(f"Execution order: {execution_order}")
-```
-
-### Dependency Injection
-
-IOC container provides dependency injection to simplify component dependency management.
-
-```python
-from w_agent import BeanFactory, ServiceComponent, Autowired, Qualifier
-
-@ServiceComponent(name="user_repository")
-class UserRepository:
-    def get_user(self, user_id):
-        return {"id": user_id, "name": "John"}
-
-@ServiceComponent(name="user_service")
-class UserService:
-    @Autowired
-    @Qualifier(name="user_repository")
-    def set_repository(self, repository):
-        self.repository = repository
-
-    def get_user(self, user_id):
-        return self.repository.get_user(user_id)
-
-async def main():
-    # Create Bean factory
-    bean_factory = BeanFactory()
-
-    # Register components
-    repository = UserRepository()
-    bean_factory.register_bean("user_repository", repository)
-
-    service = UserService()
-    bean_factory.register_bean("user_service", service)
-
-    # Auto-wire dependencies
-    await bean_factory.autowire_all()
-
-    # Use service
-    user = service.get_user(123)
-    print(f"User: {user}")
-
-asyncio.run(main())
-```
-
-### Event Bus
-
-Event bus provides async event publish/subscribe for event-driven architecture.
-
-```python
-from w_agent import EventBus, Event, ConfigChangedEvent
-
-event_bus = EventBus()
-
-# Subscribe to config changed events
-@event_bus.on("config_changed")
-async def on_config_changed(event):
-    print(f"Config changed: {event.payload}")
-
-async def main():
-    # Publish custom event
-    await event_bus.emit(Event("custom_event", {"data": "test"}))
-
-    # Publish config changed event
-    await event_bus.emit(ConfigChangedEvent(key="api_key", old_value="old", new_value="new"))
-
-asyncio.run(main())
-```
-
-### Lifecycle Management
-
-Lifecycle manager handles component initialization and destruction with dependency ordering.
-
-```python
-from w_agent import LifecycleManager, LifecycleOrder, PostConstruct, PreDestroy
-
-class DatabaseService:
-    @PostConstruct(order=1)
-    async def init_db(self):
-        print("Initializing database connection")
-
-    @PreDestroy(order=1)
-    async def close_db(self):
-        print("Closing database connection")
-
-class UserService:
-    @PostConstruct(order=2)
-    async def init_service(self):
-        print("Initializing user service")
-
-    @PreDestroy(order=2)
-    async def cleanup_service(self):
-        print("Cleaning up user service")
-
-async def main():
-    # Create lifecycle manager
-    lifecycle_manager = LifecycleManager()
-
-    # Register components
-    db_service = DatabaseService()
-    lifecycle_manager.register(db_service, LifecycleOrder.INFRASTRUCTURE)
-
-    user_service = UserService()
-    lifecycle_manager.register(user_service, LifecycleOrder.SERVICE)
-
-    # Execute initialization
-    await lifecycle_manager.post_construct_all()
-
-    # Execute destruction
-    await lifecycle_manager.pre_destroy_all()
-
-asyncio.run(main())
-```
-
-### Configuration Management
-
-Dynamic configuration manager supports hot config reload and property binding.
-
-```python
-from w_agent import DynamicConfigManager
-
-async def main():
-    config_manager = DynamicConfigManager()
-
-    # Load config file
-    await config_manager.load_from_file("config.json")
-
-    # Set config
-    config_manager.set("service.port", 8080)
-    config_manager.set("service.host", "localhost")
-
-    # Bind config to object
-    class ServiceConfig:
-        def __init__(self):
-            self.port = None
-            self.host = None
-            config_manager.bind("service.port", self, "port")
-            config_manager.bind("service.host", self, "host")
-
-        async def on_config_change(self, key, new_value, old_value):
-            print(f"Config changed: {key} = {new_value}")
-
-    service_config = ServiceConfig()
-    print(f"Initial config: host={service_config.host}, port={service_config.port}")
-
-    # Dynamically update config
-    await config_manager.update_batch({"service.port": 8081, "service.host": "0.0.0.0"})
-    print(f"Updated config: host={service_config.host}, port={service_config.port}")
-
-asyncio.run(main())
-```
-
-### Sandbox Security
-
-The sandbox supports Wasm and nsjail isolation backends. A real backend must be installed and configured before execution; otherwise `SkillSandboxError` is raised and the code is never executed by host Python or an ordinary subprocess.
-
-The Wasm backend uses the modern `wasmer-sdk`. Its Python wheels currently support Linux/macOS; use WSL2 for Windows development:
-
-```bash
-pip install "wagent-framework[wasm]"
-```
-
-```python
-from w_agent import WasmSkillSandbox, NsJailSkillSandbox, Skill
-from pathlib import Path
-
-# Create skill
-skill = Skill(
-    name="test_skill",
-    description="Test skill",
-    scripts={"test": Path("test.py")}
-)
-
-# Use the Wasm/WASIX sandbox; guest networking is disabled by default
-wasm_sandbox = WasmSkillSandbox(
-    cache_root=Path(".cache/wasmer"),
-    max_execution_seconds=30,
-)
-try:
-    result = await wasm_sandbox.execute(skill, "test", {"name": "World"})
-    print(f"Wasm sandbox result: {result}")
-finally:
-    await wasm_sandbox.close()
-
-# Use nsjail sandbox (or configure W_AGENT_NSJAIL_ROOTFS)
-nsjail_sandbox = NsJailSkillSandbox(rootfs_path=Path("/opt/w-agent-rootfs"))
-result = await nsjail_sandbox.execute(skill, "test", {"name": "World"})
-print(f"NsJail sandbox result: {result}")
-```
-
-Real backend smoke test on Linux/WSL2:
-
-```bash
-python tests/integration_wasmer_smoke.py
-```
-
-## ⚙️ Configuration Guide
-
-### Configuration Options
-
-| Config | Type | Default | Description |
-|--------|------|---------|-------------|
-| `logging.level` | string | "INFO" | Log level |
-| `logging.format` | string | "json" | Log format |
-| `container.scan_paths` | list | ["."] | Component scan paths |
-| `container.skip_paths` | list | ["__pycache__", ".git"] | Skip scan paths |
-| `sandbox.enabled` | bool | true | Enable sandbox |
-| `sandbox.type` | string | "wasm" | Sandbox type: wasm/nsjail |
-| `resilience.retry.max_attempts` | int | 3 | Max retry attempts |
-| `resilience.retry.delay` | float | 0.1 | Retry delay (seconds) |
-| `resilience.retry.backoff` | float | 2.0 | Retry backoff factor |
-| `resilience.circuit_breaker.failure_threshold` | int | 5 | Circuit breaker failure threshold |
-| `resilience.circuit_breaker.recovery_timeout` | float | 30.0 | Circuit breaker recovery timeout (seconds) |
-| `distributed.lock.redis.url` | string | "redis://localhost:6379" | Redis connection URL |
-| `distributed.lock.redis.db` | int | 0 | Redis database number |
-| `observability.tracing.enabled` | bool | true | Enable tracing |
-| `observability.tracing.exporter` | string | "otlp" | Tracing exporter |
-| `observability.metrics.enabled` | bool | true | Enable metrics |
-
-### Configuration File
-
-Create `config.json`:
-
-```json
-{
-  "logging": {
-    "level": "INFO",
-    "format": "json"
-  },
-  "container": {
-    "scan_paths": ["src"],
-    "skip_paths": ["__pycache__", ".git"]
-  },
-  "sandbox": {
-    "enabled": true,
-    "type": "wasm"
-  },
-  "resilience": {
-    "retry": {
-      "max_attempts": 3,
-      "delay": 0.1,
-      "backoff": 2.0
-    },
-    "circuit_breaker": {
-      "failure_threshold": 5,
-      "recovery_timeout": 30.0
-    }
-  }
-}
-```
-
-### Environment Variables
-
-Environment variables take precedence over config files:
-
-```bash
-export W_AGENT_LOGGING_LEVEL=DEBUG
-export W_AGENT_CONTAINER_SCAN_PATHS=src,components
-export W_AGENT_SANDBOX_ENABLED=true
-export W_AGENT_RESILIENCE_RETRY_MAX_ATTEMPTS=5
-```
-
-## 📖 Example Project
-
-### Basic Agent Example
-
-Check [examples/basic_agent.py](./examples/basic_agent.py) for a basic Agent implementation example, demonstrating:
-
-- Agent and Service component creation
-- Dependency injection
-- Config binding and hot reload
-- Lifecycle management
-
-### Chat Agent Example
-
-Check the [chat-agent](./chat-agent/) directory for a complete chat agent example project, including:
-
-- Agent implementation
-- LLM service integration
-- Skills system
-- RAG retrieval augmentation
-- Redis/MySQL integration
-- OpenTelemetry observability
-- System health checks
-
-## 👨‍💻 Developer Guide
-
-### Core Concepts
-
-1. **Agent**: Base class for all agents, inherit from `BaseAgent`
-2. **Component**: Marked with `@AgentComponent`, `@ServiceComponent`, etc.
-3. **Bean**: Component instance managed by the container
-4. **Aspect**: For cross-cutting concerns
-5. **Event**: For component communication
-6. **Lifecycle**: Manages component initialization and destruction
-7. **Skill**: Callable function module by Agent
-
-### Development Flow
-
-1. **Create Agent**: Inherit `BaseAgent` and implement `arun` method
-2. **Create Service**: Mark service class with `@ServiceComponent`
-3. **Configure Dependencies**: Inject dependencies using `@Autowired` and `@Qualifier`
-4. **Add Lifecycle**: Mark lifecycle methods with `@PostConstruct` and `@PreDestroy`
-5. **Add AOP Aspects**: Add aspects using `@Retry`, `@CircuitBreaker`, etc.
-6. **Register Bean**: Register components using `BeanFactory`
-7. **Start Application**: Execute `post_construct_all` to initialize components
-
-### Best Practices
-
-1. **Component Design**: Split functionality into small, focused components
-2. **Dependency Management**: Use dependency injection instead of hardcoding
-3. **Error Handling**: Use AOP aspects for retry and circuit breaker
-4. **Configuration Management**: Use dynamic config to avoid hardcoded values
-5. **Observability**: Add appropriate logging, metrics, and tracing
-6. **Security**: Use sandbox to execute external code
-7. **Testing**: Write unit and integration tests for components
-
-### FAQ
-
-#### Dependency Injection Failed
-- Ensure components are registered to BeanFactory
-- Ensure dependencies are registered and names are correct
-- Check if dependency types match
-
-#### Config Not Effective
-- Check if config file path is correct
-- Check if environment variables override config file
-- Check if config key names are correct
-
-#### Sandbox Execution Failed
-- Check if Wasm or nsjail is installed correctly
-- Check if skill scripts meet sandbox requirements
-- Check if resource limits are reasonable
-
-## 📄 Documentation
-
-- [Architecture Documentation](./docs/architecture.md): Detailed framework architecture and design philosophy
-- [API Documentation](./docs/api.md): Complete API reference
-- [User Guide](./docs/guide.md): Detailed usage tutorial
-- [Developer Documentation](./docs/developer.md): Developer-level usage instructions
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-If you find this project helpful, please give us a ⭐!
-
-## 📦 PyPI Package
-
-- **Package Name**: `wagent-framework`
-- **Version**: 1.5.2
-- **Installation**: `pip install wagent-framework`
-- **PyPI URL**: [https://pypi.org/project/wagent-framework/](https://pypi.org/project/wagent-framework/)
-
-## 📝 Changelog
-
-### v1.5.2 (2026-06-15)
-- **Security**: Fail closed when a real skill sandbox backend is unavailable
-- **Runtime**: Complete component scanning, injection, lifecycle, and deployment example chains
-- **Quality**: Align CLI, streaming timeouts, comprehensive test discovery, and version metadata
-
-### v1.5.1 (2026-04-27)
-- **Version Update**: Bumped version to 1.5.1
-- **Documentation**: Improved changelog content
-- **Bug Fixes**: Fixed LangChain adapter import error when LangChain is not installed
-- **Bug Fixes**: Fixed lifecycle method binding issue with decorated methods
-
-### v1.5.0 (2026-04-27)
-- **Version Update**: Bumped version to 1.5.0
-- **Bug Fixes**: Fixed LangChain adapter import error when LangChain is not installed
-- **Bug Fixes**: Fixed lifecycle method binding issue with decorated methods
-- **Documentation**: Updated all documentation with unified import paths
-- **Documentation**: Fixed Python version requirement in chat-agent docs
-
-### v1.4.4 (2026-04-26)
-- **Framework Optimization**: Improved stability and performance of core features
-- **Code Quality**: Enhanced code maintainability and readability
-- **Documentation Update**: Provided more detailed framework documentation and core feature demos
-- **Developer Guide**: Added developer-level usage instructions
-- **Example Project**: Optimized example code and documentation
-
-### v1.4.2 (2026-04-22)
-- **Documentation Update**: Provided more detailed framework documentation and core feature demos
-- **Developer Guide**: Added developer-level usage instructions
-- **Example Project**: Optimized example code and documentation
-- **Code Quality**: Enhanced code maintainability and readability
-
-### v1.4.1 (2026-04-22)
-- **Fixed Package Structure**: Added missing `__init__.py` files to ensure package can be imported normally
-- **Fixed Import Errors**: Corrected import errors in `w_agent/__init__.py`
-- **Uploaded to PyPI**: Successfully published to PyPI
-- **Updated GitHub**: Synchronized updates to GitHub repository
-
-### v1.4.0 (2026-04-21)
-- **Core Features**: AOP, IOC, Sandbox Security, Resilience Patterns, Observability, RAG Integration
-- **Configuration Management**: Dynamic config hot reload
-- **Event Bus**: Event publish/subscribe support
-- **Lifecycle Management**: Component lifecycle support
-- **CLI Tool**: Provided command-line tool
+This project is licensed under the [MIT License](./LICENSE).

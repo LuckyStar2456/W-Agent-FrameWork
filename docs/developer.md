@@ -1,931 +1,159 @@
 # W-Agent 开发者指南
 
-[English](../README_EN.md) | 简体中文
+[English](./developer.en.md) | 简体中文
 
-本指南旨在帮助开发者深入理解 W-Agent 框架的架构和使用方法，以便能够高效地构建基于框架的应用。
+## 1. 开发基线
 
-## 📚 目录
+当前仓库版本为 1.5.2。下一代架构实现前，现有 1.x API 仍是源码事实。任何新能力都必须同步更新中英文文档，并标记状态。
 
-- [框架架构](#-框架架构)
-- [核心概念](#-核心概念)
-- [开发流程](#-开发流程)
-- [组件开发](#-组件开发)
-- [高级特性](#-高级特性)
-- [性能优化](#-性能优化)
-- [测试策略](#-测试策略)
-- [部署指南](#-部署指南)
-- [常见问题](#-常见问题)
+下一代实现目标：
 
-## 🏗️ 框架架构
+- Python 3.11+。
+- 异步内核，同步 API 只在用户边界提供。
+- 公共 API 直接从 `w_agent` 导出，不创建 `w_agent.v2`。
+- 官方默认实现只能使用公开协议和注册表。
+- 所有注册、任务和资源都必须有明确生命周期所有者。
 
-W-Agent 框架采用模块化、分层架构设计，提供了完整的企业级智能体开发能力。
+## 2. 当前仓库结构
 
-### 架构层次
+状态：`Implemented`。
 
-1. **核心层**：提供基础功能和核心抽象
-   - `core/`：核心功能，包括 Agent 基类、装饰器、事件总线等
-   - `container/`：依赖注入容器，管理组件生命周期
-   - `config/`：配置管理，支持动态配置更新
+```text
+w_agent/
+├── aop/             # 切点、通知和代理
+├── config/          # 动态配置
+├── container/       # IOC 与 Bean 生命周期
+├── core/            # 1.x Agent、装饰器、事件与 Doctor
+├── deployment/      # FastAPI 示例集成
+├── distributed/     # Redis 锁
+├── lifecycle/       # 初始化与销毁
+├── observability/   # 日志、指标、追踪、健康检查
+├── resilience/      # 超时和舱壁
+├── scanner/         # AST 组件扫描
+├── security/        # MCP 认证
+├── skills/          # Skill 和沙箱
+├── testing/         # 测试辅助
+└── tools/           # LangChain 适配
+```
 
-2. **功能层**：提供各种企业级功能
-   - `aop/`：面向切面编程，支持重试、断路器等
-   - `lifecycle/`：生命周期管理，支持组件的初始化和销毁
-   - `resilience/`：弹性模式，提高系统稳定性
-   - `observability/`：可观测性，支持链路追踪和指标监控
+计划中的微内核与运行时会在这些模块基础上逐步重构，不能通过简单扩展 `BaseAgent.arun()` 完成。
 
-3. **服务层**：提供特定领域的服务
-   - `skills/`：技能系统，支持技能注册和执行
-   - `distributed/`：分布式功能，包括分布式锁
-   - `scanner/`：组件扫描，自动发现和注册组件
+## 3. 插件设计规则
 
-4. **工具层**：提供各种工具和适配器
-   - `tools/`：工具类，如 LangChain 适配器
-   - `testing/`：测试工具，支持单元测试和集成测试
-   - `deployment/`：部署相关，如 FastAPI 依赖注入
+状态：`Planned`。
 
-### 核心流程
+每个能力必须区分 Definition、Provider 和 Consumer。插件依赖稳定 Definition，不依赖具体 Provider。
 
-1. **初始化流程**：
-   - 创建 `BeanFactory` 实例
-   - 注册组件和服务
-   - 执行 `post_construct_all` 初始化组件
-   - 启动应用
+插件清单包含：
 
-2. **请求处理流程**：
-   - 接收用户输入
-   - 调用 Agent 的 `arun` 方法
-   - Agent 分析意图并调用相应服务
-   - 服务处理并返回结果
-   - Agent 生成回复并返回
+```yaml
+name: example-router
+version: 1.0.0
+api_version: "2"
+provides:
+  - model.router
+requires:
+  - model.registry >=2.0
+optional:
+  - telemetry.tracer
+scope: application
+```
 
-3. **销毁流程**：
-   - 执行 `pre_destroy_all` 销毁组件
-   - 释放资源
+实现要求：
 
-## 📝 核心概念
+- 加载前校验依赖、版本、冲突和配置。
+- 注册返回可撤销句柄。
+- 失败加载回滚已经发生的注册。
+- 卸载先进入静默，再释放资源。
+- 配置缺失不得静默跳过插件。
+- 插件更新默认不改变活跃 Run 的解析快照。
 
-### 1. Agent
+完整设计见[插件系统](./plugin-system.md)。
 
-**定义**：智能体基类，所有智能体都继承自 `BaseAgent`
+## 4. 扩展点选择
 
-**核心方法**：
-- `arun(prompt: str) -> str`：异步运行 Agent，处理用户输入并返回结果
+| 目标 | 扩展方式 |
+|---|---|
+| 新模型或私有参数 | `ModelProvider` 与命名空间扩展 |
+| 新路由算法 | `RoutingPolicy` |
+| 新推理链路 | `AgentLoop` |
+| Loop 阶段拦截 | Event/Pipeline 插件 |
+| 新 Workflow 执行方式 | `WorkflowEngine` |
+| 新工具来源 | `ToolProvider` / `ToolExecutor` |
+| 新隔离环境 | `SandboxProvider` |
+| 新存储 | Session、Checkpoint 或 Memory Provider |
+| 新界面 | 使用公开运行时 API 和事件流 |
 
-**使用示例**：
+不要为了一个新能力直接修改默认 Agent Loop，除非公共协议本身无法表达该能力。
+
+## 5. 配置与装配
+
+四种入口最终生成同一个 `PluginSpec`：
+
+1. 显式 Python 构造，作为行为基准。
+2. 装饰器注册，作为语法便利层。
+3. YAML 配置，解析和验证后生成相同规格。
+4. Python entry point，用于独立发布插件的发现。
+
+配置层不执行任意 Python 表达式。秘密值通过环境变量或凭据引用注入，不能进入装配编码。
+
+## 6. 类型与扩展字段
+
+稳定协议使用 dataclass、Protocol、Enum 和 Pydantic 边界模型。进程内可信类型不重复解析；文件、网络、插件配置、持久化和模型输出边界必须校验。
+
+扩展字段使用命名空间：
 
 ```python
-from w_agent import BaseAgent, AgentComponent
-
-@AgentComponent(name="my_agent")
-class MyAgent(BaseAgent):
-    async def arun(self, prompt: str) -> str:
-        return f"Hello, {prompt}!"
-```
-
-### 2. Component
-
-**定义**：组件，使用 `@AgentComponent`、`@ServiceComponent` 等注解标记
-
-**类型**：
-- `@AgentComponent`：标记 Agent 组件
-- `@ServiceComponent`：标记服务组件
-- `@ToolComponent`：标记工具组件
-- `@RepositoryComponent`：标记仓库组件
-- `@ControllerComponent`：标记控制器组件
-
-**使用示例**：
-
-```python
-from w_agent import ServiceComponent
-
-@ServiceComponent(name="user_service")
-class UserService:
-    def get_user(self, user_id):
-        return {"id": user_id, "name": "John"}
-```
-
-### 3. Bean
-
-**定义**：由容器管理的组件实例
-
-**作用域**：
-- `Singleton`：单例，默认作用域
-- `Prototype`：原型，每次获取都会创建新实例
-
-**使用示例**：
-
-```python
-from w_agent import BeanFactory, Scope
-
-# 创建 Bean 工厂
-factory = BeanFactory()
-
-# 注册单例 Bean
-factory.register_bean("user_service", UserService())
-
-# 注册原型 Bean
-from w_agent import BeanDefinition
-
-definition = BeanDefinition(
-    name="prototype_bean",
-    bean_type=MyClass,
-    scope=Scope.PROTOTYPE
-)
-factory.register_bean_definition("prototype_bean", definition)
-```
-
-### 4. Aspect
-
-**定义**：切面，用于横切关注点
-
-**类型**：
-- `@Retry`：重试切面，处理临时失败
-- `@CircuitBreaker`：断路器切面，防止系统雪崩
-- 自定义切面：通过 `BeforeAdvice`、`AfterAdvice`、`AroundAdvice` 实现
-
-**使用示例**：
-
-```python
-from w_agent import Retry, CircuitBreaker
-
-@Retry(max_attempts=3, delay=0.1, backoff=2.0)
-async def unreliable_operation():
-    # 可能失败的操作
-    pass
-
-@CircuitBreaker(failure_threshold=5, recovery_timeout=30.0)
-async def protected_operation():
-    # 需要保护的操作
-    pass
-```
-
-### 5. Event
-
-**定义**：事件，用于组件间通信
-
-**类型**：
-- `Event`：通用事件
-- `ConfigChangedEvent`：配置变更事件
-- 自定义事件：继承 `Event` 类
-
-**使用示例**：
-
-```python
-from w_agent import EventBus, Event
-
-event_bus = EventBus()
-
-@event_bus.on("user.created")
-async def on_user_created(event):
-    print(f"User created: {event.payload}")
-
-# 发布事件
-await event_bus.emit(Event("user.created", {"user_id": 123}))
-```
-
-### 6. Lifecycle
-
-**定义**：生命周期，管理组件的初始化和销毁
-
-**注解**：
-- `@PostConstruct`：组件初始化后执行
-- `@PreDestroy`：组件销毁前执行
-
-**使用示例**：
-
-```python
-from w_agent import PostConstruct, PreDestroy
-
-class DatabaseService:
-    @PostConstruct(order=1)
-    async def init_db(self):
-        print("初始化数据库连接")
-    
-    @PreDestroy(order=1)
-    async def close_db(self):
-        print("关闭数据库连接")
-```
-
-### 7. Skill
-
-**定义**：技能，可被 Agent 调用的功能模块
-
-**沙箱**：
-- `WasmSkillSandbox`：通过 `wasmer-sdk` 和固定 Python WASIX package 安全执行技能
-- `NsJailSkillSandbox`：nsjail 沙箱，提供更强的隔离
-- 两种沙箱都要求真实后端可用；缺失时抛出 `SkillSandboxError`，不会在宿主机降级执行
-
-**使用示例**：
-
-```python
-from w_agent import Skill, WasmSkillSandbox
-from pathlib import Path
-
-# 创建技能
-skill = Skill(
-    name="test_skill",
-    description="Test skill",
-    scripts={"test": Path("test.py")}
-)
-
-# 执行技能
-sandbox = WasmSkillSandbox()
-try:
-    result = await sandbox.execute(skill, "test", {"name": "World"})
-finally:
-    await sandbox.close()
-```
-
-## 🔧 开发流程
-
-### 1. 环境搭建
-
-```bash
-# 安装 W-Agent 框架
-pip install wagent-framework
-
-# 安装可选依赖
-pip install wagent-framework[fastapi,langchain,redis,opentelemetry]
-```
-
-### 2. 创建项目结构
-
-```
-my-agent-app/
-├── app.py                  # 应用入口
-├── config/
-│   └── config.json        # 配置文件
-├── src/
-│   ├── agents/            # Agent 实现
-│   ├── services/          # 服务实现
-│   ├── skills/            # 技能实现
-│   └── utils/             # 工具类
-└── requirements.txt       # 依赖文件
-```
-
-### 3. 实现 Agent
-
-```python
-# src/agents/my_agent.py
-from w_agent import BaseAgent, AgentComponent, Autowired, Qualifier
-
-@AgentComponent(name="my_agent")
-class MyAgent(BaseAgent):
-    @Autowired
-    @Qualifier(name="user_service")
-    def set_user_service(self, user_service):
-        self.user_service = user_service
-    
-    async def arun(self, prompt: str) -> str:
-        # 处理用户输入
-        if "用户" in prompt:
-            user_id = prompt.split(" ")[-1]
-            user = self.user_service.get_user(user_id)
-            return f"用户信息: {user}"
-        return f"你说: {prompt}"
-```
-
-### 4. 实现服务
-
-```python
-# src/services/user_service.py
-from w_agent import ServiceComponent, PostConstruct
-
-@ServiceComponent(name="user_service")
-class UserService:
-    def __init__(self):
-        self.users = {}
-    
-    @PostConstruct
-    def init(self):
-        # 初始化用户数据
-        self.users["1"] = {"id": "1", "name": "John"}
-        self.users["2"] = {"id": "2", "name": "Jane"}
-    
-    def get_user(self, user_id):
-        return self.users.get(user_id, {"error": "User not found"})
-```
-
-### 5. 配置管理
-
-```json
-// config/config.json
-{
-  "system": {
-    "name": "My Agent App",
-    "version": "1.0.0"
-  },
-  "logging": {
-    "level": "INFO"
-  }
+extensions={
+    "vendor.reasoning_effort": "high",
+    "my_plugin.cache_key": "...",
 }
 ```
 
-### 6. 应用入口
+插件不得修改其他插件的命名空间。核心字段只通过正式状态转换 API 改变。
 
-```python
-# app.py
-import asyncio
-from w_agent import BeanFactory, DynamicConfigManager, LifecycleManager
-from src.agents.my_agent import MyAgent
-from src.services.user_service import UserService
+## 7. 并发、取消与关闭
 
-async def main():
-    # 加载配置
-    config_manager = DynamicConfigManager()
-    await config_manager.load_from_file("config/config.json")
-    
-    # 创建组件
-    user_service = UserService()
-    my_agent = MyAgent()
-    
-    # 注册组件
-    bean_factory = BeanFactory()
-    bean_factory.register_bean("user_service", user_service)
-    bean_factory.register_bean("my_agent", my_agent)
-    
-    # 初始化组件
-    lifecycle_manager = LifecycleManager()
-    lifecycle_manager.register(user_service)
-    lifecycle_manager.register(my_agent)
-    await lifecycle_manager.post_construct_all()
-    
-    # 运行 Agent
-    agent = await bean_factory.get_bean("my_agent")
-    result = await agent.arun("用户 1")
-    print(f"Agent: {result}")
-    
-    # 销毁组件
-    await lifecycle_manager.pre_destroy_all()
+- 每个异步操作只有一个生命周期所有者。
+- `asyncio.TaskGroup` 管理同一操作的子任务。
+- 取消信号必须传播到模型流、工具、Workflow 和沙箱。
+- 关闭流程先拒绝新工作，再等待静默，最后清理资源。
+- 依赖卸载与插件热更新必须等待受影响工作到达安全点。
+- 不允许后台任务脱离所有者后继续修改已卸载服务。
 
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+## 8. 安全规则
 
-## 🧩 组件开发
+- Docker/OCI 是编码 Agent 的默认执行后端。
+- `UnsafeLocalSandbox` 必须由本机用户明确开启。
+- 工程装配导入不能携带或授予本地执行许可。
+- 沙箱不可用时失败关闭。
+- 插件安装、升级和首次运行需要明确操作。
+- 日志、事件和导出清单不得包含凭据。
 
-### 1. 依赖注入
+## 9. 测试要求
 
-#### 构造器注入
+首版计划要求每个能力至少覆盖：
 
-```python
-from w_agent import ServiceComponent
+- 协议与配置单元测试。
+- Provider/Consumer 组合测试。
+- 注册撤销和插件卸载测试。
+- 缺失依赖、冲突版本和失败回滚测试。
+- 取消、超时和关闭测试。
+- 事件录制与回放测试。
+- 客服或编码模板的真实组合测试。
 
-@ServiceComponent(name="order_service")
-class OrderService:
-    def __init__(self, user_service):
-        self.user_service = user_service
-```
+模型测试优先使用确定性 Mock；真实 API 测试必须显式启用并避免泄漏凭据。
 
-#### Setter 注入
+## 10. 文档规则
 
-```python
-from w_agent import ServiceComponent, Autowired, Qualifier
+- 中文文件与 `.en.md` 英文文件同时修改。
+- README 只描述可验证的当前状态和清晰标记的计划。
+- 新能力更新架构、路线图、API 和对应专题文档。
+- `Reserved` 能力不得写成待办承诺或现有 API。
+- 示例中的计划 API 必须明确标记为不可执行设计示例。
 
-@ServiceComponent(name="order_service")
-class OrderService:
-    @Autowired
-    @Qualifier(name="user_service")
-    def set_user_service(self, user_service):
-        self.user_service = user_service
-```
+## 11. 兼容策略
 
-#### 字段注入
+1.x 使用人数有限，因此只保留基础兼容。下一代 API 直接占用 `w_agent` 顶层命名空间；旧 `BaseAgent` 等接口由兼容适配器承载。新特性不继续加入 1.x 抽象。
 
-```python
-from w_agent import ServiceComponent, Autowired
-
-@ServiceComponent(name="order_service")
-class OrderService:
-    @Autowired
-    user_service = None
-```
-
-### 2. 配置绑定
-
-```python
-from w_agent import ServiceComponent
-
-@ServiceComponent(name="api_service")
-class ApiService:
-    def __init__(self, config_manager):
-        self.api_key = None
-        self.api_url = None
-        
-        # 绑定配置
-        config_manager.bind("api.key", self, "api_key")
-        config_manager.bind("api.url", self, "api_url")
-    
-    async def on_config_change(self, key, new_value, old_value):
-        print(f"配置变更: {key} = {new_value}")
-```
-
-### 3. 事件处理
-
-```python
-from w_agent import ServiceComponent, PostConstruct
-
-@ServiceComponent(name="notification_service")
-class NotificationService:
-    def __init__(self, event_bus):
-        self.event_bus = event_bus
-    
-    @PostConstruct
-    def init(self):
-        # 订阅事件
-        self.event_bus.on("user.created", self.on_user_created)
-        self.event_bus.on("order.placed", self.on_order_placed)
-    
-    async def on_user_created(self, event):
-        print(f"发送用户创建通知: {event.payload}")
-    
-    async def on_order_placed(self, event):
-        print(f"发送订单通知: {event.payload}")
-```
-
-### 4. AOP 切面
-
-#### 自定义切面
-
-```python
-from w_agent import AspectJPointcut, BeforeAdvice, AfterAdvice, ProxyFactory
-
-# 定义目标类
-class UserService:
-    def get_user(self, user_id):
-        return {"id": user_id, "name": "John"}
-
-# 创建通知
-async def before_advice(joinpoint):
-    print(f"调用方法: {joinpoint.method_name}")
-
-async def after_advice(joinpoint, result):
-    print(f"方法返回: {result}")
-
-# 创建切点
-pointcut = AspectJPointcut("execution(* UserService.get_user(*))")
-
-# 创建代理
-proxy_factory = ProxyFactory()
-target = UserService()
-advices = [BeforeAdvice(before_advice), AfterAdvice(after_advice)]
-proxy = proxy_factory.create_proxy(target, {"get_user": advices})
-
-# 调用方法
-result = await proxy.get_user(123)
-```
-
-## ⚡ 高级特性
-
-### 1. 分布式锁
-
-```python
-from w_agent import RedisDistributedLock, LockRenewalPool
-
-# 创建 Redis 客户端
-import redis
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
-
-# 创建分布式锁
-lock = RedisDistributedLock(redis_client, "resource_lock", timeout=60)
-
-# 获取锁
-acquired = await lock.acquire()
-if acquired:
-    try:
-        # 执行需要锁定的操作
-        print("获取锁成功，执行操作")
-    finally:
-        # 释放锁
-        await lock.release()
-
-# 使用锁续期池
-pool = LockRenewalPool()
-pool.start_renewal("resource_lock", lock)
-
-# 停止续期
-await pool.stop_renewal("resource_lock")
-
-# 关闭池
-await pool.shutdown()
-```
-
-### 2. 可观测性
-
-```python
-from w_agent import global_tracer, CompositeHealthIndicator, HealthIndicator
-
-# 使用链路追踪
-with global_tracer().start_as_current_span("user_service.get_user") as span:
-    span.set_attribute("user_id", "123")
-    # 执行操作
-
-# 健康检查
-class DatabaseHealthIndicator(HealthIndicator):
-    def __init__(self, db_client):
-        self.db_client = db_client
-    
-    async def health_check(self):
-        try:
-            # 测试数据库连接
-            await self.db_client.ping()
-            return {"status": "UP", "details": {"database": "healthy"}}
-        except Exception as e:
-            return {"status": "DOWN", "details": {"database": str(e)}}
-
-# 创建复合健康指示器
-health_indicator = CompositeHealthIndicator()
-health_indicator.add_indicator("database", DatabaseHealthIndicator(db_client))
-
-# 执行健康检查
-health_status = await health_indicator.health()
-print(f"健康状态: {health_status}")
-```
-
-### 3. 技能系统
-
-```python
-from w_agent import Skill, WasmSkillSandbox
-from pathlib import Path
-
-# 创建技能
-skill = Skill(
-    name="weather_skill",
-    description="天气查询技能",
-    scripts={"query": Path("weather.py")}
-)
-
-# 执行技能
-sandbox = WasmSkillSandbox()
-try:
-    result = await sandbox.execute(skill, "query", {"city": "北京"})
-    print(f"技能执行结果: {result}")
-finally:
-    await sandbox.close()
-```
-
-### 4. LangChain 集成
-
-```python
-from w_agent import LangChainAdapter
-
-# 创建 LangChain 适配器
-adapter = LangChainAdapter()
-
-# 使用 LangChain 组件
-from langchain.llms import OpenAI
-llm = OpenAI(api_key="your-api-key")
-
-# 适配 LangChain LLM 到 W-Agent
-w_agent_llm = adapter.adapt_llm(llm)
-
-# 使用适配后的 LLM
-result = await w_agent_llm.generate("Hello, world!")
-print(f"LLM 生成结果: {result}")
-```
-
-## 🚀 性能优化
-
-### 1. 缓存策略
-
-```python
-from w_agent import ServiceComponent, PostConstruct
-
-@ServiceComponent(name="user_service")
-class UserService:
-    def __init__(self, redis_service):
-        self.redis_service = redis_service
-        self.cache_ttl = 3600  # 缓存过期时间（秒）
-    
-    async def get_user(self, user_id):
-        # 尝试从缓存获取
-        cache_key = f"user:{user_id}"
-        cached_user = self.redis_service.get(cache_key)
-        if cached_user:
-            return cached_user
-        
-        # 从数据库获取
-        user = await self._fetch_user_from_db(user_id)
-        
-        # 存入缓存
-        if user:
-            self.redis_service.set(cache_key, user, expire=self.cache_ttl)
-        
-        return user
-    
-    async def _fetch_user_from_db(self, user_id):
-        # 从数据库获取用户
-        pass
-```
-
-### 2. 异步处理
-
-```python
-from w_agent import ServiceComponent
-import asyncio
-
-@ServiceComponent(name="data_service")
-class DataService:
-    async def process_batch(self, items):
-        # 并行处理多个项目
-        tasks = [self.process_item(item) for item in items]
-        results = await asyncio.gather(*tasks)
-        return results
-    
-    async def process_item(self, item):
-        # 处理单个项目
-        pass
-```
-
-### 3. 连接池
-
-```python
-from w_agent import ServiceComponent, PostConstruct, PreDestroy
-import aiohttp
-
-@ServiceComponent(name="http_service")
-async def HttpService:
-    def __init__(self):
-        self.session = None
-    
-    @PostConstruct
-    async def init(self):
-        # 创建连接池
-        self.session = aiohttp.ClientSession()
-    
-    @PreDestroy
-    async def cleanup(self):
-        # 关闭连接池
-        if self.session:
-            await self.session.close()
-    
-    async def get(self, url):
-        async with self.session.get(url) as response:
-            return await response.json()
-```
-
-## 🧪 测试策略
-
-### 1. 单元测试
-
-```python
-import pytest
-from w_agent import BeanFactory
-from src.services.user_service import UserService
-
-@pytest.mark.asyncio
-async def test_user_service():
-    # 创建服务实例
-    user_service = UserService()
-    
-    # 初始化服务
-    user_service.init()
-    
-    # 测试获取用户
-    user = user_service.get_user("1")
-    assert user["id"] == "1"
-    assert user["name"] == "John"
-    
-    # 测试获取不存在的用户
-    user = user_service.get_user("999")
-    assert "error" in user
-```
-
-### 2. 集成测试
-
-```python
-import pytest
-import asyncio
-from w_agent import BeanFactory, LifecycleManager
-from src.agents.my_agent import MyAgent
-from src.services.user_service import UserService
-
-@pytest.mark.asyncio
-async def test_agent_integration():
-    # 创建组件
-    user_service = UserService()
-    my_agent = MyAgent()
-    
-    # 注册组件
-    bean_factory = BeanFactory()
-    bean_factory.register_bean("user_service", user_service)
-    bean_factory.register_bean("my_agent", my_agent)
-    
-    # 初始化组件
-    lifecycle_manager = LifecycleManager()
-    lifecycle_manager.register(user_service)
-    lifecycle_manager.register(my_agent)
-    await lifecycle_manager.post_construct_all()
-    
-    # 自动注入依赖
-    await bean_factory.autowire_all()
-    
-    # 测试 Agent
-    agent = await bean_factory.get_bean("my_agent")
-    result = await agent.arun("用户 1")
-    assert "John" in result
-    
-    # 清理
-    await lifecycle_manager.pre_destroy_all()
-```
-
-### 3. 模拟工具
-
-```python
-from w_agent import mock_utils
-
-# 模拟服务
-mock_user_service = mock_utils.create_mock_service(
-    "user_service",
-    get_user=lambda user_id: {"id": user_id, "name": "Mock User"}
-)
-
-# 使用模拟服务
-user = mock_user_service.get_user("123")
-print(f"模拟用户: {user}")
-```
-
-## 📦 部署指南
-
-### 1. 容器化部署
-
-```dockerfile
-# Dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD ["python", "app.py"]
-```
-
-### 2. Serverless 部署
-
-```python
-# serverless/lambda_handler.py
-import asyncio
-from w_agent import BeanFactory, LifecycleManager
-from src.agents.my_agent import MyAgent
-from src.services.user_service import UserService
-
-async def handle_event(event, context):
-    # 初始化组件
-    user_service = UserService()
-    my_agent = MyAgent()
-    
-    # 注册组件
-    bean_factory = BeanFactory()
-    bean_factory.register_bean("user_service", user_service)
-    bean_factory.register_bean("my_agent", my_agent)
-    
-    # 初始化
-    lifecycle_manager = LifecycleManager()
-    lifecycle_manager.register(user_service)
-    lifecycle_manager.register(my_agent)
-    await lifecycle_manager.post_construct_all()
-    
-    # 处理请求
-    prompt = event.get("prompt", "Hello")
-    agent = await bean_factory.get_bean("my_agent")
-    result = await agent.arun(prompt)
-    
-    # 清理
-    await lifecycle_manager.pre_destroy_all()
-    
-    return {"response": result}
-
-def lambda_handler(event, context):
-    return asyncio.run(handle_event(event, context))
-```
-
-### 3. FastAPI 集成
-
-```python
-from fastapi import FastAPI
-from w_agent import BeanFactory, LifecycleManager
-from src.agents.my_agent import MyAgent
-from src.services.user_service import UserService
-
-# 创建 FastAPI 应用
-app = FastAPI()
-
-# 全局组件
-bean_factory = None
-lifecycle_manager = None
-
-@app.on_event("startup")
-async def startup():
-    global bean_factory, lifecycle_manager
-    
-    # 创建组件
-    user_service = UserService()
-    my_agent = MyAgent()
-    
-    # 注册组件
-    bean_factory = BeanFactory()
-    bean_factory.register_bean("user_service", user_service)
-    bean_factory.register_bean("my_agent", my_agent)
-    
-    # 初始化
-    lifecycle_manager = LifecycleManager()
-    lifecycle_manager.register(user_service)
-    lifecycle_manager.register(my_agent)
-    await lifecycle_manager.post_construct_all()
-    
-    # 自动注入依赖
-    await bean_factory.autowire_all()
-
-@app.on_event("shutdown")
-async def shutdown():
-    global lifecycle_manager
-    if lifecycle_manager:
-        await lifecycle_manager.pre_destroy_all()
-
-@app.post("/chat")
-async def chat(prompt: str):
-    agent = await bean_factory.get_bean("my_agent")
-    result = await agent.arun(prompt)
-    return {"response": result}
-```
-
-## ❓ 常见问题
-
-### 1. 依赖注入失败
-
-**症状**：`BeanNotFoundError` 或 `InjectionError`
-
-**原因**：
-- 组件未注册到 BeanFactory
-- 依赖项名称不匹配
-- 依赖类型不匹配
-
-**解决**：
-- 确保所有组件都已正确注册
-- 检查依赖项名称是否正确
-- 确保依赖类型匹配
-
-### 2. 配置不生效
-
-**症状**：配置值未更新或使用默认值
-
-**原因**：
-- 配置文件路径错误
-- 环境变量覆盖了配置文件
-- 配置键名错误
-
-**解决**：
-- 检查配置文件路径是否正确
-- 检查环境变量是否覆盖了配置
-- 检查配置键名是否正确
-
-### 3. 沙箱执行失败
-
-**症状**：`SkillSandboxError`、技能执行错误或执行超时
-
-**原因**：
-- `wasmer-sdk` 未安装或运行在不受支持的原生 Windows 环境
-- nsjail 或隔离 rootfs 未安装
-- 技能脚本有错误
-- 资源限制过严
-
-**解决**：
-- 在 Linux/macOS（Windows 使用 WSL2）安装 `wagent-framework[wasm]`
-- 确保 nsjail 与隔离 rootfs 已正确安装
-- 检查技能脚本是否正确
-- 调整沙箱资源限制
-
-### 4. 性能问题
-
-**症状**：响应缓慢或内存占用高
-
-**原因**：
-- 缓存未使用
-- 同步操作阻塞
-- 连接未池化
-
-**解决**：
-- 实现缓存策略
-- 使用异步操作
-- 使用连接池
-
-### 5. 可观测性问题
-
-**症状**：日志缺失或指标不完整
-
-**原因**：
-- 日志配置错误
-- 指标收集未启用
-- 追踪未配置
-
-**解决**：
-- 检查日志配置
-- 启用指标收集
-- 配置追踪导出器
-
-## 📄 许可证
-
-本项目采用 [MIT 许可证](../LICENSE)。
+详见[1.x 迁移](./migration-1x.md)。
