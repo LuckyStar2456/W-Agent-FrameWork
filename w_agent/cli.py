@@ -24,7 +24,7 @@ from w_agent.compositions import (
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.core.doctor import Doctor
-from w_agent.models import EndpointProbe
+from w_agent.models import AttemptRecord, EndpointProbe
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
     assemble_local_runtime,
@@ -218,6 +218,7 @@ def run_command(
             "output": result.output,
             "steps": result.steps,
             "tool_calls": result.tool_calls,
+            "attempts": [_attempt_payload(item) for item in result.attempts],
             "usage": {
                 "input_tokens": result.usage.input_tokens,
                 "output_tokens": result.usage.output_tokens,
@@ -509,6 +510,10 @@ def _session_payload(
 ) -> dict[str, Any]:
     input_tokens = sum(item.usage.input_tokens for item in session.runs)
     output_tokens = sum(item.usage.output_tokens for item in session.runs)
+    model_calls = sum(item.model_calls for item in session.runs)
+    reported_usage_calls = sum(
+        item.reported_usage_calls for item in session.runs
+    )
     payload: dict[str, Any] = {
         "session_id": session.session_id,
         "title": session.title,
@@ -518,6 +523,8 @@ def _session_payload(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
+        "model_calls": model_calls,
+        "reported_usage_calls": reported_usage_calls,
         "usage_complete": all(item.usage_complete for item in session.runs),
         "created_at": session.created_at.isoformat(),
         "updated_at": session.updated_at.isoformat(),
@@ -546,12 +553,40 @@ def _session_payload(
                 "usage_complete": item.usage_complete,
                 "steps": item.steps,
                 "tool_calls": item.tool_calls,
+                "model_calls": item.model_calls,
+                "reported_usage_calls": item.reported_usage_calls,
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
             }
             for item in session.runs
         ]
     return payload
+
+
+def _attempt_payload(attempt: AttemptRecord) -> dict[str, Any]:
+    return {
+        "ordinal": attempt.ordinal,
+        "route_index": attempt.route_index,
+        "route_attempt": attempt.route_attempt,
+        "provider": attempt.provider,
+        "model": attempt.model,
+        "outcome": attempt.outcome.value,
+        "duration_ms": attempt.duration_ms,
+        "failure_code": (
+            attempt.failure.code if attempt.failure is not None else None
+        ),
+        "usage": (
+            {
+                "input_tokens": attempt.usage.input_tokens,
+                "output_tokens": attempt.usage.output_tokens,
+                "cached_input_tokens": attempt.usage.cached_input_tokens,
+                "total_tokens": attempt.usage.total_tokens,
+            }
+            if attempt.usage is not None
+            else None
+        ),
+        "usage_reported": attempt.usage_reported,
+    }
 
 
 def _fail(message: str) -> None:

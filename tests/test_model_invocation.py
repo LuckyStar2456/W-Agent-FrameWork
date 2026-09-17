@@ -24,6 +24,8 @@ from w_agent import (
     ModelRouter,
     TextContent,
     TextDelta,
+    TokenUsage,
+    UsageEvent,
     WeightedRoutingPolicy,
 )
 
@@ -67,10 +69,15 @@ class ScriptedProvider:
             yield BlockStart(0, "text")
             yield TextDelta(0, "partial")
             raise ModelError(outcome.failure)
+        usage = None
+        if isinstance(outcome, tuple):
+            outcome, usage = outcome
         text = str(outcome)
         yield BlockStart(0, "text")
         yield TextDelta(0, text)
         yield BlockEnd(0, TextContent(text))
+        if usage is not None:
+            yield UsageEvent(usage)
         yield FinishEvent(FinishReason.STOP)
 
 
@@ -104,7 +111,7 @@ def _executor(primary, backup=None, *, policy=None, sleep=asyncio.sleep):
 
 @pytest.mark.asyncio
 async def test_executor_returns_response_decision_and_prompt_free_attempt():
-    primary = ScriptedProvider("primary", "chat", ["ok"])
+    primary = ScriptedProvider("primary", "chat", [("ok", TokenUsage(4, 2, 1))])
     executor = _executor(primary)
 
     result = await executor.invoke(_request("primary/chat"))
@@ -113,13 +120,19 @@ async def test_executor_returns_response_decision_and_prompt_free_attempt():
     assert (result.provider, result.model) == ("primary", "chat")
     assert result.attempts[0].outcome == AttemptOutcome.SUCCEEDED
     assert result.attempts[0].failure is None
+    assert result.attempts[0].usage == TokenUsage(4, 2, 1)
+    assert result.attempts[0].usage_reported is True
     assert "private prompt" not in repr(result.attempts)
     assert primary.requests[0].model == "chat"
 
 
 @pytest.mark.asyncio
 async def test_executor_retries_retryable_failure_with_bounded_backoff():
-    primary = ScriptedProvider("primary", "chat", [_failure(), "recovered"])
+    primary = ScriptedProvider(
+        "primary",
+        "chat",
+        [_failure(), ("recovered", TokenUsage(5, 3))],
+    )
     delays = []
 
     async def record_sleep(delay):
@@ -143,6 +156,9 @@ async def test_executor_retries_retryable_failure_with_bounded_backoff():
         AttemptOutcome.SUCCEEDED,
     ]
     assert result.attempts[0].next_delay == 0.5
+    assert result.attempts[0].usage is None
+    assert result.attempts[0].usage_reported is False
+    assert result.attempts[1].usage == TokenUsage(5, 3)
     assert delays == [0.5]
 
 

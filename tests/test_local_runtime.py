@@ -99,7 +99,11 @@ async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_pa
     assert run.result.output == "hello"
     assert run.result.usage == TokenUsage(3, 2)
     assert run.result.usage_complete is True
+    assert len(run.result.attempts) == 1
+    assert run.result.attempts[0].usage == TokenUsage(3, 2)
     assert run.session.runs[0].usage.total_tokens == 5
+    assert run.session.runs[0].model_calls == 1
+    assert run.session.runs[0].reported_usage_calls == 1
     assert captured["api_key"] == "not-persisted"
     records = list((tmp_path / ".wagent" / "sessions").glob("*.json"))
     assert len(records) == 1

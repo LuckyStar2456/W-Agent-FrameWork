@@ -11,6 +11,7 @@ from typing import Any, Mapping, Protocol
 
 from w_agent.kernel import ScopePath
 from w_agent.models import (
+    AttemptRecord,
     CancellationToken,
     ModelMessage,
     TokenUsage,
@@ -168,6 +169,7 @@ class RunCheckpoint:
     usage: TokenUsage = field(default_factory=TokenUsage)
     model_calls: int = 0
     reported_usage_calls: int = 0
+    attempts: tuple[AttemptRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -182,6 +184,7 @@ class RunCheckpoint:
         if self.reported_usage_calls > self.model_calls:
             raise ValueError("reported usage calls cannot exceed model calls")
         object.__setattr__(self, "messages", tuple(self.messages))
+        object.__setattr__(self, "attempts", tuple(self.attempts))
         object.__setattr__(
             self,
             "remaining_tool_calls",
@@ -203,10 +206,16 @@ class RunResult:
     usage: TokenUsage = field(default_factory=TokenUsage)
     model_calls: int = 0
     reported_usage_calls: int = 0
+    attempts: tuple[AttemptRecord, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "messages", tuple(self.messages))
+        object.__setattr__(self, "events", tuple(self.events))
+        object.__setattr__(self, "attempts", tuple(self.attempts))
 
     @property
     def usage_complete(self) -> bool:
-        """Whether every completed model call supplied usage metadata."""
+        """Whether every model attempt supplied usage metadata."""
 
         return self.reported_usage_calls == self.model_calls
 

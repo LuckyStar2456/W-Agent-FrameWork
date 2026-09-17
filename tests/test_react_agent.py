@@ -6,10 +6,14 @@ from w_agent import (
     BlockStart,
     FinishEvent,
     FinishReason,
+    InvocationPolicy,
     MessageRole,
     ModelCapability,
     ModelDescriptor,
+    ModelError,
     ModelExecutor,
+    ModelFailure,
+    ModelFailureKind,
     ModelMessage,
     ModelRegistry,
     ModelRouter,
@@ -62,6 +66,8 @@ class AgentProvider:
     async def stream(self, request, *, cancellation=None):
         self.requests.append(request)
         response = self.responses.pop(0)
+        if isinstance(response, ModelFailure):
+            raise ModelError(response)
         blocks, reason = response[:2]
         for index, block in enumerate(blocks):
             yield BlockStart(index, block.type)
@@ -73,7 +79,7 @@ class AgentProvider:
         yield FinishEvent(reason)
 
 
-def _loop(responses, binding, *, store=None):
+def _loop(responses, binding, *, store=None, policy=None):
     provider = AgentProvider(responses)
     models = ModelRegistry()
     models.register("fake", provider)
@@ -81,7 +87,7 @@ def _loop(responses, binding, *, store=None):
         models,
         WeightedRoutingPolicy(preferred_providers=("fake",)),
     )
-    model_executor = ModelExecutor(models, router)
+    model_executor = ModelExecutor(models, router, policy)
     tools = ToolRegistry()
     tools.register_binding(binding)
     tool_executor = ToolExecutor(tools)
@@ -307,6 +313,12 @@ async def test_react_loop_exposes_cumulative_input_and_output_usage():
     ]
     assert usage_events[-1].data["input_tokens"] == 22
     assert usage_events[-1].data["output_tokens"] == 5
+    model_events = [
+        event for event in result.events if event.type == RunEventType.MODEL_COMPLETED
+    ]
+    assert model_events[0].data["attempt_usage_complete"] is True
+    assert model_events[0].data["attempts"][0]["input_tokens"] == 10
+    assert model_events[1].data["attempts"][0]["output_tokens"] == 3
     assert result.events[-1].data["usage_complete"] is True
 
 
@@ -376,6 +388,90 @@ async def test_react_loop_can_fail_closed_when_provider_omits_usage():
 
 
 @pytest.mark.asyncio
+async def test_react_attempt_ledger_marks_retry_usage_incomplete():
+    loop, _ = _loop(
+        [
+            ModelFailure(
+                ModelFailureKind.NETWORK,
+                "temporary",
+                "temporary failure",
+                retryable=True,
+            ),
+            (
+                (TextContent("recovered"),),
+                FinishReason.STOP,
+                TokenUsage(7, 2),
+            ),
+        ],
+        python_tool(lambda: "unused", name="unused"),
+        policy=InvocationPolicy(max_attempts_per_route=2, initial_backoff=0),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "strict-retry",
+            token_budget=TokenBudget(require_usage=True),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.TOKEN_USAGE_UNAVAILABLE
+    assert result.model_calls == 2
+    assert result.reported_usage_calls == 1
+    assert result.usage == TokenUsage(7, 2)
+    assert result.usage_complete is False
+    assert [item.outcome.value for item in result.attempts] == [
+        "failed",
+        "succeeded",
+    ]
+    completed = next(
+        event for event in result.events if event.type is RunEventType.MODEL_COMPLETED
+    )
+    assert completed.data["attempt_usage_complete"] is False
+    assert completed.data["attempts"][0]["failure_code"] == "temporary"
+
+
+@pytest.mark.asyncio
+async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_path):
+    store = JsonlRunStore(tmp_path)
+    loop, _ = _loop(
+        [
+            ModelFailure(
+                ModelFailureKind.NETWORK,
+                "temporary",
+                "secret provider response",
+                retryable=True,
+            ),
+            (
+                (ToolCallContent("write-1", "save", '{"text":"value"}'),),
+                FinishReason.TOOL_CALLS,
+                TokenUsage(6, 2),
+            ),
+        ],
+        python_tool(
+            lambda text: text,
+            name="save",
+            side_effect=ToolSideEffect.WRITE,
+        ),
+        store=store,
+        policy=InvocationPolicy(max_attempts_per_route=2, initial_backoff=0),
+    )
+
+    result = await loop.run(AgentDefinition("writer"), _context())
+    checkpoint = await JsonlRunStore(tmp_path).load_checkpoint("run-1")
+    persisted = (tmp_path / "runs" / "run-1" / "checkpoint.json").read_text(
+        encoding="utf-8"
+    )
+
+    assert result.stop_reason is StopReason.NEEDS_APPROVAL
+    assert checkpoint is not None
+    assert len(checkpoint.attempts) == 2
+    assert checkpoint.attempts[0].failure is not None
+    assert "omitted" in checkpoint.attempts[0].failure.message
+    assert "secret provider response" not in persisted
+
+
+@pytest.mark.asyncio
 async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_path):
     saved = []
 
@@ -441,6 +537,9 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
     assert all(event.session_id == "session-1" for event in resumed.events)
     assert resumed.usage == TokenUsage(22, 5)
     assert resumed.usage_complete is True
+    assert len(resumed.attempts) == 2
+    assert resumed.attempts[0].usage == TokenUsage(10, 2)
+    assert resumed.attempts[1].usage == TokenUsage(12, 3)
     assert await second_store.load_checkpoint("run-1") is None
     assert (tmp_path / "runs" / "run-1" / "events.jsonl").is_file()
 

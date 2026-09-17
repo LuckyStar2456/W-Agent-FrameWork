@@ -107,7 +107,7 @@ class RoutingPolicy(Protocol):
 
 `RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略，仍不直接执行调用。
 
-`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，使用 `ModelStreamValidator` 实时校验和透传事件；首个事件可见前允许按策略重试/故障转移，之后禁止静默重放。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 记录已输出事件数但不包含 Prompt 或凭据。执行失败抛出携带决定和全部已完成尝试的 `ModelInvocationError`。
+`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，使用 `ModelStreamValidator` 实时校验和透传事件；首个事件可见前允许按策略重试/故障转移，之后禁止静默重放。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 记录已输出事件数、Provider 明确报告的 TokenUsage 和完整性标记，但不包含 Prompt 或凭据。执行失败抛出携带决定和全部已完成尝试的 `ModelInvocationError`。
 
 ## 6. 探测协议
 
@@ -135,7 +135,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage`、`RunResult.attempts` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值与尝试账本。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
 
 ## 8. Workflow 协议
 

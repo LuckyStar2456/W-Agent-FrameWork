@@ -21,6 +21,7 @@ from .types import (
     ModelStreamProtocolError,
     ModelStreamValidator,
     StreamEvent,
+    TokenUsage,
     collect_stream,
 )
 
@@ -110,6 +111,8 @@ class AttemptRecord:
     events_emitted: int = 0
     failure: ModelFailure | None = None
     next_delay: float | None = None
+    usage: TokenUsage | None = None
+    usage_reported: bool = False
 
     def __post_init__(self) -> None:
         if self.ordinal < 1 or self.route_index < 0 or self.route_attempt < 1:
@@ -122,6 +125,8 @@ class AttemptRecord:
             raise ValueError("successful attempts cannot have a failure")
         if self.outcome == AttemptOutcome.FAILED and self.failure is None:
             raise ValueError("failed attempts need a failure")
+        if self.usage_reported != (self.usage is not None):
+            raise ValueError("attempt usage value and reporting flag must agree")
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,6 +305,8 @@ class ModelExecutor:
                         outcome=AttemptOutcome.SUCCEEDED,
                         started_at=started_at,
                         started=started,
+                        usage=(response.usage if response.usage_reported else None),
+                        usage_reported=response.usage_reported,
                     )
                 )
                 return ModelInvocationResult(
@@ -453,6 +460,8 @@ class ModelExecutor:
                         started_at=started_at,
                         started=started,
                         events_emitted=emitted,
+                        usage=(response.usage if response.usage_reported else None),
+                        usage_reported=response.usage_reported,
                     )
                 )
                 execution.provider = provider_name
@@ -510,6 +519,8 @@ def _attempt_record(
     failure: ModelFailure | None = None,
     next_delay: float | None = None,
     events_emitted: int = 0,
+    usage: TokenUsage | None = None,
+    usage_reported: bool = False,
 ) -> AttemptRecord:
     return AttemptRecord(
         ordinal=ordinal,
@@ -524,6 +535,8 @@ def _attempt_record(
         events_emitted=events_emitted,
         failure=failure,
         next_delay=next_delay,
+        usage=usage,
+        usage_reported=usage_reported,
     )
 
 

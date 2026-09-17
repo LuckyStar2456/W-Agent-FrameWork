@@ -42,7 +42,7 @@ wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, input/output/cached tokens, and `usage_complete` without starting a model or incurring cost. The TUI currently supports create, refresh, archive, and unarchive; configured agent start remains `Planned`.
+The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, model-attempt/usage-report counts, input/output/cached tokens, and `usage_complete` without starting a model or incurring cost. The TUI supports create, refresh, archive, and unarchive; configured text agents can start on the Run screen, while configured tools and approval-resume UI remain `Planned`.
 
 The next `run_agent()` prepends previously projected text messages by default. Set `include_history=False` to disable automatic context assembly; the current input and result are still recorded.
 

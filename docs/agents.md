@@ -71,9 +71,9 @@ definition = AgentDefinition(
 
 Run 事件包含重建模型上下文所需的模型文本、工具参数和结果阶段信息，因此调用者必须把它们视为可能含敏感数据的本地运行内容。工具审计是另一条记录，只保存参数名等最小元数据。当前 Store 不负责加密，保存目录的访问控制由本地应用负责。
 
-`MODEL_COMPLETED` 包含本次输入、输出、总量、缓存输入 Token 和 `usage_reported`；随后产生的 `TOKEN_USAGE` 包含 Run 累计值。`RunResult.usage` 可直接读取最终累计值，`usage_complete` 表明是否每次模型调用都收到 Provider 用量。真实零用量与未上报不会混淆。
+`MODEL_COMPLETED` 包含本次响应 Token、逐尝试账本和 `attempt_usage_complete`；失败模型阶段也记录不含 Prompt/凭据的尝试摘要。随后产生的 `TOKEN_USAGE` 包含 Run 累计已知值。`RunResult.attempts` 提供强类型完整账本，`RunResult.usage` 提供累计已知用量，`usage_complete` 表明包括重试/故障转移在内的每次模型尝试是否都收到 Provider 用量。真实零用量与未上报不会混淆。
 
-Token 硬预算在每个成功响应后按 Provider 实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。因为核心层不假设某个分词器，首个请求输入量无法精确预知；失败或中断的重试尝试也可能没有 Usage。需要严格可核算时设置 `require_usage=True`，成功响应缺少用量会以 `TOKEN_USAGE_UNAVAILABLE` 停止。Session/Agent 聚合、逐尝试账本、调用前估算、软阈值和基于版本化价格表的费用预算仍在计划中。
+Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。因为核心层不假设某个分词器，首个请求输入量无法精确预知；失败或中断尝试可能没有 Usage。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。Session 级累计与逐尝试账本已实现；Agent 跨 Session 聚合、调用前估算、软阈值和基于版本化价格表的费用预算仍在计划中。
 
 当前 ReAct 使用模型执行器的收集式 `invoke()`，所以 Run 事件尚不包含文本逐 Token 增量。模型层本身已经支持安全透传，接入 Agent 文本增量 RunEvent 是后续工作。
 

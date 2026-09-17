@@ -241,6 +241,7 @@ class WAgentTui(App[None]):
             (
                 f"{item.session_id} | {item.status.value} | {item.title} | "
                 f"runs={len(item.runs)} | "
+                f"attempts={sum(run.model_calls for run in item.runs)} | "
                 f"tokens={sum(run.usage.total_tokens for run in item.runs)}"
             )
             for item in sessions
@@ -281,6 +282,7 @@ class WAgentTui(App[None]):
             f"Session: {run.session.session_id}\n"
             f"Run: {result.run_id}\n"
             f"Stop: {result.stop_reason.value}\n"
+            f"Attempts: {len(result.attempts)}\n"
             f"Tokens: in={result.usage.input_tokens}, "
             f"out={result.usage.output_tokens}, "
             f"total={result.usage.total_tokens}, "

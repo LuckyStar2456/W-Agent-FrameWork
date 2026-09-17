@@ -49,7 +49,7 @@ wagent run "Explain this repository" `
   --json
 ```
 
-`--confirm-model-call` 是每次命令必需的显式授权。成功结果包含 Session ID、Run ID、停止原因、最终文本、步骤/工具计数，以及输入、输出、缓存输入、总 Token 与完整性标记。使用 `--session <id>` 可继续已有文本 Session。
+`--confirm-model-call` 是每次命令必需的显式授权。成功结果包含 Session ID、Run ID、停止原因、最终文本、步骤/工具计数、逐尝试账本，以及输入、输出、缓存输入、总 Token 与完整性标记。使用 `--session <id>` 可继续已有文本 Session。
 
 ## TUI
 
@@ -59,7 +59,7 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 
 - `max_output_tokens` 是单次模型请求的输出上限。
 - `max_input_tokens`、`max_cumulative_output_tokens`、`max_total_tokens` 是一个 Run 内的累计上限。
-- `require_usage=true` 时，只要某次模型响应未报告用量，Run 就以 `token-usage-unavailable` 停止。
+- `require_usage=true` 时，只要某次模型尝试未报告用量（包括成功重试之前的失败尝试），Run 就以 `token-usage-unavailable` 停止。
 - Provider 报告的用量只能在调用后核算；当前没有调用前 Token 估算器，因此首个调用仍可能越过累计上限。
 - 将 `max_attempts_per_route` 或 `max_routes` 设为大于 1 会授权额外、可能计费的重试或故障转移。
 

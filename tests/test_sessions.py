@@ -83,6 +83,8 @@ async def test_session_projects_text_history_across_agent_runs(tmp_path):
     stored = await reopened.get("support-1")
     assert [item.run_id for item in stored.runs] == ["run-1", "run-2"]
     assert stored.runs[0].usage.total_tokens == 7
+    assert stored.runs[0].model_calls == 1
+    assert stored.runs[0].reported_usage_calls == 1
     assert [item.text for item in stored.messages] == [
         "first question",
         "first answer",

@@ -169,7 +169,7 @@ The default policy permits one attempt on one route, so it never creates extra p
 
 Collecting mode validates the complete provider stream through `collect_stream()` before returning, so policy-driven route switching remains safe before results become visible. Pass-through mode validates and yields each event incrementally: retry or failover is allowed before the first event becomes visible, but any later failure terminates the execution without silent replay, preventing duplicated text or tool-call deltas. In pass-through mode, `timeout` bounds waiting for the provider's next frame and excludes time spent by the caller processing an event.
 
-Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. Attempt records contain provider/model identity, indexes, duration, emitted-event count, normalized failure, and next delay only—never messages, prompts, bodies, or credentials. Ordinary model execution does not mutate `CandidateState`; health feedback must be attached through an explicit observation or registration-probe service.
+Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. `AttemptRecord` contains provider/model identity, indexes, duration, emitted-event count, normalized failure, next delay, and TokenUsage/`usage_reported` when explicitly supplied by the provider—never messages, prompts, bodies, or credentials. Missing usage for a failed attempt remains unknown rather than being inferred as zero. Ordinary model execution does not mutate `CandidateState`; health feedback must be attached through an explicit observation or registration-probe service.
 
 ## Endpoint probing
 

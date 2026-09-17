@@ -15,9 +15,13 @@ from typing import Any, Mapping, Protocol
 
 from w_agent.kernel import ScopePath
 from w_agent.models import (
+    AttemptOutcome,
+    AttemptRecord,
     AudioContent,
     ImageContent,
     MessageRole,
+    ModelFailure,
+    ModelFailureKind,
     ModelMessage,
     TextContent,
     TokenUsage,
@@ -304,6 +308,7 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
         },
         "model_calls": checkpoint.model_calls,
         "reported_usage_calls": checkpoint.reported_usage_calls,
+        "attempts": [_attempt_to_data(item) for item in checkpoint.attempts],
     }
 
 
@@ -355,8 +360,93 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
         ),
         model_calls=int(data.get("model_calls", 0)),
         reported_usage_calls=int(data.get("reported_usage_calls", 0)),
+        attempts=tuple(_attempt_from_data(item) for item in data.get("attempts", ())),
         status=CheckpointStatus(str(data["status"])),
         schema_version=int(data["schema_version"]),
+    )
+
+
+def _attempt_to_data(attempt: AttemptRecord) -> dict[str, Any]:
+    failure = attempt.failure
+    return {
+        "ordinal": attempt.ordinal,
+        "route_index": attempt.route_index,
+        "route_attempt": attempt.route_attempt,
+        "provider": attempt.provider,
+        "model": attempt.model,
+        "outcome": attempt.outcome.value,
+        "started_at": attempt.started_at.isoformat(),
+        "completed_at": attempt.completed_at.isoformat(),
+        "duration_ms": attempt.duration_ms,
+        "events_emitted": attempt.events_emitted,
+        "failure": (
+            {
+                "kind": failure.kind.value,
+                "code": failure.code,
+                "retryable": failure.retryable,
+                "provider": failure.provider,
+                "model": failure.model,
+            }
+            if failure is not None
+            else None
+        ),
+        "next_delay": attempt.next_delay,
+        "usage": (
+            {
+                "input_tokens": attempt.usage.input_tokens,
+                "output_tokens": attempt.usage.output_tokens,
+                "cached_input_tokens": attempt.usage.cached_input_tokens,
+            }
+            if attempt.usage is not None
+            else None
+        ),
+        "usage_reported": attempt.usage_reported,
+    }
+
+
+def _attempt_from_data(data: Mapping[str, Any]) -> AttemptRecord:
+    failure_data = data.get("failure")
+    usage_data = data.get("usage")
+    failure = (
+        ModelFailure(
+            ModelFailureKind(str(failure_data["kind"])),
+            str(failure_data["code"]),
+            "failure message omitted from persisted attempt ledger",
+            bool(failure_data.get("retryable", False)),
+            failure_data.get("provider"),
+            failure_data.get("model"),
+        )
+        if isinstance(failure_data, Mapping)
+        else None
+    )
+    usage = (
+        TokenUsage(
+            int(usage_data["input_tokens"]),
+            int(usage_data["output_tokens"]),
+            int(usage_data.get("cached_input_tokens", 0)),
+        )
+        if isinstance(usage_data, Mapping)
+        else None
+    )
+    return AttemptRecord(
+        ordinal=int(data["ordinal"]),
+        route_index=int(data["route_index"]),
+        route_attempt=int(data["route_attempt"]),
+        provider=str(data["provider"]),
+        model=str(data["model"]),
+        outcome=AttemptOutcome(str(data["outcome"])),
+        started_at=datetime.fromisoformat(str(data["started_at"])),
+        completed_at=datetime.fromisoformat(str(data["completed_at"])),
+        duration_ms=float(data["duration_ms"]),
+        events_emitted=int(data.get("events_emitted", 0)),
+        failure=failure,
+        next_delay=(
+            float(data["next_delay"])
+            if data.get("next_delay") is not None
+            else None
+        ),
+        usage=usage,
+        usage_reported=bool(data.get("usage_reported", False)),
     )
 
 

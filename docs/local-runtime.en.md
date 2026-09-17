@@ -49,7 +49,7 @@ wagent run "Explain this repository" `
   --json
 ```
 
-Every command requires explicit `--confirm-model-call` authorization. A successful result contains session ID, run ID, stop reason, final text, step/tool counts, and input, output, cached-input, and total tokens plus the completeness flag. Use `--session <id>` to continue an existing text session.
+Every command requires explicit `--confirm-model-call` authorization. A successful result contains session ID, run ID, stop reason, final text, step/tool counts, the per-attempt ledger, and input, output, cached-input, and total tokens plus the completeness flag. Use `--session <id>` to continue an existing text session.
 
 ## TUI
 
@@ -59,7 +59,7 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 
 - `max_output_tokens` bounds one model request's output.
 - `max_input_tokens`, `max_cumulative_output_tokens`, and `max_total_tokens` are cumulative within one run.
-- With `require_usage=true`, any response without usage stops the run as `token-usage-unavailable`.
+- With `require_usage=true`, any attempt without usage, including a failed attempt before a successful retry, stops the run as `token-usage-unavailable`.
 - Provider-reported usage is enforceable only after a call. There is no pre-call token estimator yet, so the first call can cross a cumulative limit.
 - Setting `max_attempts_per_route` or `max_routes` above one authorizes additional, potentially billable retry or failover calls.
 

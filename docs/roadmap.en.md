@@ -41,7 +41,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Single-agent ReAct/tool-loop template | `Implemented` | Phase 3 / 2.0.0a1 |
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
-| Session/agent aggregation, attempt ledger, estimators, and cost budgets | `Planned` | Phase 3/6 |
+| Session totals and per-attempt token ledger | `Implemented` | Phase 3/6 / 2.0.0a1 |
+| Cross-session agent aggregation, estimators, and cost budgets | `Planned` | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -98,7 +99,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
 - Implemented run-level input, output, and total hard limits through `TokenBudget`; `RunResult.usage` and `TOKEN_USAGE` events expose cumulative values, and approval checkpoints preserve metering state. `max_output_tokens` remains a per-model-request generation cap.
 - Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. Exact first-request input usage cannot be known without a tokenizer, and failed or interrupted retry attempts may already have incurred unreported usage.
-- Later work adds session/agent aggregation, a per-attempt ledger covering retry/failover, a pluggable pre-call token estimator, soft-threshold actions, and cost budgets. Cost control will require an explicit versioned price table and will not silently infer money from token counts.
+- Implemented session totals, `AttemptRecord` token ledgers covering retry/failover, and RunEvent/CLI visibility. Missing usage for failed attempts remains unknown and makes strict accounting fail closed.
+- Later work adds cross-session agent aggregation, a pluggable pre-call token estimator, soft-threshold actions, and cost budgets. Cost control will require an explicit versioned price table and will not silently infer money from token counts.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.

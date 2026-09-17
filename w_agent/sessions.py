@@ -61,13 +61,22 @@ class SessionRunRecord:
     usage_complete: bool
     steps: int
     tool_calls: int
+    model_calls: int = 0
+    reported_usage_calls: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         _validate_id(self.run_id, "run")
-        if self.steps < 0 or self.tool_calls < 0:
+        if min(
+            self.steps,
+            self.tool_calls,
+            self.model_calls,
+            self.reported_usage_calls,
+        ) < 0:
             raise ValueError("session run counters must not be negative")
+        if self.reported_usage_calls > self.model_calls:
+            raise ValueError("reported usage calls cannot exceed model calls")
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,6 +356,8 @@ class SessionManager:
                 result.usage_complete,
                 result.steps,
                 result.tool_calls,
+                result.model_calls,
+                result.reported_usage_calls,
                 created_at=existing.created_at if existing is not None else now,
                 updated_at=now,
             )
@@ -425,6 +436,8 @@ def _session_to_data(session: SessionRecord) -> dict[str, Any]:
                 "usage_complete": item.usage_complete,
                 "steps": item.steps,
                 "tool_calls": item.tool_calls,
+                "model_calls": item.model_calls,
+                "reported_usage_calls": item.reported_usage_calls,
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
             }
@@ -461,20 +474,22 @@ def _session_from_data(data: Mapping[str, Any]) -> SessionRecord:
 def _run_from_data(data: Mapping[str, Any]) -> SessionRunRecord:
     usage = data["usage"]
     return SessionRunRecord(
-        str(data["run_id"]),
-        str(data["agent_name"]),
-        str(data["stop_reason"]),
-        str(data["output"]),
-        TokenUsage(
+        run_id=str(data["run_id"]),
+        agent_name=str(data["agent_name"]),
+        stop_reason=str(data["stop_reason"]),
+        output=str(data["output"]),
+        usage=TokenUsage(
             int(usage["input_tokens"]),
             int(usage["output_tokens"]),
             int(usage.get("cached_input_tokens", 0)),
         ),
-        bool(data["usage_complete"]),
-        int(data["steps"]),
-        int(data["tool_calls"]),
-        datetime.fromisoformat(str(data["created_at"])),
-        datetime.fromisoformat(str(data["updated_at"])),
+        usage_complete=bool(data["usage_complete"]),
+        steps=int(data["steps"]),
+        tool_calls=int(data["tool_calls"]),
+        model_calls=int(data.get("model_calls", 0)),
+        reported_usage_calls=int(data.get("reported_usage_calls", 0)),
+        created_at=datetime.fromisoformat(str(data["created_at"])),
+        updated_at=datetime.fromisoformat(str(data["updated_at"])),
     )
 
 

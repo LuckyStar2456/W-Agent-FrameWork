@@ -41,7 +41,8 @@
 | 单 Agent ReAct/tool loop 模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Run 级 Token 可见计量与硬预算 | `Implemented` | Phase 3 / 2.0.0a1 |
-| Session/Agent 级聚合、尝试账本、预估器与费用预算 | `Planned` | Phase 3/6 |
+| Session 累计与逐尝试 Token 账本 | `Implemented` | Phase 3/6 / 2.0.0a1 |
+| Agent 跨 Session 聚合、预估器与费用预算 | `Planned` | Phase 3/6 |
 | 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -98,7 +99,8 @@
 - 已实现可替换 Agent Loop、默认 ReAct 模板、进程内/JSONL RunEvent、步骤/工具预算和不重复首轮模型调用的审批恢复。
 - 已实现 `TokenBudget` 的 Run 级输入、输出、总量硬限制，`RunResult.usage` 与 `TOKEN_USAGE` 事件公开累计值；审批 Checkpoint 保存计量状态。`max_output_tokens` 仍只表示单次模型生成上限。
 - 当前预算依据成功响应中 Provider 返回的实际用量在响应后核算，并用剩余输出/总量收紧下一次请求上限；可用 `require_usage=True` 在 Provider 不上报时失败关闭。首个请求的输入 Token 不能在没有分词器时精确预知，失败/中断的重试尝试也可能已经产生未上报用量。
-- 后续实现 Session/Agent 级聚合、覆盖重试/故障转移的逐尝试账本、可插拔调用前 Token 预估器、软阈值动作与费用预算。费用预算必须基于显式版本化价格表，不从 Token 数静默推断。
+- 已实现 Session 级累计、覆盖重试/故障转移的 `AttemptRecord` Token 账本，以及 RunEvent/CLI 可见性；未报告的失败尝试保持未知并使严格计量失败关闭。
+- 后续实现 Agent 跨 Session 聚合、可插拔调用前 Token 预估器、软阈值动作与费用预算。费用预算必须基于显式版本化价格表，不从 Token 数静默推断。
 - 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
 - 后续实现多模态、工具和任意 RunEvent 的通用投影/回放，以及 Agent 逐 Token 文本事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。

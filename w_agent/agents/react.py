@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
 from w_agent.models import (
+    AttemptRecord,
     CancellationToken,
     MessageRole,
     ModelExecutor,
@@ -49,6 +50,7 @@ class _ReactState:
     usage: TokenUsage = TokenUsage()
     model_calls: int = 0
     reported_usage_calls: int = 0
+    attempts: list[AttemptRecord] = field(default_factory=list)
 
 
 class ReactAgentExecution:
@@ -110,6 +112,7 @@ class ReactAgentExecution:
             cached_input_tokens=state.usage.cached_input_tokens,
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
+            attempts=_attempt_ledger(tuple(state.attempts)),
             usage_complete=state.reported_usage_calls == state.model_calls,
         )
         self.result = RunResult(
@@ -129,6 +132,7 @@ class ReactAgentExecution:
             usage=state.usage,
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
+            attempts=tuple(state.attempts),
         )
         return event
 
@@ -284,6 +288,7 @@ class ReactAgentLoop:
             checkpoint.usage,
             checkpoint.model_calls,
             checkpoint.reported_usage_calls,
+            list(checkpoint.attempts),
         )
         yield await execution.emit(
             RunEventType.RUN_RESUMED,
@@ -390,11 +395,14 @@ class ReactAgentLoop:
                 )
                 return
             except ModelInvocationError as error:
+                _record_attempt_usage(state, error.attempts)
                 yield await execution.emit(
                     RunEventType.MODEL_FAILED,
                     step=state.steps,
                     code=error.failure.code,
                     kind=error.failure.kind.value,
+                    attempts=_attempt_ledger(error.attempts),
+                    attempt_usage_complete=_attempt_usage_complete(error.attempts),
                 )
                 yield await self._finish_terminal(
                     execution,
@@ -404,10 +412,7 @@ class ReactAgentLoop:
                 return
 
             response = invocation.response
-            state.model_calls += 1
-            if response.usage_reported:
-                state.usage = _add_usage(state.usage, response.usage)
-                state.reported_usage_calls += 1
+            _record_attempt_usage(state, invocation.attempts)
             state.latest_output = response.text
             calls = tuple(
                 block
@@ -431,6 +436,8 @@ class ReactAgentLoop:
                 total_tokens=response.usage.total_tokens,
                 cached_input_tokens=response.usage.cached_input_tokens,
                 usage_reported=response.usage_reported,
+                attempts=_attempt_ledger(invocation.attempts),
+                attempt_usage_complete=_attempt_usage_complete(invocation.attempts),
             )
             yield await execution.emit(
                 RunEventType.TOKEN_USAGE,
@@ -448,7 +455,9 @@ class ReactAgentLoop:
 
             budget = definition.token_budget
             if budget is not None:
-                if budget.require_usage and not response.usage_reported:
+                if budget.require_usage and not _attempt_usage_complete(
+                    invocation.attempts
+                ):
                     yield await execution.emit(
                         RunEventType.TOKEN_BUDGET_STOPPED,
                         step=state.steps,
@@ -685,6 +694,7 @@ class ReactAgentLoop:
             usage=state.usage,
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
+            attempts=tuple(state.attempts),
         )
 
     async def _save_ready_checkpoint(
@@ -727,6 +737,58 @@ def _add_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
         cached_input_tokens=(
             left.cached_input_tokens + right.cached_input_tokens
         ),
+    )
+
+
+def _record_attempt_usage(
+    state: _ReactState,
+    attempts: tuple[AttemptRecord, ...],
+) -> None:
+    state.attempts.extend(attempts)
+    state.model_calls += len(attempts)
+    for attempt in attempts:
+        if attempt.usage is not None:
+            state.usage = _add_usage(state.usage, attempt.usage)
+            state.reported_usage_calls += 1
+
+
+def _attempt_usage_complete(attempts: tuple[AttemptRecord, ...]) -> bool:
+    return bool(attempts) and all(attempt.usage_reported for attempt in attempts)
+
+
+def _attempt_ledger(
+    attempts: tuple[AttemptRecord, ...],
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "ordinal": attempt.ordinal,
+            "route_index": attempt.route_index,
+            "route_attempt": attempt.route_attempt,
+            "provider": attempt.provider,
+            "model": attempt.model,
+            "outcome": attempt.outcome.value,
+            "duration_ms": attempt.duration_ms,
+            "events_emitted": attempt.events_emitted,
+            "failure_code": (
+                attempt.failure.code if attempt.failure is not None else None
+            ),
+            "input_tokens": (
+                attempt.usage.input_tokens if attempt.usage is not None else None
+            ),
+            "output_tokens": (
+                attempt.usage.output_tokens if attempt.usage is not None else None
+            ),
+            "cached_input_tokens": (
+                attempt.usage.cached_input_tokens
+                if attempt.usage is not None
+                else None
+            ),
+            "total_tokens": (
+                attempt.usage.total_tokens if attempt.usage is not None else None
+            ),
+            "usage_reported": attempt.usage_reported,
+        }
+        for attempt in attempts
     )
 
 
