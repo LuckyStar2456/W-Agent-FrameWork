@@ -271,6 +271,11 @@ from w_agent.models import (
     turbo_provider,
 )
 from w_agent.workflows import (
+    AgentMessageFactory,
+    AgentResultMapper,
+    AgentToolContextFactory,
+    AgentWorkflowAdapterError,
+    WorkflowResultMapper,
     WORKFLOW_DEFINITION_CAPABILITY,
     DagWorkflowDefinition,
     InMemoryWorkflowStore,
@@ -296,10 +301,18 @@ from w_agent.workflows import (
     WorkflowStopReason,
     WorkflowStore,
     WorkflowStoreError,
+    agent_workflow_node,
+    workflow_resume_tool,
+    workflow_start_tool,
 )
 
 __all__ = [
     "BaseAgent",
+    "AgentMessageFactory",
+    "AgentResultMapper",
+    "AgentToolContextFactory",
+    "AgentWorkflowAdapterError",
+    "WorkflowResultMapper",
     "AgentDefinition",
     "AgentExecution",
     "AgentLoop",
@@ -573,6 +586,9 @@ __all__ = [
     "WorkflowRegistry",
     "WorkflowResumeConflictError",
     "WorkflowStopReason",
+    "agent_workflow_node",
+    "workflow_resume_tool",
+    "workflow_start_tool",
     "WorkflowStore",
     "WorkflowStoreError",
     "WORKFLOW_DEFINITION_CAPABILITY",

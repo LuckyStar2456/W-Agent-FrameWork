@@ -1,5 +1,15 @@
 """Composable local workflow definitions, stores, and runtime."""
 
+from .adapters import (
+    AgentMessageFactory,
+    AgentResultMapper,
+    AgentToolContextFactory,
+    AgentWorkflowAdapterError,
+    WorkflowResultMapper,
+    agent_workflow_node,
+    workflow_resume_tool,
+    workflow_start_tool,
+)
 from .engine import LocalWorkflowEngine
 from .persistence import (
     InMemoryWorkflowStore,
@@ -30,6 +40,11 @@ from .types import (
 )
 
 __all__ = [
+    "AgentMessageFactory",
+    "AgentResultMapper",
+    "AgentToolContextFactory",
+    "AgentWorkflowAdapterError",
+    "WorkflowResultMapper",
     "DagWorkflowDefinition",
     "InMemoryWorkflowStore",
     "JsonlWorkflowStore",
@@ -55,4 +70,7 @@ __all__ = [
     "WorkflowStore",
     "WorkflowStoreError",
     "WORKFLOW_DEFINITION_CAPABILITY",
+    "agent_workflow_node",
+    "workflow_resume_tool",
+    "workflow_start_tool",
 ]

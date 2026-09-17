@@ -136,9 +136,11 @@ The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `T
 
 ## 8. Workflow
 
-Status: sequential local execution, all three frontends, node events, and node-boundary recovery are `Implemented`; bidirectional agent adapters, parallel DAG execution, and nesting are `Planned` or `Reserved`.
+Status: sequential local execution, all three frontends, node events, node-boundary recovery, and bidirectional agent adapters are `Implemented`; parallel DAG execution and nesting are `Planned` or `Reserved`.
 
 Agent loops and workflows use similar but separate context, event, cancellation, and result contracts so orchestration does not absorb the reasoning loop. `WorkflowRegistry` manages definitions by version and scope through the shared microkernel registry. `LocalWorkflowEngine` accepts static DAG, state-graph, and Python-handler `WorkflowDefinition` forms through one `WorkflowEngineProtocol`. `WorkflowStore` is replaceable; built-ins include `InMemoryWorkflowStore` and `JsonlWorkflowStore`.
+
+`agent_workflow_node()` adapts a fixed agent definition into a node. `workflow_start_tool()` and `workflow_resume_tool()` adapt a fixed workflow definition into standard tools that reuse permission, per-call approval, cancellation, and audit pipelines. Both directions depend only on public protocols and receive no kernel privileges. Agent approval checkpoints and workflow pauses do not cascade recovery automatically; callers explicitly handle non-completed states.
 
 Recovery is guaranteed only at node boundaries. A node checkpoint is claimed as `RESUMING` before execution and returns to `READY` or `PAUSED` only after completion. A process interruption inside a node therefore fails closed instead of silently replaying possible external side effects. The Python entry point calls the handler again with persisted state and `resume_count`; it does not restore arbitrary Python instruction positions or call stacks. DAG execution is currently deterministic and sequential. Parallel DAGs, nested workflows, multi-agent orchestration, and distributed scheduling are not implemented. See [Workflows and node-boundary recovery](./workflows.en.md).
 

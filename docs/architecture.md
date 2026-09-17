@@ -142,9 +142,11 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 
 ## 8. Workflow
 
-状态：顺序本地执行、三种前端、节点事件和节点边界恢复为 `Implemented`；Agent 双向适配、并行 DAG 与嵌套调度为 `Planned` 或 `Reserved`。
+状态：顺序本地执行、三种前端、节点事件、节点边界恢复和 Agent 双向适配为 `Implemented`；并行 DAG 与嵌套调度为 `Planned` 或 `Reserved`。
 
 Agent Loop 与 Workflow 使用相似但独立的 Context、事件、取消和结果协议，避免把推理循环强行合并进编排器。`WorkflowRegistry` 通过共享微内核注册表按版本和 Scope 管理定义；`LocalWorkflowEngine` 接受静态 DAG、有状态图和 Python 处理器三种 `WorkflowDefinition`，通过同一个 `WorkflowEngineProtocol` 运行。`WorkflowStore` 可整体替换；内置 `InMemoryWorkflowStore` 与 `JsonlWorkflowStore`。
+
+`agent_workflow_node()` 把固定 Agent 定义适配为节点；`workflow_start_tool()` 与 `workflow_resume_tool()` 把固定 Workflow 定义适配为标准工具，并复用权限、逐调用审批、取消和审计管线。两边都只依赖公开协议，不形成内核特权。Agent 审批断点与 Workflow 暂停不会自动级联恢复，调用者必须显式接管非完成状态。
 
 Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`，节点完成后才写回 `READY` 或 `PAUSED`；进程若在节点执行中断，恢复会失败关闭，避免静默重复外部副作用。Python 入口在恢复时重新调用处理器，并携带持久化状态与 `resume_count`，不恢复任意 Python 指令位置或调用栈。当前 DAG 确定性顺序执行；并行 DAG、嵌套 Workflow、多 Agent 编排和分布式调度尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
 

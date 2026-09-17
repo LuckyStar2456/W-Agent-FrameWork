@@ -4,9 +4,9 @@ English | [简体中文](./workflows.md)
 
 ## Status
 
-`Implemented`: current `2.0.0a1` source includes three workflow definitions, one engine protocol, deterministic local execution, node events, cooperative cancellation, and in-memory/JSONL pause and recovery at node boundaries.
+`Implemented`: current `2.0.0a1` source includes three workflow definitions, one engine protocol, deterministic local execution, node events, cooperative cancellation, in-memory/JSONL pause and recovery at node boundaries, and bidirectional agent/workflow adapters.
 
-`Planned`: parallel DAG scheduling, bidirectional agent/workflow convenience adapters, an external pause handle for a running workflow, and general session projections.
+`Planned`: parallel DAG scheduling, automatic cascading recovery between agent approval and workflow pause, an external pause handle for a running workflow, and general session projections.
 
 `Reserved`: nested or distributed workflows, multi-agent orchestration, and restoration of arbitrary Python instruction stacks.
 
@@ -24,6 +24,8 @@ English | [简体中文](./workflows.md)
 | `WorkflowStore` | Replaceable event and checkpoint storage contract |
 | `InMemoryWorkflowStore` | In-process development and test storage |
 | `JsonlWorkflowStore` | Durable storage for one local lifecycle owner |
+| `agent_workflow_node()` | Adapts a fixed agent loop/definition into a workflow node |
+| `workflow_start_tool()` / `workflow_resume_tool()` | Adapt a fixed workflow into governed agent tools |
 
 All public types are exported directly from `w_agent`; there is no `w_agent.v2` namespace.
 
@@ -158,4 +160,8 @@ Event data does not automatically include inputs, outputs, or exception messages
 
 ## Replacement and composition
 
-Applications may replace the entire `WorkflowEngineProtocol` or `WorkflowStore`. Any node may also call the public `AgentLoop`, model, tool, or application-service APIs. Convenience adapters that turn an agent into a node or a workflow into a tool are not yet included; they are `Planned`, while manual composition through public APIs already works.
+Applications may replace the entire `WorkflowEngineProtocol` or `WorkflowStore`. Any node may also call the public `AgentLoop`, model, tool, or application-service APIs.
+
+`agent_workflow_node()` converts workflow input into a user message by default, accepts only `COMPLETED` agent results, and returns JSON-persistable output, stop reason, and token usage. Its message factory, tool-authority context, result mapping, and accepted stop reasons are replaceable. A non-completed result fails the node by default so approval or budget stops are not mistaken for success.
+
+`workflow_start_tool()` and `workflow_resume_tool()` bind one fixed definition. By default they return run/checkpoint identifiers, public output, and stop status without exposing internal state to the model; callers can replace the result mapper. They declare `WRITE` effects and require `workflow.execute` by default, so application-granted permission and per-call approval still apply. Cancellation propagates into the workflow. A paused result is never resumed automatically; the agent explicitly invokes the resume tool or the application takes over. These adapters neither implement nested workflows nor automatically join agent and workflow checkpoints.

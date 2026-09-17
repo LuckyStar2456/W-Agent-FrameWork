@@ -50,7 +50,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Full session lifecycle and general replay | `Planned` | Phase 3 |
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
 | Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
-| Agent/workflow convenience adapters | `Planned` | Phase 4 |
+| Agent/workflow convenience adapters | `Implemented` | Phase 4 / 2.0.0a1 |
 | Docker/OCI coding sandbox | `Implemented` | Phase 5 / 2.0.0a1 |
 | Explicit `UnsafeLocalSandbox` mode | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
@@ -102,11 +102,12 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 4: workflows
 
-- Status: the local sequential engine and node-boundary recovery are `Implemented`; bidirectional convenience adapters and parallel execution are `Planned`.
+- Status: the local sequential engine, node-boundary recovery, and bidirectional agent adapters are `Implemented`; parallel execution is `Planned`.
 - Implemented DAG, state-graph, and Python APIs sharing `WorkflowEngineProtocol`, events, and results.
 - Implemented in-memory/JSONL node checkpoints, explicit pause, restart resume, and boundary cancellation.
 - Uncertain node execution remains `RESUMING` and rejects automatic replay; arbitrary Python instruction stacks are not restored.
-- Later work adds convenience adapters for agent-to-workflow and workflow-node-to-agent calls plus optional parallel DAG scheduling.
+- Implemented `agent_workflow_node()` plus `workflow_start_tool()` / `workflow_resume_tool()` governed by the normal tool permission and per-call approval pipeline. The adapters depend only on public protocols and allow replacement of message, authority-context, and result mapping.
+- Later work adds optional parallel DAG scheduling. Automatic cascading recovery between agent approval checkpoints and workflow pauses remains a later design.
 
 ### Phase 5: local profiles and sandboxing
 

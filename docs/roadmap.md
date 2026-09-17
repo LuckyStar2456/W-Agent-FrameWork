@@ -50,7 +50,7 @@
 | 完整 Session 生命周期与通用回放 | `Planned` | Phase 3 |
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
 | 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
-| Agent/Workflow 双向便捷适配器 | `Planned` | Phase 4 |
+| Agent/Workflow 双向便捷适配器 | `Implemented` | Phase 4 / 2.0.0a1 |
 | Docker/OCI 编码沙箱 | `Implemented` | Phase 5 / 2.0.0a1 |
 | `UnsafeLocalSandbox` 显式授权模式 | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
@@ -102,11 +102,12 @@
 
 ### Phase 4：Workflow
 
-- 状态：本地顺序执行引擎与节点边界恢复为 `Implemented`；双向便捷适配和并行执行为 `Planned`。
+- 状态：本地顺序执行引擎、节点边界恢复与 Agent 双向适配为 `Implemented`；并行执行为 `Planned`。
 - 已实现 DAG、状态图和 Python API，共用 `WorkflowEngineProtocol`、事件和结果协议。
 - 已实现内存/JSONL 节点 Checkpoint、显式暂停、重启恢复和边界取消。
 - 节点执行状态不确定时保留 `RESUMING` 并拒绝自动重放；不恢复任意 Python 指令栈。
-- 后续提供 Agent 调用 Workflow、Workflow 节点调用 Agent 的便捷适配器，以及可选并行 DAG 调度。
+- 已实现 `agent_workflow_node()`，以及受工具权限/逐调用审批管线保护的 `workflow_start_tool()` / `workflow_resume_tool()`；适配器只依赖公开协议且允许替换消息、权限上下文和结果映射。
+- 后续提供可选并行 DAG 调度；Agent 审批断点与 Workflow 暂停的自动级联恢复仍保留为后续设计。
 
 ### Phase 5：本地模板与沙箱
 

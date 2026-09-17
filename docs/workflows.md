@@ -4,9 +4,9 @@
 
 ## 状态
 
-`Implemented`：当前 `2.0.0a1` 源码提供三种 Workflow 定义、统一引擎协议、确定性本地执行、节点事件、协作式取消，以及内存/JSONL 节点边界暂停恢复。
+`Implemented`：当前 `2.0.0a1` 源码提供三种 Workflow 定义、统一引擎协议、确定性本地执行、节点事件、协作式取消、内存/JSONL 节点边界暂停恢复，以及 Agent/Workflow 双向适配器。
 
-`Planned`：并行 DAG 调度、Agent/Workflow 双向便捷适配器、运行中的外部暂停句柄和通用 Session 投影。
+`Planned`：并行 DAG 调度、Agent 审批与 Workflow 暂停的自动级联恢复、运行中的外部暂停句柄和通用 Session 投影。
 
 `Reserved`：嵌套或分布式 Workflow、多 Agent 编排和任意 Python 指令栈恢复。
 
@@ -24,6 +24,8 @@
 | `WorkflowStore` | 可替换事件与 Checkpoint 存储协议 |
 | `InMemoryWorkflowStore` | 进程内开发与测试存储 |
 | `JsonlWorkflowStore` | 单一本地所有者使用的持久化存储 |
+| `agent_workflow_node()` | 把固定 Agent Loop/Definition 适配为 Workflow 节点 |
+| `workflow_start_tool()` / `workflow_resume_tool()` | 把固定 Workflow 适配为受治理的 Agent 工具 |
 
 所有公共类型直接从 `w_agent` 导出，不使用 `w_agent.v2`。
 
@@ -158,4 +160,8 @@ READY / PAUSED → claim → RESUMING → 节点完成 → READY / PAUSED
 
 ## 替换与组合
 
-应用可以替换整个 `WorkflowEngineProtocol` 或 `WorkflowStore`，也可以让任意节点调用公开的 `AgentLoop`、模型、工具或其他应用服务。当前没有把 Agent 包成节点或把 Workflow 包成工具的便捷适配器；这些适配器为 `Planned`，不影响手动组合公开 API。
+应用可以替换整个 `WorkflowEngineProtocol` 或 `WorkflowStore`，也可以让任意节点调用公开的 `AgentLoop`、模型、工具或其他应用服务。
+
+`agent_workflow_node()` 默认把 Workflow 输入转为用户消息，只接受 `COMPLETED` Agent 结果，并返回 JSON 可持久化的输出、停止原因和 Token 用量；消息工厂、工具权限上下文、结果映射和可接受停止原因都可替换。非完成状态默认使节点失败，避免把审批或预算停止误当成功。
+
+`workflow_start_tool()` 和 `workflow_resume_tool()` 固定绑定一个 Definition，默认只返回运行/Checkpoint 标识、公开输出和停止状态，不把内部 State 自动暴露给模型；需要时可替换结果映射。两者默认声明 `WRITE` 副作用并要求 `workflow.execute` 权限，所以仍需应用授予权限和逐调用批准；调用取消会传给 Workflow。暂停结果不会自动恢复，Agent 必须显式调用恢复工具或由应用接管。适配器不实现嵌套 Workflow，也不会自动串联 Agent Checkpoint 与 Workflow Checkpoint。
