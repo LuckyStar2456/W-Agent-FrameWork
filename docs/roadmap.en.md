@@ -48,7 +48,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP and shell-free command tool adapters | `Implemented` | Phase 3 / 2.0.0a1 |
 | MCP client binding adapter | `Implemented` | Phase 3 / 2.0.0a1 |
-| First-party MCP stdio/HTTP session clients and discovery | `Planned` | Phase 3/5 |
+| MCP 2026-07-28 stdio/Streamable HTTP clients and discovery | `Implemented` | Phase 3 / 2.0.0a1 |
+| Legacy MCP initialization negotiation, MRTR, and subscriptions | `Planned` | Phase 3/5 |
 | Local session lifecycle and cross-run text projection | `Implemented` | Phase 3 / 2.0.0a1 |
 | General multimodal/tool/RunEvent replay | `Planned` | Phase 3/6 |
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -104,7 +105,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
-- Implemented fixed-endpoint HTTP, shell-free command tools, and transport-neutral MCP client binding; later work adds first-party MCP stdio/HTTP session clients, discovery, and sandbox binding.
+- Implemented fixed-endpoint HTTP, shell-free command tools, transport-neutral MCP binding, and MCP 2026-07-28 stdio/Streamable HTTP JSON/SSE clients with paginated discovery, explicit binding, and `x-mcp-header`. Discovery never registers, authorizes, or approves a tool automatically.
+- Later work adds 2025-era `initialize` compatibility negotiation, automated MRTR input exchange, subscription streams, and MCP sandbox binding.
 
 ### Phase 4: workflows
 

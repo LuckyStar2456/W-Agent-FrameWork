@@ -59,7 +59,7 @@ W-Agent 遵循以下原则：
 - Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
 - 同时支持完整收集和逐事件透传的 `ModelExecutor`；默认单次调用，可显式启用有界重试/故障转移，并记录不含 Prompt 的逐尝试 Token/失败审计。
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
-- 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 客户端绑定、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
+- 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 绑定与 2026-07-28 stdio/Streamable HTTP 客户端、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、严格 Token 预算、JSONL RunEvent/尝试账本记录和审批断点恢复。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。

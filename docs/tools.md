@@ -2,7 +2,7 @@
 
 [English](./tools.en.md) | 简体中文
 
-状态：Python、HTTP、无 Shell 命令、Sandbox 命令模板、MCP 客户端绑定、作用域注册、参数校验、权限/审批策略、超时、取消和审计为 `Implemented`（Phase 3/5 / `2.0.0a1`）。官方 MCP 会话客户端和远程工具仍为 `Planned` 或 `Reserved`。
+状态：Python、HTTP、无 Shell 命令、Sandbox 命令模板、MCP 绑定、MCP 2026-07-28 stdio/Streamable HTTP 客户端、作用域注册、参数校验、权限/审批策略、超时、取消和审计为 `Implemented`（Phase 3/5 / `2.0.0a1`）。旧版 MCP 协商、MRTR 自动交换和订阅流仍为 `Planned`。
 
 ## 分层
 
@@ -113,7 +113,42 @@ binding = command_tool(
 
 `McpRemoteTool` 描述远端名称、说明和输入 Schema；`mcp_tool()` 把实现 `McpToolClient.call_tool()` 的任意客户端绑定进统一工具运行时，并传播取消信号。它默认需要 `mcp.call` 权限和逐调用审批。
 
-当前适配层不限定 MCP 传输，因而自定义 stdio、HTTP 或进程内客户端都能接入；框架尚未内置官方会话管理、发现和连接生命周期。客户端返回值仍经过 `ToolExecutor` 的标准结果、异常归一化、超时与审计路径。
+`McpClient` 实现当前稳定的 MCP `2026-07-28` 请求模型：每个请求携带协议版本、客户端身份和能力，不创建隐式协议会话。`list_tools()` 有界遍历 `nextCursor`；`discover_mcp_bindings()` 将发现结果转换为 Binding，但**不会自动注册、暴露、授权或批准**任何工具。调用方必须逐个或批量显式注册返回值。
+
+```python
+from w_agent import (
+    McpClient,
+    McpStdioTransport,
+    ToolRegistry,
+    discover_mcp_bindings,
+)
+
+transport = McpStdioTransport(("python", "-m", "my_mcp_server"))
+client = McpClient(transport)
+bindings = await discover_mcp_bindings(client, local_name_prefix="docs_")
+
+registry = ToolRegistry()
+for binding in bindings:
+    registry.register_binding(binding, version="1.0.0")
+```
+
+`McpStdioTransport` 使用 `create_subprocess_exec()` 启动明确 argv，不经过 Shell；stdin/stdout 使用单行 UTF-8 JSON-RPC，忽略通知直到匹配响应，取消时发送 `notifications/cancelled`，关闭时先关闭 stdin 再有界终止进程。它默认继承环境以方便本地开发；不可信服务器应使用绝对可执行文件、`inherit_environment=False` 和最小环境，或放入 Sandbox。
+
+`McpStreamableHttpTransport` 使用固定 HTTP(S) 端点、`POST`、JSON/SSE 响应和可替换 `McpHttpExchange`。默认 `HttpxMcpExchange` 不跟随重定向并限制响应大小。传输生成 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 及合法 `x-mcp-header` 参数头，必要时进行 UTF-8 Base64 编码；静态配置不能覆盖这些传输所有的头。凭据可放在固定 Header 中，但不会进入请求 Body、工具 Definition 或审计。
+
+```python
+from w_agent import McpClient, McpStreamableHttpTransport
+
+client = McpClient(
+    McpStreamableHttpTransport(
+        "https://mcp.example/mcp",
+        headers={"authorization": "Bearer <local-secret>"},
+    )
+)
+tools = await client.list_tools()
+```
+
+客户端接受 JSON-RPC 错误并保留错误码；远端 `isError: true` 会进入本地失败路径。`input_required` 会抛出 `McpInputRequiredError` 并保留结构化结果，避免把尚未完成的 MRTR 调用误报为成功。旧版 `initialize`/`notifications/initialized` 协商、自动 MRTR 输入响应、`subscriptions/listen` 和旧 HTTP+SSE 传输尚未实现。协议依据见 [MCP 2026-07-28 transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) 与 [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)。
 
 ## 默认安全语义
 
@@ -129,7 +164,7 @@ binding = command_tool(
 
 ## 仍未实现
 
-- 官方 MCP stdio/HTTP 会话客户端、工具发现和连接生命周期。
+- 旧版 MCP 初始化协商、MRTR 自动输入交换、订阅流和旧 HTTP+SSE 兼容。
 - 跨工具调用的持久 Sandbox Session 与编码 Agent 工作区写回审核。
 - 持久化审计、工具缓存、录制回放与结果流。
 - TUI 审批页面及跨进程审批恢复。

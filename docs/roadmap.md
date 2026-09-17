@@ -48,7 +48,8 @@
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP 与无 Shell 命令工具适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
 | MCP 客户端绑定适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
-| 官方 MCP stdio/HTTP 会话客户端与发现 | `Planned` | Phase 3/5 |
+| MCP 2026-07-28 stdio/Streamable HTTP 客户端与发现 | `Implemented` | Phase 3 / 2.0.0a1 |
+| MCP 旧版初始化协商、MRTR 与订阅流 | `Planned` | Phase 3/5 |
 | 本地 Session 生命周期与跨 Run 文本投影 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 多模态/工具/RunEvent 通用回放 | `Planned` | Phase 3/6 |
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -104,7 +105,8 @@
 - 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
 - 后续实现多模态、工具和任意 RunEvent 的通用投影/回放，以及 Agent 逐 Token 文本事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
-- 已实现固定端点 HTTP、无 Shell 命令工具，以及传输中立的 MCP 客户端绑定；后续提供官方 MCP stdio/HTTP 会话客户端、发现和沙箱绑定。
+- 已实现固定端点 HTTP、无 Shell 命令工具、传输中立的 MCP 绑定，以及 MCP 2026-07-28 stdio/Streamable HTTP JSON/SSE 客户端、分页发现、显式绑定与 `x-mcp-header`。发现不会自动注册、授权或批准工具。
+- 后续提供 2025 版 `initialize` 兼容协商、MRTR 自动输入交换、订阅流和 MCP Sandbox 绑定。
 
 ### Phase 4：Workflow
 

@@ -154,7 +154,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 
 ## 9. Tools
 
-状态：Python、HTTP、无 Shell 命令、Sandbox 命令工具模板和 MCP 客户端绑定，以及统一注册、策略与执行基础为 `Implemented`；官方 MCP 会话客户端和远程适配为 `Planned` 或 `Reserved`。
+状态：Python、HTTP、无 Shell 命令、Sandbox 命令工具模板、MCP 绑定和 MCP 2026-07-28 stdio/Streamable HTTP 客户端，以及统一注册、策略与执行基础为 `Implemented`；MCP 旧版协商、MRTR 自动交换与订阅流为 `Planned`。
 
 工具定义、执行、权限和结果彼此分离：
 
@@ -162,7 +162,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令、Sandbox 命令模板，以及把任意 MCP Client 接入公共运行时的绑定适配器。工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。直接命令模板不是沙箱，默认需要 `process.execute` 和逐调用批准；`sandbox_command_tool()` 则使用公开 Sandbox Provider。官方 MCP stdio/HTTP 会话客户端、发现与远程执行器仍待实现。
+当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令、Sandbox 命令模板、任意 MCP Client 绑定，以及首方 MCP stdio/Streamable HTTP JSON/SSE 客户端。`McpClient` 为每个请求写入当前稳定协议元数据，支持有界分页发现和工具调用；`discover_mcp_bindings()` 只返回 Binding，不自动注册或授予权限。HTTP 实现固定端点、不跟随重定向、限制响应大小，并安全生成标准头与 `x-mcp-header`；stdio 实现无 Shell argv、换行 JSON-RPC、取消通知和有界关闭。工具调用仍通过统一权限、逐调用审批、超时、取消和 Prompt-free 审计路径。旧版初始化协商、MRTR 自动输入交换和订阅流尚未实现。
 
 详细设计见[工具注册、策略与执行](./tools.md)。
 

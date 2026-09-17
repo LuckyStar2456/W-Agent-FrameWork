@@ -35,6 +35,7 @@ setup(
         "fastapi": ["fastapi", "uvicorn"],
         "langchain": ["langchain"],
         "models": ["httpx>=0.27,<1"],
+        "mcp": ["httpx>=0.27,<1"],
         "tui": ["textual>=0.70,<9"],
         "wasm": ["wasmer-sdk>=0.1.2,<0.2; platform_system != 'Windows'"],
         "opentelemetry": [

@@ -148,7 +148,7 @@ Recovery is guaranteed only at node boundaries. A node checkpoint is claimed as 
 
 ## 9. Tools
 
-Status: Python, HTTP, shell-free command, sandbox-command templates, MCP client binding, and the unified registration/policy/execution foundation are `Implemented`; first-party MCP session clients and remote adapters remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command, sandbox-command templates, MCP binding, MCP 2026-07-28 stdio/Streamable HTTP clients, and the unified registration/policy/execution foundation are `Implemented`; legacy MCP negotiation, automated MRTR exchange, and subscription streams are `Planned`.
 
 Tool definition, execution, policy, and results are separate:
 
@@ -156,7 +156,7 @@ Tool definition, execution, policy, and results are separate:
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-Current templates cover Python functions, fixed-endpoint HTTP, shell-free local commands, sandbox commands, and binding any MCP client into the common runtime. Each call has a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. The direct command template is not a sandbox and requires `process.execute` plus per-call approval by default; `sandbox_command_tool()` uses the public sandbox provider. First-party MCP stdio/HTTP session clients, discovery, and remote executors remain later work.
+Current templates cover Python functions, fixed-endpoint HTTP, shell-free local commands, sandbox commands, arbitrary MCP client binding, and first-party MCP stdio/Streamable HTTP JSON/SSE clients. `McpClient` places current stable-protocol metadata on every request and supports bounded paginated discovery plus tool calls; `discover_mcp_bindings()` returns bindings without registering or authorizing them. HTTP uses a fixed endpoint, disables redirects, bounds response bytes, and safely generates standard and `x-mcp-header` headers. Stdio uses shell-free argv, newline JSON-RPC, cancellation notifications, and bounded shutdown. Calls still pass through unified permission, per-call approval, timeout, cancellation, and prompt-free audit. Legacy initialization negotiation, automated MRTR input exchange, and subscription streams are not implemented.
 
 See [Tool registration, policy, and execution](./tools.en.md).
 

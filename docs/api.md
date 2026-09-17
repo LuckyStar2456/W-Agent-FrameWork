@@ -173,7 +173,7 @@ class ToolPolicy(Protocol):
     ) -> ToolPolicyDecision: ...
 ```
 
-`ToolRegistry` 在统一注册表中按版本和 Scope 注册 `ToolBinding`。`ToolExecutor.execute()` 依次解析、校验、执行策略、处理超时/取消并写入审计。默认 `PermissionPolicy` 检查本地授予的权限，`SideEffectApprovalPolicy` 对写入、破坏性和外部副作用要求调用 ID 逐次批准。工具 Definition 不持有执行策略，默认执行器不重试。`python_tool()`、`http_tool()`、`command_tool()`、`mcp_tool()` 和 `sandbox_command_tool()` 已实现；MCP stdio/HTTP 会话客户端和发现仍为 `Planned`。详见[工具注册、策略与执行](./tools.md)。
+`ToolRegistry` 在统一注册表中按版本和 Scope 注册 `ToolBinding`。`ToolExecutor.execute()` 依次解析、校验、执行策略、处理超时/取消并写入审计。默认 `PermissionPolicy` 检查本地授予的权限，`SideEffectApprovalPolicy` 对写入、破坏性和外部副作用要求调用 ID 逐次批准。工具 Definition 不持有执行策略，默认执行器不重试。`python_tool()`、`http_tool()`、`command_tool()`、`mcp_tool()`、`sandbox_command_tool()`、`McpClient`、`McpStdioTransport`、`McpStreamableHttpTransport` 和 `discover_mcp_bindings()` 已实现；旧版 MCP 初始化协商、MRTR 自动输入交换和订阅流仍为 `Planned`。详见[工具注册、策略与执行](./tools.md)。
 
 ## 10. 沙箱协议
 

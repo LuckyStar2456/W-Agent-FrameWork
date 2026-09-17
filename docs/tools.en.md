@@ -2,7 +2,7 @@
 
 English | [简体中文](./tools.md)
 
-Status: Python, HTTP, shell-free command, sandbox-command templates, MCP client binding, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3/5 / `2.0.0a1`. First-party MCP session clients and remote tools remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command, sandbox-command templates, MCP binding, MCP 2026-07-28 stdio/Streamable HTTP clients, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3/5 / `2.0.0a1`. Legacy MCP negotiation, automated MRTR exchange, and subscription streams remain `Planned`.
 
 ## Layers
 
@@ -113,7 +113,42 @@ The default permission is `process.execute` and the default effect is `EXTERNAL`
 
 `McpRemoteTool` describes a remote name, description, and input schema. `mcp_tool()` binds any implementation of `McpToolClient.call_tool()` into the common tool runtime and propagates cancellation. It requires `mcp.call` authority and per-call approval by default.
 
-The adapter does not constrain MCP transport, allowing custom stdio, HTTP, or in-process clients. The framework does not yet include first-party session management, discovery, or connection lifecycle. Client values still pass through `ToolExecutor` result normalization, exception sanitization, timeout, and audit.
+`McpClient` implements the current stable MCP `2026-07-28` request model: every request carries protocol version, client identity, and capabilities, without an implicit protocol session. `list_tools()` follows `nextCursor` within explicit bounds. `discover_mcp_bindings()` converts discovered definitions to bindings but **never registers, exposes, authorizes, or approves** a tool automatically. The caller explicitly registers selected return values.
+
+```python
+from w_agent import (
+    McpClient,
+    McpStdioTransport,
+    ToolRegistry,
+    discover_mcp_bindings,
+)
+
+transport = McpStdioTransport(("python", "-m", "my_mcp_server"))
+client = McpClient(transport)
+bindings = await discover_mcp_bindings(client, local_name_prefix="docs_")
+
+registry = ToolRegistry()
+for binding in bindings:
+    registry.register_binding(binding, version="1.0.0")
+```
+
+`McpStdioTransport` starts explicit argv through `create_subprocess_exec()` with no shell. Stdin/stdout carry one-line UTF-8 JSON-RPC; the reader skips notifications until the matching response, cancellation sends `notifications/cancelled`, and shutdown closes stdin before bounded termination. Environment inheritance defaults on for local development. Use an absolute executable, `inherit_environment=False`, and a minimal environment—or a sandbox—for untrusted servers.
+
+`McpStreamableHttpTransport` uses a fixed HTTP(S) endpoint, `POST`, JSON/SSE responses, and a replaceable `McpHttpExchange`. The default `HttpxMcpExchange` disables redirects and bounds response bytes. The transport owns `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and valid `x-mcp-header` parameter headers, using UTF-8 Base64 when required. Static configuration cannot override these headers. Credentials may be fixed headers but never enter the request body, tool definition, or audit.
+
+```python
+from w_agent import McpClient, McpStreamableHttpTransport
+
+client = McpClient(
+    McpStreamableHttpTransport(
+        "https://mcp.example/mcp",
+        headers={"authorization": "Bearer <local-secret>"},
+    )
+)
+tools = await client.list_tools()
+```
+
+The client preserves JSON-RPC error codes and routes remote `isError: true` results through local failure handling. `input_required` raises `McpInputRequiredError` with the structured result so an unfinished MRTR call cannot be reported as success. Legacy `initialize`/`notifications/initialized` negotiation, automated MRTR responses, `subscriptions/listen`, and legacy HTTP+SSE are not implemented. Protocol references: [MCP 2026-07-28 transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) and [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
 
 ## Default safety semantics
 
@@ -129,7 +164,7 @@ Applications can replace the complete `ToolPolicy` or audit sink. Custom policie
 
 ## Not implemented yet
 
-- First-party MCP stdio/HTTP session clients, discovery, and connection lifecycle.
+- Legacy MCP initialization negotiation, automated MRTR input exchange, subscription streams, and legacy HTTP+SSE compatibility.
 - Durable sandbox sessions across tool calls and coding-agent workspace writeback review.
 - Durable audit, tool caching, record/replay, and result streaming.
 - TUI approval surfaces and cross-process approval recovery.
