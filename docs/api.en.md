@@ -23,7 +23,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Tools/scanning | `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
-| Routing/probing | `ModelRouter`, `RoutingPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
+| Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 
 The only accurate current agent protocol is:
 
@@ -93,14 +93,16 @@ class ModelProvider(Protocol):
 
 ## 5. Routing protocol
 
-Status: `Implemented` for Phase 2A policy and decisions; invocation, automatic retry, and failover are `Planned`.
+Status: `Implemented` for Phase 2A policy/decisions and Phase 2B collecting invocation.
 
 ```python
 class RoutingPolicy(Protocol):
     def select(self, request: RouteRequest) -> RouteDecision: ...
 ```
 
-`RouteDecision` contains candidates, rejection reasons, scores, the selected route, fallback routes, and the policy version, but no prompt plaintext. `WeightedRoutingPolicy` and the `yaml.safe_load`-based `YamlRoutingPolicy` produce the same type. `ModelRouter` reads the current model catalog and applies a policy; it does not yet invoke providers or automatically execute fallback routes.
+`RouteDecision` contains candidates, rejection reasons, scores, the selected route, fallback routes, and the policy version, but no prompt plaintext. `WeightedRoutingPolicy` and the `yaml.safe_load`-based `YamlRoutingPolicy` produce the same type. `ModelRouter` reads the current model catalog and applies a policy; it still does not execute providers directly.
+
+`ModelExecutor.invoke()` consumes a decision. `InvocationPolicy` bounds per-attempt timeout, retry count, route count, and deterministic backoff, and the call returns `ModelInvocationResult`. The default performs one call only; higher limits may create extra billable requests. `AttemptRecord` contains no prompt or credential. A final failure raises `ModelInvocationError` with the decision and every completed attempt. The current API collects a complete stream before returning; token pass-through is `Planned`.
 
 ## 6. Probe protocols
 

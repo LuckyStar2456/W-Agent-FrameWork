@@ -123,7 +123,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层和首批厂商模板为 `Implemented`；CLI/TUI 入口、OpenAI Responses 与 vLLM 差异适配为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板和收集式调用执行器为 `Implemented`；CLI/TUI 入口、OpenAI Responses、vLLM 差异适配与透传流执行为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
@@ -163,6 +163,8 @@ result = await ModelProviderProbe().probe(
 ```
 
 Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible 和 Turbo 模板可以通过 `builtin_provider_template_registry()` 装配。Qwen 同时支持原生 DashScope 与兼容入口；Turbo 模板指 Turbo AI/SIAM.AI，必须提供部署地址。详见 [HTTP Provider 与厂商模板](./provider-templates.md)。
+
+执行路由决定时使用独立 `ModelExecutor`。默认只调用一次；只有显式提高 `InvocationPolicy.max_attempts_per_route` 或 `max_routes` 才会重试或切换备用路由。当前返回完整收集结果，不是逐 Token 透传。详见[模型、路由与接口探测](./model-routing.md#调用重试与故障转移)。
 
 以下 CLI 体验仍为 `Planned`：
 

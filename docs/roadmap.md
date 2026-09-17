@@ -32,7 +32,8 @@
 | Python/YAML 模型路由 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 手动探测 API、缓存与周期调度 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 注册自动探测、CLI/TUI 探测入口 | `Planned` | Phase 2B |
-| 自动重试与故障转移执行器 | `Planned` | Phase 2B |
+| 收集式调用、超时、重试与故障转移执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
+| 逐 Token 透传执行与流中断恢复 | `Planned` | Phase 2B |
 | ReAct Agent Loop 模板 | `Planned` | Phase 3 |
 | 工具定义、策略和执行器分离 | `Planned` | Phase 3 |
 | Session 事件记录与回放 | `Planned` | Phase 3 |
@@ -70,7 +71,8 @@
 - 2A 已实现可解释路由决策、Python/YAML 策略、端点嗅探、Provider 探测、缓存和周期调度。
 - 2B 已实现带可替换 HTTP 传输的 OpenAI-compatible Chat Completions Provider。
 - 2B 已实现通用 HTTP 请求映射层、JSON/SSE/NDJSON 传输、四种原生模板和四种兼容厂商模板。
-- 2B 后续计划提供 OpenAI Responses/vLLM 差异适配、注册自动探测、CLI/TUI 入口、重试与故障转移执行器。
+- 2B 已实现默认单次调用、显式有界重试/故障转移、逐尝试超时与审计记录的收集式执行器。
+- 2B 后续计划提供 OpenAI Responses/vLLM 差异适配、注册自动探测、CLI/TUI 入口和逐 Token 透传执行。
 
 ### Phase 3：Agent 与工具
 

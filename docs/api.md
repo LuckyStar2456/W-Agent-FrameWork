@@ -23,7 +23,7 @@
 | 工具/扫描 | `LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
 | 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
-| 路由/探测 | `ModelRouter`、`RoutingPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
+| 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 
 当前准确的 Agent 协议只有：
 
@@ -93,14 +93,16 @@ class ModelProvider(Protocol):
 
 ## 5. 路由协议
 
-状态：`Implemented`（Phase 2A 策略与决策）；自动调用、重试和故障转移为 `Planned`。
+状态：`Implemented`（Phase 2A 策略与决策、Phase 2B 收集式调用执行）。
 
 ```python
 class RoutingPolicy(Protocol):
     def select(self, request: RouteRequest) -> RouteDecision: ...
 ```
 
-`RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略；它尚不负责执行调用或自动切换备用路由。
+`RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略，仍不直接执行调用。
+
+`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 不包含 Prompt 或凭据。执行失败抛出携带决定和全部尝试的 `ModelInvocationError`。当前 API 收集完整流后返回；逐 Token 透传为 `Planned`。
 
 ## 6. 探测协议
 

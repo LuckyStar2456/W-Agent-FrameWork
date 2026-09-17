@@ -57,8 +57,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - An OpenAI-compatible Chat Completions provider with a replaceable transport for local or remote services that declare compatibility.
 - A pluggable generic HTTP request-mapping layer with JSON/SSE/NDJSON transport.
 - Native Anthropic, Gemini, Ollama, and Qwen templates, plus DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI template registration.
+- A `ModelExecutor` with one call by default, explicitly enabled bounded retry/failover, timeouts, and prompt-free attempt records.
 
-`BaseAgent` remains a minimal abstraction. Dedicated OpenAI Responses and vLLM differences, automatic failover, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
+`BaseAgent` remains a minimal abstraction. Dedicated OpenAI Responses and vLLM differences, token-pass-through execution, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
 
 ## Next-generation module map
 

@@ -123,7 +123,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, and initial vendor templates are `Implemented`; CLI/TUI entry points and dedicated OpenAI Responses/vLLM differences are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, and collecting invocation executor are `Implemented`; CLI/TUI entry points, dedicated OpenAI Responses/vLLM differences, and pass-through streaming are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
@@ -163,6 +163,8 @@ result = await ModelProviderProbe().probe(
 ```
 
 Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo templates can be assembled through `builtin_provider_template_registry()`. Qwen has both native DashScope and compatible entry points. The Turbo template means Turbo AI/SIAM.AI and requires a deployment URL. See [HTTP providers and vendor templates](./provider-templates.en.md).
+
+Use the separate `ModelExecutor` to execute a route decision. The default performs one call; retry or fallback happens only after explicitly raising `InvocationPolicy.max_attempts_per_route` or `max_routes`. The current result is fully collected rather than token-pass-through. See [Models, routing, and endpoint probing](./model-routing.en.md#invocation-retry-and-failover).
 
 The following CLI experience remains `Planned`:
 

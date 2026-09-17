@@ -96,7 +96,7 @@ class MyMapping:
 - API Key 只进入请求 Header，不进入模型描述、路由决定或模板目录。
 - Base URL 拒绝用户信息、查询串、片段和无效端口；私有部署地址仍由用户自行信任。
 - 当前测试使用模拟传输，不消耗远程额度；真实凭据和在线兼容性未在仓库测试中验证。
-- OpenAI Responses、vLLM 专用差异、Reasoning 增量、自动重试/故障转移、注册自动探测和 CLI/TUI 配置入口仍为 `Planned`。
+- OpenAI Responses、vLLM 专用差异、Reasoning 增量、逐 Token 透传执行、注册自动探测和 CLI/TUI 配置入口仍为 `Planned`。收集式重试/故障转移由独立 `ModelExecutor` 提供。
 - 厂商协议会变化。模板版本随 W-Agent 发布；应用可固定、复制或注册自己的版本。
 
 协议依据： [Anthropic Messages](https://platform.claude.com/docs/en/api/overview)、[Gemini API](https://ai.google.dev/api/generate-content)、[Ollama Chat](https://docs.ollama.com/api/chat)、[Qwen DashScope](https://docs.qwencloud.com/api-reference/chat/dashscope)、[DeepSeek API](https://api-docs.deepseek.com/zh-cn/)、[GLM 快速开始](https://zhipu-ef7018ed.mintlify.app/cn/guide/start/quick-start)、[Turbo AI Endpoint](https://docs.turbo-ai.com/features/endpoint/)。

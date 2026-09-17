@@ -32,7 +32,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Python and YAML routing | `Implemented` | Phase 2A / 2.0.0a1 |
 | Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
 | Automatic registration probes and CLI/TUI probe entry points | `Planned` | Phase 2B |
-| Automatic retry and failover executor | `Planned` | Phase 2B |
+| Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
+| Token-pass-through execution and stream recovery | `Planned` | Phase 2B |
 | ReAct agent-loop template | `Planned` | Phase 3 |
 | Separate tool definition, policy, and execution | `Planned` | Phase 3 |
 | Session event recording and replay | `Planned` | Phase 3 |
@@ -70,7 +71,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2A implements explainable route decisions, Python/YAML policies, endpoint sniffing, provider probes, caching, and periodic scheduling.
 - 2B implements an OpenAI-compatible Chat Completions provider with replaceable HTTP transport.
 - 2B implements the generic HTTP request-mapping layer, JSON/SSE/NDJSON transport, four native templates, and four compatible-vendor templates.
-- Later 2B work plans OpenAI Responses/vLLM differences, automatic registration probes, CLI/TUI entry points, retry, and failover execution.
+- 2B implements a collecting executor with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records.
+- Later 2B work plans OpenAI Responses/vLLM differences, automatic registration probes, CLI/TUI entry points, and token-pass-through execution.
 
 ### Phase 3: agents and tools
 

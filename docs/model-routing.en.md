@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation, Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, and initial vendor templates are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, automatic retry/failover, automatic registration probes, and CLI/TUI entry points are `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, and collecting invocation/retry/failover executor are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, pass-through streaming execution, automatic registration probes, and CLI/TUI entry points are `Planned`.
 
 ## Implemented boundary
 
@@ -16,6 +16,7 @@ Status: the Phase 2A foundation, Phase 2B generic HTTP mapping layer, OpenAI-com
 - Replaceable `HttpModelProvider`, request/frame, mapper, stream-decoder, and transport protocols; the default transport supports JSON, SSE, and NDJSON.
 - Native templates for Anthropic Messages, Gemini `streamGenerateContent`, Ollama `/api/chat`, and Qwen DashScope.
 - DeepSeek, GLM, Qwen OpenAI-compatible, and Turbo AI/SIAM.AI templates plus an independent template registry.
+- `ModelExecutor` collecting invocation, per-attempt timeouts, explicit bounded retry/failover, and prompt-free attempt records.
 
 Dedicated OpenAI Responses and vLLM-specific adapters are not built in yet. Templates have fake-transport conformance tests, but repository tests contain no live credentials and do not claim that any individual remote model has been validated online. See [HTTP providers and vendor templates](./provider-templates.en.md) for details.
 
@@ -135,7 +136,33 @@ weights:
   preferred_provider: 0.5
 ```
 
-The current `ModelRouter` only produces decisions. It does not invoke a provider or automatically execute fallback routes. Retry, backoff, idempotency boundaries, and failover execution are Phase 2B `Planned` work.
+`ModelRouter` continues to produce decisions only. `ModelExecutor` is a separate consumer that invokes providers according to a decision. Either part can be replaced without embedding execution rules in routing policy.
+
+## Invocation, retry, and failover
+
+`ModelExecutor.invoke()` consumes a route decision and returns `ModelInvocationResult`, containing the complete `ModelResponse`, the provider/model that succeeded, the original `RouteDecision`, and immutable `AttemptRecord` entries.
+
+```python
+from w_agent import InvocationPolicy, ModelExecutor
+
+executor = ModelExecutor(
+    models,
+    router,
+    InvocationPolicy(
+        max_attempts_per_route=2,
+        max_routes=2,
+        timeout=30,
+        initial_backoff=0.25,
+    ),
+)
+result = await executor.invoke(request)
+```
+
+The default policy permits one attempt on one route, so it never creates extra potentially billable calls without configuration. Raising either limit is explicit replay authorization by the developer assembling that executor. A failure is replayed only when it has `retryable=True` and its normalized kind is rate limit, timeout, network, or provider failure. Authentication, configuration, content-policy, and protocol errors stop immediately by default. Backoff is deterministic, bounded, and replaceable; custom policies only need to satisfy `InvocationPolicyProtocol`.
+
+The current executor collects and validates the complete provider stream through `collect_stream()` before returning. This permits safe route switching before partial output reaches the caller, but it is not token-by-token pass-through. Low-latency pass-through needs separate semantics that prohibit replay once any event has escaped and remains `Planned`.
+
+Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. Attempt records contain provider/model identity, indexes, duration, normalized failure, and next delay only—never messages, prompts, bodies, or credentials. The executor does not mutate `CandidateState`; an explicit observation plugin remains responsible for health feedback.
 
 ## Endpoint probing
 
@@ -157,13 +184,13 @@ The manual Python API and generic periodic scheduler are implemented. A plugin c
 
 ## Errors and safety boundary
 
-Stable error categories cover configuration, authentication, rate limiting, timeout, network, protocol, content policy, provider failure, and cancellation. Routing decisions can consume health status, but the current layer does not automatically retry based on it.
+Stable error categories cover configuration, authentication, rate limiting, timeout, network, protocol, content policy, provider failure, and cancellation. A route decision may consume health state but performs no retry itself; `ModelExecutor` handles normalized failures only according to an explicit `InvocationPolicy`.
 
-An active probe requires the caller to pass `allow_active=True`. That authorization covers only the current call, is not persisted, and cannot arrive through a composition code. Future failover execution must not replay a tool call that has already produced side effects.
+An active probe requires the caller to pass `allow_active=True`. That authorization covers only the current call, is not persisted, and cannot arrive through a composition code. The model executor's `replay_safe` flag applies only to model requests; a future tool executor still must not replay a tool call that has already produced side effects.
 
 ## Remaining Phase 2B plan
 
 - Dedicated OpenAI Responses and vLLM differences, plus reasoning deltas and more vendor-specific features in existing templates.
 - Automatic safe registration probes, CLI/TUI probe entry points, and health-state bridging.
-- Provider invocation, timeout, rate limiting, backoff, retry, automatic failover, and attempt records.
+- Token-pass-through invocation, cross-stream recovery, and pluggable feedback bridges to health state and rate limiters.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.
