@@ -54,7 +54,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Docker/OCI coding sandbox | `Implemented` | Phase 5 / 2.0.0a1 |
 | Explicit `UnsafeLocalSandbox` mode | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
-| Customer-support/RAG and coding profiles | `Planned` | Phase 5 |
+| Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
 | Portable composition codes and versioning | `Planned` | Phase 6 |
 | CLI and Textual TUI | `Planned` | Phase 6 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
@@ -111,11 +111,12 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 5: local profiles and sandboxing
 
-- Status: unified contracts, Docker provider, explicitly authorized local provider, and command-tool binding are `Implemented`; profiles and broader environment acceptance remain `Planned`.
+- Status: unified contracts, Docker provider, explicitly authorized local provider, command-tool binding, and initial agent templates are `Implemented`; broader environment acceptance remains `Planned`.
 - Implemented Docker/OCI lifecycle handles, network-off defaults, resource limits, least-privilege arguments, fixed-image policy, and cleanup.
 - Implemented `UnsafeLocalSandboxProvider`, constructible only with a runtime authorization object; safe-backend failure never downgrades automatically.
 - Implemented `sandbox_command_tool()` through the existing permission, per-call approval, cancellation, and audit pipeline.
-- Later work adds customer-support/RAG and coding profiles, network allowlists, nsjail/Wasm adapters to the new contract, and broad Windows Docker Desktop/WSL2 validation.
+- Implemented fully overridable customer-support/RAG and coding `AgentTemplate` values. Templates bind no model, register no tool, and grant neither permission nor local-execution authority.
+- Later work adds network allowlists, nsjail/Wasm adapters to the new contract, and broad Windows Docker Desktop/WSL2 validation.
 
 ### Phase 6: sharing, interfaces, and evaluation
 

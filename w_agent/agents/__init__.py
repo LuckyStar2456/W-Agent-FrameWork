@@ -8,6 +8,13 @@ from .persistence import (
     RunStoreError,
 )
 from .react import ReactAgentExecution, ReactAgentLoop, ReactResumeExecution
+from .templates import (
+    CODING_AGENT_TEMPLATE,
+    CUSTOMER_SUPPORT_AGENT_TEMPLATE,
+    AgentTemplate,
+    coding_agent,
+    customer_support_agent,
+)
 from .types import (
     AgentDefinition,
     AgentExecution,
@@ -26,6 +33,9 @@ __all__ = [
     "AgentDefinition",
     "AgentExecution",
     "AgentLoop",
+    "AgentTemplate",
+    "CODING_AGENT_TEMPLATE",
+    "CUSTOMER_SUPPORT_AGENT_TEMPLATE",
     "CheckpointStatus",
     "InMemoryRunStore",
     "JsonlRunStore",
@@ -42,4 +52,6 @@ __all__ = [
     "RunStoreError",
     "StopReason",
     "TokenBudget",
+    "coding_agent",
+    "customer_support_agent",
 ]

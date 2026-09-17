@@ -77,6 +77,12 @@ Token 硬预算在每个成功响应后按 Provider 实际值核算，超限时�
 
 当前 ReAct 使用模型执行器的收集式 `invoke()`，所以 Run 事件尚不包含文本逐 Token 增量。模型层本身已经支持安全透传，接入 Agent 文本增量 RunEvent 是后续工作。
 
+## 首批模板
+
+`customer_support_agent()` 和 `coding_agent()` 构建普通 `AgentDefinition`。对应的 `CUSTOMER_SUPPORT_AGENT_TEMPLATE` / `CODING_AGENT_TEMPLATE` 公开推荐工具名和默认值，所有字段都可在 `build()` 时覆盖，也可完全弃用模板。
+
+模板不绑定 Provider，不注册或隐藏工具，不授予权限、审批或本地执行权。客服模板建议证据检索、客户/工单查询与受审批写入；编码模板建议工作区读写与 `sandbox_command`。应用仍需自行注册工具、配置 Scope 和权限，并为编码执行选择 Docker 沙箱或显式授权的本地开发模式。
+
 ## 审批和停止
 
 当工具返回 `NEEDS_APPROVAL` 时，Loop 不执行工具、不把拒绝结果发送给模型，保存 `RunCheckpoint`，并以 `StopReason.NEEDS_APPROVAL` 返回 `pending_tool_call` 和 `checkpoint_id`。批准只能来自本地应用提供的 `ToolExecutionContext.approved_call_ids`；模型输出不能自行授权。

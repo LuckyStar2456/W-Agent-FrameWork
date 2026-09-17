@@ -77,6 +77,12 @@ Hard token budgets reconcile provider-reported actuals after each successful res
 
 The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain per-token text deltas. The model layer already supports safe pass-through; adapting text deltas into agent RunEvents is later work.
 
+## Initial templates
+
+`customer_support_agent()` and `coding_agent()` build ordinary `AgentDefinition` values. Their `CUSTOMER_SUPPORT_AGENT_TEMPLATE` / `CODING_AGENT_TEMPLATE` objects expose recommended tool names and defaults. Every definition field can be replaced through `build()`, and callers may ignore the templates entirely.
+
+Templates bind no provider, register or hide no tool, and grant no permission, approval, or local-execution authority. The support template recommends evidence search, customer/ticket reads, and approval-gated writes. The coding template recommends workspace operations and `sandbox_command`. Applications still register tools, configure scope and authority, and choose Docker isolation or the explicitly authorized local development mode for code execution.
+
 ## Approval and stopping
 
 When a tool returns `NEEDS_APPROVAL`, the loop does not execute it or send a denial to the model. It saves `RunCheckpoint` and returns `StopReason.NEEDS_APPROVAL` with `pending_tool_call` and `checkpoint_id`. Approval can come only from `ToolExecutionContext.approved_call_ids` supplied by the local application; model output cannot authorize itself.

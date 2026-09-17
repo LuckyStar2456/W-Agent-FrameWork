@@ -54,7 +54,7 @@
 | Docker/OCI 编码沙箱 | `Implemented` | Phase 5 / 2.0.0a1 |
 | `UnsafeLocalSandbox` 显式授权模式 | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
-| 客服/RAG 与编码 Agent 模板 | `Planned` | Phase 5 |
+| 客服/RAG 与编码 Agent 模板 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 工程装配编码与版本管理 | `Planned` | Phase 6 |
 | CLI 与 Textual TUI | `Planned` | Phase 6 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
@@ -111,11 +111,12 @@
 
 ### Phase 5：本地模板与沙箱
 
-- 状态：统一协议、Docker Provider、显式授权本地 Provider 和命令工具绑定为 `Implemented`；模板与更广环境验收为 `Planned`。
+- 状态：统一协议、Docker Provider、显式授权本地 Provider、命令工具绑定和首批 Agent 模板为 `Implemented`；更广环境验收为 `Planned`。
 - 已实现 Docker/OCI 生命周期 Handle、默认断网、资源限制、最小权限参数、固定镜像策略和清理。
 - 已实现仅能通过运行时授权对象创建的 `UnsafeLocalSandboxProvider`；安全后端失败不会自动降级。
 - 已实现 `sandbox_command_tool()`，通过现有权限、逐调用审批、取消和审计管线执行。
-- 后续实现客服/RAG 与编码 Agent 模板、网络 allowlist、nsjail/Wasm 新协议适配和 Windows Docker Desktop/WSL2 广泛验证。
+- 已实现完全可覆盖的客服/RAG 与编码 `AgentTemplate`；模板不绑定模型、不自动注册工具，也不授予权限或本地执行权。
+- 后续实现网络 allowlist、nsjail/Wasm 新协议适配和 Windows Docker Desktop/WSL2 广泛验证。
 
 ### Phase 6：分享、界面与评测
 

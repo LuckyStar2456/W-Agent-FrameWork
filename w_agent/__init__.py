@@ -10,6 +10,9 @@ from w_agent.agents import (
     AgentDefinition,
     AgentExecution,
     AgentLoop,
+    AgentTemplate,
+    CODING_AGENT_TEMPLATE,
+    CUSTOMER_SUPPORT_AGENT_TEMPLATE,
     CheckpointStatus,
     InMemoryRunStore,
     JsonlRunStore,
@@ -26,6 +29,8 @@ from w_agent.agents import (
     RunStoreError,
     StopReason,
     TokenBudget,
+    coding_agent,
+    customer_support_agent,
 )
 from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
 from w_agent.config.dynamic_config import DynamicConfigManager
@@ -316,6 +321,9 @@ __all__ = [
     "AgentDefinition",
     "AgentExecution",
     "AgentLoop",
+    "AgentTemplate",
+    "CODING_AGENT_TEMPLATE",
+    "CUSTOMER_SUPPORT_AGENT_TEMPLATE",
     "CheckpointStatus",
     "InMemoryRunStore",
     "JsonlRunStore",
@@ -332,6 +340,8 @@ __all__ = [
     "RunStoreError",
     "StopReason",
     "TokenBudget",
+    "coding_agent",
+    "customer_support_agent",
     "BeanFactory",
     "BeanDefinition",
     "Scope",
