@@ -55,7 +55,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Explicit `UnsafeLocalSandbox` mode | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
-| Portable composition codes and versioning | `Planned` | Phase 6 |
+| Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
 | CLI and Textual TUI | `Planned` | Phase 6 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
 | Minimal 1.x compatibility adapter | `Planned` | Maintained through every phase |
@@ -120,8 +120,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 6: sharing, interfaces, and evaluation
 
-- Named and versioned `CompositionManifest`.
-- Composition-code import, preview, validation, and confirmation.
+- Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
+- Preview performs no network access, installation, import, or plugin execution. Dependency resolution plus installation/load confirmations remain `Planned`.
 - CLI, Textual TUI, event inspection, and checkpoint recovery.
 - Mocks, record/replay, and customer-support and coding benchmark tasks.
 

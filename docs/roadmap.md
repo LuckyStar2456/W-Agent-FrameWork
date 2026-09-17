@@ -55,7 +55,7 @@
 | `UnsafeLocalSandbox` 显式授权模式 | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 客服/RAG 与编码 Agent 模板 | `Implemented` | Phase 5 / 2.0.0a1 |
-| 工程装配编码与版本管理 | `Planned` | Phase 6 |
+| 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
 | CLI 与 Textual TUI | `Planned` | Phase 6 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
 | 1.x 最小兼容适配器 | `Planned` | 每阶段同步维护 |
@@ -120,8 +120,8 @@
 
 ### Phase 6：分享、界面与评测
 
-- 命名和版本化的 `CompositionManifest`。
-- 装配编码导入、预览、校验和确认。
+- 已实现命名和版本化的 `CompositionManifest`、确定性编码/解码、大小限制、完整性校验、安全预览与冲突安全的本地版本/别名库。
+- 装配预览阶段不访问网络、不安装、不导入也不执行插件；依赖解析、安装确认与加载确认仍为 `Planned`。
 - CLI、Textual TUI、事件查看和 Checkpoint 恢复。
 - Mock、录制回放、客服与编码基准任务。
 

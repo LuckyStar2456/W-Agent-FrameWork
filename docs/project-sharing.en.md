@@ -2,7 +2,9 @@
 
 English | [简体中文](./project-sharing.md)
 
-Status: `Planned`. This capability lets local developers transfer a W-Agent module composition as one copyable code and manage named versions of that composition.
+Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`; dependency installation, plugin-load confirmation, and CLI/TUI screens remain `Planned`.
+
+Current public APIs are `CompositionManifest`, `PluginRequirement`, `encode_composition()`, `decode_composition()`, `inspect_composition()`, and `CompositionStore`. They operate on data only and perform no network access, package installation, plugin import, or execution.
 
 ## Concept
 
@@ -12,9 +14,8 @@ A `CompositionManifest` describes how to assemble the framework. It is not a sou
 schema_version: 1
 name: lucky-coding-stack
 version: 2.1.0
-requires:
-  python: ">=3.11"
-  wagent: ">=2.0,<3.0"
+requires_python: ">=3.11"
+requires_wagent: ">=2.0,<3.0"
 plugins:
   - name: wagent-openai
     version: ">=1.2,<2.0"
@@ -30,15 +31,16 @@ Users may keep several versions under one name and assign local aliases. An alia
 
 ## Code format
 
-The first release plans a prefixed and versioned code:
+The first release uses a prefixed and versioned code:
 
 ```text
 wagent-compose:v1:<base64url-compressed-canonical-json>:<checksum>
 ```
 
 - `v1` is the encoding schema, not the user's composition version.
-- Canonical JSON is compressed and Base64URL encoded for copying.
-- A checksum detects transmission corruption but does not identify a publisher.
+- Key-sorted, whitespace-free canonical JSON is zlib-compressed and Base64URL encoded.
+- A SHA-256 checksum detects transmission corruption but does not identify a publisher.
+- Decoding bounds compressed input and expanded JSON and rejects malformed, incomplete, or oversized payloads.
 - Digital signatures and trust networks are `Reserved`.
 
 ## Allowed content
@@ -88,7 +90,7 @@ Decode and preview perform no network access, install no package, import no plug
 
 ## Version management
 
-A local index stores manifest and content digest by `(name, version)`. Importing the same name and version with a different digest is a conflict and never silently overwrites data. Users can:
+`CompositionStore` keeps manifests and content digests by `(name, version)`. Importing different content under the same name and version is a conflict and never silently overwrites data; an alias also cannot silently move to another version. Users can:
 
 - Keep multiple versions and select which one runs.
 - Save local changes as a new version.

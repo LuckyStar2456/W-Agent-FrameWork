@@ -189,15 +189,16 @@ class SandboxProvider(Protocol):
 
 ## 11. Composition protocol
 
-Status: `Planned`.
+Status: encoding, decoding, safe preview, and the local version store are `Implemented`; dependency installation and plugin-load confirmers remain `Planned`.
 
 ```python
-class CompositionCodec(Protocol):
-    def encode(self, manifest: CompositionManifest) -> str: ...
-    def decode(self, code: str) -> CompositionPreview: ...
+code = encode_composition(manifest)
+manifest = decode_composition(code)
+preview = inspect_composition(code)
+CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 ```
 
-Decode produces a preview only; it installs no dependency, loads no plugin, and executes no code. Separate install and load operations continue only after user confirmation.
+Decode and preview perform no network access, install no dependency, load no plugin, and execute no code. Manifests reject secrets, absolute local paths, embedded code, and `UnsafeLocalSandbox` authority; the codec bounds compressed and expanded sizes. Separate post-confirmation install and load operations are not implemented yet.
 
 ## 12. Compatibility API
 

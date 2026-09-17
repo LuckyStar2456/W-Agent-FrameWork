@@ -34,6 +34,17 @@ from w_agent.agents import (
 )
 from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
 from w_agent.config.dynamic_config import DynamicConfigManager
+from w_agent.compositions import (
+    COMPOSITION_PREFIX,
+    CompositionError,
+    CompositionManifest,
+    CompositionPreview,
+    CompositionStore,
+    PluginRequirement,
+    decode_composition,
+    encode_composition,
+    inspect_composition,
+)
 from w_agent.core.decorators import (
     AgentComponent,
     ServiceComponent,
@@ -346,6 +357,15 @@ __all__ = [
     "BeanDefinition",
     "Scope",
     "DynamicConfigManager",
+    "COMPOSITION_PREFIX",
+    "CompositionError",
+    "CompositionManifest",
+    "CompositionPreview",
+    "CompositionStore",
+    "PluginRequirement",
+    "decode_composition",
+    "encode_composition",
+    "inspect_composition",
     "AgentComponent",
     "ServiceComponent",
     "ToolComponent",

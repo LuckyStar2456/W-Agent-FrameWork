@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, a single-agent ReAct loop, local DAG/state-graph/Python workflows, and Docker/explicitly authorized local sandbox providers. Full sessions, parallel/nested workflows, customer-support/coding profiles, composition codes, and the TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model/tool foundations, single-agent ReAct, token budgets, local workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, and composition encoding/preview/version storage. Full sessions, parallel/nested workflows, composition install/load confirmation, and the TUI remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 

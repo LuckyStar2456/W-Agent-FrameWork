@@ -2,7 +2,9 @@
 
 [English](./project-sharing.en.md) | 简体中文
 
-状态：`Planned`。该能力让本地开发者把自己的 W-Agent 模块组合通过一段编码传递给其他开发者，并对组合进行命名和版本化管理。
+状态：Manifest、编码/解码、安全预览和本地版本库为 `Implemented`（`2.0.0a1`）；依赖安装、插件加载确认和 CLI/TUI 页面为 `Planned`。
+
+当前公共 API 为 `CompositionManifest`、`PluginRequirement`、`encode_composition()`、`decode_composition()`、`inspect_composition()` 和 `CompositionStore`。这些 API 只处理数据，不访问网络、不安装包、不导入或执行插件。
 
 ## 概念
 
@@ -12,9 +14,8 @@
 schema_version: 1
 name: lucky-coding-stack
 version: 2.1.0
-requires:
-  python: ">=3.11"
-  wagent: ">=2.0,<3.0"
+requires_python: ">=3.11"
+requires_wagent: ">=2.0,<3.0"
 plugins:
   - name: wagent-openai
     version: ">=1.2,<2.0"
@@ -30,15 +31,16 @@ policies:
 
 ## 编码格式
 
-首版计划使用带前缀的版本化编码：
+首版使用带前缀的版本化编码：
 
 ```text
 wagent-compose:v1:<base64url-compressed-canonical-json>:<checksum>
 ```
 
 - `v1` 是编码模式版本，不是用户装配版本。
-- 内容使用规范化 JSON 和压缩后 Base64URL，便于复制。
-- 校验值检测传输损坏，不代表发布者身份。
+- 内容使用键排序、无多余空白的规范 JSON，zlib 压缩后使用 Base64URL。
+- SHA-256 校验值检测传输损坏，不代表发布者身份。
+- 解码限制压缩输入与解压后 JSON 大小，拒绝畸形、不完整和超限载荷。
 - 数字签名和信任网络为 `Reserved`。
 
 ## 可以包含
@@ -88,7 +90,7 @@ wagent-compose:v1:<base64url-compressed-canonical-json>:<checksum>
 
 ## 版本管理
 
-本地索引按 `(name, version)` 保存 Manifest 和内容摘要。同名同版本但摘要不同的导入被视为冲突，不能静默覆盖。用户可以：
+`CompositionStore` 按 `(name, version)` 保存 Manifest 和内容摘要。同名同版本但摘要不同的导入被视为冲突，不能静默覆盖；别名也不能静默改指其他版本。用户可以：
 
 - 保留两个版本并选择运行版本。
 - 创建新版本保存自己的改动。

@@ -63,8 +63,10 @@ W-Agent 遵循以下原则：
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、JSONL RunEvent 记录和审批断点恢复。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
+- Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
+- `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、Agent/Workflow 便捷适配器、并行或嵌套 Workflow、客服/编码模板、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、并行或嵌套 Workflow、装配依赖安装/加载确认和 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -141,7 +143,7 @@ CLI 与 TUI 将只调用公开 Python API。TUI 计划覆盖模型配置与探�
 
 ## 工程装配分享
 
-`Planned`：开发者可以给自己的框架装配命名并进行版本化，然后导出一段可复制的编码。其他开发者导入后先预览、校验和解析依赖，再明确确认安装或加载。
+`Implemented`：开发者可以给框架装配命名和版本化，导出为可复制编码，并在无网络、无导入、无执行的阶段完成校验和风险预览。本地 Store 支持多版本与别名且拒绝静默覆盖冲突内容。依赖安装和插件加载确认仍为 `Planned`。
 
 装配编码只携带可移植清单，不携带密钥，不默认打包任意源码，也不会在导入时自动执行不可信插件。详细设计见[工程装配分享](./docs/project-sharing.md)。
 

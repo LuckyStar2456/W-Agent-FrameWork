@@ -172,7 +172,7 @@ See [Sandbox and local execution](./sandbox.en.md).
 
 Developers assemble plugins, version constraints, configuration, routing, workflow references, and sandbox policy into a named and versioned `CompositionManifest`, then export it as a copyable code with a schema version and integrity check.
 
-The code contains no secrets, does not embed arbitrary source by default, and never grants local-execution authority. Import decodes, validates, previews dependencies and risk, then requires user confirmation before installation and loading. See [Portable project compositions](./project-sharing.en.md).
+Current code implements canonical manifests, deterministic encoding/decoding, size and integrity checks, safe preview, and a conflict-safe local version/alias store. Codes contain no secrets, absolute local paths, or arbitrary source and cannot grant local-execution authority. Preview performs no network access or plugin import; post-confirmation dependency installation and loading remain later work. See [Portable project compositions](./project-sharing.en.md).
 
 ## 12. CLI, TUI, and evaluation
 

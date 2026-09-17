@@ -189,15 +189,16 @@ class SandboxProvider(Protocol):
 
 ## 11. 工程装配协议
 
-状态：`Planned`。
+状态：编码、解码、安全预览和本地版本库为 `Implemented`；依赖安装与插件加载确认器为 `Planned`。
 
 ```python
-class CompositionCodec(Protocol):
-    def encode(self, manifest: CompositionManifest) -> str: ...
-    def decode(self, code: str) -> CompositionPreview: ...
+code = encode_composition(manifest)
+manifest = decode_composition(code)
+preview = inspect_composition(code)
+CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 ```
 
-解码只产生预览，不安装依赖、不加载插件、不执行代码。用户确认后由独立的安装与加载操作继续。
+解码与预览不访问网络、不安装依赖、不加载插件、不执行代码。Manifest 拒绝秘密值、绝对本地路径、内嵌代码和 `UnsafeLocalSandbox` 授权；Codec 设有压缩与解压大小边界。用户确认后的独立安装与加载操作仍未实现。
 
 ## 12. 兼容接口
 

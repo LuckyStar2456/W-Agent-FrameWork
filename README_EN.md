@@ -63,8 +63,10 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, JSONL RunEvent recording, and approval-checkpoint resume.
 - A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
 - Unified `SandboxProvider`/`SandboxRegistry` contracts, a Docker/OCI lifecycle backend, an explicitly runtime-authorized `UnsafeLocalSandboxProvider`, and policy-protected `sandbox_command_tool()`.
+- Bidirectional agent/workflow adapters plus fully overridable customer-support/RAG and coding-agent templates.
+- Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, agent/workflow convenience adapters, parallel or nested workflows, customer-support/coding profiles, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, parallel or nested workflows, composition dependency installation/load confirmation, and a TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
 ## Next-generation module map
 
@@ -141,7 +143,7 @@ The CLI and TUI will use only public Python APIs. The TUI is planned to cover mo
 
 ## Portable project compositions
 
-`Planned`: developers will be able to name and version a framework composition, then export it as a copyable code. Import first previews, validates, and resolves dependencies, after which the user explicitly confirms installation or loading.
+`Implemented`: developers can name and version a framework composition, export it as a copyable code, and validate and preview risks without network access, imports, or execution. The local store keeps multiple versions and aliases while rejecting silent content conflicts. Dependency installation and plugin-load confirmation remain `Planned`.
 
 A composition code carries a portable manifest, never secrets. It does not bundle arbitrary source by default and never executes untrusted plugins automatically during import. See [Portable project compositions](./docs/project-sharing.en.md).
 
