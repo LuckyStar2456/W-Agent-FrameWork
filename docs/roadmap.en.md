@@ -38,10 +38,11 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Cross-stream recovery and resume | `Planned` | Phase 2B |
 | Single-agent ReAct/tool-loop template | `Implemented` | Phase 3 / 2.0.0a1 |
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
+| Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP/MCP/command tool adapters | `Planned` | Phase 3/5 |
-| Session event recording and replay | `Planned` | Phase 3 |
+| Full session lifecycle and general replay | `Planned` | Phase 3 |
 | DAG, state-graph, and Python workflows | `Planned` | Phase 4 |
 | Node-level checkpoint, pause, and resume | `Planned` | Phase 4 |
 | Docker/OCI coding sandbox | `Planned` | Phase 5 |
@@ -82,9 +83,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 3: agents and tools
 
-- Status: the tool foundation, run contracts, and single-agent ReAct are `Implemented`; durable sessions/resume remain `Planned`.
-- Implemented replaceable agent loops, a default ReAct template, an in-process RunEvent stream, and step/tool budgets.
-- Later durable sessions, append-only event recording, post-approval resume, and agent token events.
+- Status: the tool foundation, run contracts, single-agent ReAct, local event recording, and approval resume are `Implemented`; full session lifecycle remains `Planned`.
+- Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
+- Later session listing/archival, general event projections, and agent token events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
 - Later HTTP/MCP/command adapters and sandbox binding.
 

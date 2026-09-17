@@ -10,7 +10,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 
 | Group | API |
 |---|---|
-| Agent | `BaseAgent`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult` |
+| Agent | `BaseAgent`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -130,7 +130,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same loop protocol. It runs a bounded model/tool cycle, exposes a single-use in-process RunEvent stream, and returns `pending_tool_call` when approval is required. Durable sessions, resume handles, and agent token events are not implemented yet. See [Agent runtime and ReAct loop](./agents.en.md).
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `resume()` continues the pending and remaining calls without repeating the earlier model request. `InMemoryRunStore` and local `JsonlRunStore` are implemented; full session lifecycle and agent token events remain `Planned`. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 8. Workflow protocol
 

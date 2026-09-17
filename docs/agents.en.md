@@ -2,7 +2,7 @@
 
 English | [简体中文](./agents.md)
 
-Status: the public `AgentLoop`/run contracts, a single-use run-event stream, and a bounded single-agent `ReactAgentLoop` are `Implemented` in Phase 3 / `2.0.0a1`. Durable sessions, event storage, post-approval resume, and multi-agent orchestration remain `Planned` or `Reserved`.
+Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, an append-only local RunStore, and post-approval resume are `Implemented` in Phase 3 / `2.0.0a1`. Full session lifecycle, general replay, and multi-agent orchestration remain `Planned` or `Reserved`.
 
 ## Layers
 
@@ -14,7 +14,7 @@ AgentLoop (replaceable as a whole)
    ├── ToolRegistry
    └── ToolExecutorProtocol
               ↓
-RunEvent* → RunResult
+RunEvent* → RunStore → RunResult / RunCheckpoint
 ```
 
 `ReactAgentLoop` is an ordinary first-party implementation with no microkernel privileges. Developers can replace the complete reasoning path through the same `AgentLoop` protocol, or independently replace model routing, model execution, the tool catalog, tool policy, or tool executor.
@@ -50,16 +50,34 @@ Each step:
 
 ## Events and results
 
-`stream()` returns a single-use `ReactAgentExecution` that yields `RUN_STARTED`, model-phase, tool-phase, and `RUN_COMPLETED` events. Its final result is available as `execution.result`. `run()` is the convenience method that consumes these events.
+`stream()` returns a single-use `ReactAgentExecution` that yields `RUN_STARTED`, model-phase, tool-phase, and `RUN_COMPLETED` events. Its final result is available as `execution.result`. `run()` is the convenience method that consumes these events. Each event is appended to `RunStore` before it becomes visible to the caller.
 
-Run events contain model text, tool arguments, and result-stage information needed to reconstruct this in-process model context, so callers must treat them as potentially sensitive run content. Tool audit is separate and stores only minimal metadata such as argument names.
+`InMemoryRunStore` serves tests and short-lived local runs. `JsonlRunStore` uses an append-only `events.jsonl` plus atomically replaced `checkpoint.json` per run and can be reopened by a new process or loop instance. Event sequences must be contiguous; unknown schema versions and corrupt logs fail closed.
+
+Run events contain model text, tool arguments, and result-stage information needed to reconstruct model context, so callers must treat them as potentially sensitive local run content. Tool audit is separate and stores only minimal metadata such as argument names. The current store does not encrypt content; filesystem access control belongs to the local application.
 
 The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain token deltas. The model layer already supports safe pass-through; adapting those events into agent RunEvents is later work.
 
 ## Approval and stopping
 
-When a tool returns `NEEDS_APPROVAL`, the loop does not execute it or send a denial to the model. It returns `StopReason.NEEDS_APPROVAL` with `pending_tool_call`. Approval can come only from `ToolExecutionContext.approved_call_ids` supplied by the local application; model output cannot authorize itself.
+When a tool returns `NEEDS_APPROVAL`, the loop does not execute it or send a denial to the model. It saves `RunCheckpoint` and returns `StopReason.NEEDS_APPROVAL` with `pending_tool_call` and `checkpoint_id`. Approval can come only from `ToolExecutionContext.approved_call_ids` supplied by the local application; model output cannot authorize itself.
 
-There is no durable resume handle yet. A caller can grant approval in a new run, but true continuation from the same event position remains `Planned`; rerunning must not be described as resume.
+```python
+store = JsonlRunStore(".wagent/state")
+loop = ReactAgentLoop(model_executor, tools, tool_executor, store=store)
+
+first = await loop.run(definition, context)
+resumed = await loop.resume(
+    first.checkpoint_id,
+    tool_context=ToolExecutionContext(
+        permissions=frozenset({"notes.write"}),
+        approved_call_ids=frozenset({"call-1"}),
+    ),
+)
+```
+
+Resume executes the original pending call and remaining calls from the same model response, then enters the next model step without repeating the pre-approval model request. A checkpoint is atomically claimed before a side effect runs. If the process exits before its result is durably known, status remains `RESUMING`; a later attempt raises `RunResumeConflictError` for manual reconciliation instead of silently duplicating the effect. Missing approval returns the checkpoint to `PENDING_APPROVAL`.
+
+Checkpoints store neither permissions nor approval credentials; the local application must provide them again. Full session listing/archival, cross-run conversation projections, and arbitrary-position recovery remain `Planned`.
 
 Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.

@@ -220,7 +220,7 @@ loop = ReactAgentLoop(model_executor, tools, tool_executor)
 result = await loop.run(AgentDefinition("assistant"), run_context)
 ```
 
-Loop 自动把当前 Scope 的工具 Definition 交给模型，执行工具并把标准结果回送下一轮模型。`max_steps` 和 `max_tool_calls` 限制运行；需要审批的工具返回 `StopReason.NEEDS_APPROVAL` 和待处理调用，不会自动执行。当前事件不持久化，也不能从审批点原地恢复。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+Loop 自动把当前 Scope 的工具 Definition 交给模型，执行工具并把标准结果回送下一轮模型。`max_steps` 和 `max_tool_calls` 限制运行；需要审批的工具返回 `StopReason.NEEDS_APPROVAL`、待处理调用和 Checkpoint，不会自动执行。配置 `JsonlRunStore` 后可在新进程中通过 `resume()` 从审批点继续，不重复之前的模型调用；不确定的副作用状态拒绝自动重放。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 11. 计划中的沙箱选择
 

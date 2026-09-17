@@ -60,9 +60,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - A `ModelExecutor` for both fully collected and event-pass-through execution, with one call by default, explicitly enabled bounded retry/failover, and prompt-free attempt records.
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
 - Tool definition/binding/registry separation, a Python-function template, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
-- A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model plus an in-process RunEvent stream.
+- A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, JSONL RunEvent recording, and approval-checkpoint resume.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, cross-stream recovery, durable sessions/approval resume, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, general workflow checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
 
 ## Next-generation module map
 

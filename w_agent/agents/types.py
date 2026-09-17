@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol
 
 from w_agent.kernel import ScopePath
-from w_agent.models import CancellationToken, ModelMessage
+from w_agent.models import CancellationToken, ModelMessage, ToolCallContent
 from w_agent.tools import ToolCall, ToolExecutionContext
 
 
@@ -29,7 +30,14 @@ class RunEventType(StrEnum):
     MODEL_FAILED = "model-failed"
     TOOL_REQUESTED = "tool-requested"
     TOOL_COMPLETED = "tool-completed"
+    RUN_RESUMED = "run-resumed"
     RUN_COMPLETED = "run-completed"
+
+
+class CheckpointStatus(StrEnum):
+    PENDING_APPROVAL = "pending-approval"
+    READY = "ready"
+    RESUMING = "resuming"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +70,7 @@ class RunContext:
     scope: ScopePath = field(default_factory=ScopePath.application)
     cancellation: CancellationToken | None = None
     tool_context: ToolExecutionContext = field(default_factory=ToolExecutionContext)
+    session_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -69,6 +78,8 @@ class RunContext:
             raise ValueError("run id must not be empty")
         if not self.messages:
             raise ValueError("run context needs at least one message")
+        if self.session_id is not None and not self.session_id.strip():
+            raise ValueError("session id must not be empty")
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
@@ -79,11 +90,43 @@ class RunEvent:
     type: RunEventType
     run_id: str
     data: Mapping[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if self.sequence <= 0:
             raise ValueError("run event sequence must be positive")
         object.__setattr__(self, "data", MappingProxyType(dict(self.data)))
+
+
+@dataclass(frozen=True, slots=True)
+class RunCheckpoint:
+    """Serializable state at an approval boundary."""
+
+    run_id: str
+    definition: AgentDefinition
+    scope: ScopePath
+    messages: tuple[ModelMessage, ...]
+    pending_tool_call: ToolCall | None
+    remaining_tool_calls: tuple[ToolCallContent, ...]
+    steps: int
+    tool_calls: int
+    latest_output: str
+    session_id: str | None = None
+    status: CheckpointStatus = CheckpointStatus.PENDING_APPROVAL
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported run checkpoint schema version")
+        if self.steps < 0 or self.tool_calls < 0:
+            raise ValueError("checkpoint counters must not be negative")
+        object.__setattr__(self, "messages", tuple(self.messages))
+        object.__setattr__(
+            self,
+            "remaining_tool_calls",
+            tuple(self.remaining_tool_calls),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +139,7 @@ class RunResult:
     steps: int
     tool_calls: int
     pending_tool_call: ToolCall | None = None
+    checkpoint_id: str | None = None
 
 
 class AgentExecution(Protocol):

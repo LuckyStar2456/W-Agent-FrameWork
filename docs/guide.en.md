@@ -220,7 +220,7 @@ loop = ReactAgentLoop(model_executor, tools, tool_executor)
 result = await loop.run(AgentDefinition("assistant"), run_context)
 ```
 
-The loop exposes tool definitions from the current scope to the model, executes calls, and sends normalized results into the next model turn. `max_steps` and `max_tool_calls` bound a run. A call requiring approval returns `StopReason.NEEDS_APPROVAL` plus the pending call and is not executed. Events are not durable yet, and execution cannot resume in place from the approval boundary. See [Agent runtime and ReAct loop](./agents.en.md).
+The loop exposes tool definitions from the current scope to the model, executes calls, and sends normalized results into the next model turn. `max_steps` and `max_tool_calls` bound a run. A call requiring approval returns `StopReason.NEEDS_APPROVAL`, the pending call, and a checkpoint without executing it. With `JsonlRunStore`, a new process can call `resume()` from that boundary without repeating the earlier model request; uncertain side-effect state rejects automatic replay. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 11. Planned sandbox selection
 

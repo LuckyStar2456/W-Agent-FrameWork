@@ -13,7 +13,9 @@ from w_agent import (
     ModelMessage,
     ModelRegistry,
     ModelRouter,
+    JsonlRunStore,
     ReactAgentLoop,
+    RunResumeConflictError,
     RunContext,
     RunEventType,
     StopReason,
@@ -65,7 +67,7 @@ class AgentProvider:
         yield FinishEvent(reason)
 
 
-def _loop(responses, binding):
+def _loop(responses, binding, *, store=None):
     provider = AgentProvider(responses)
     models = ModelRegistry()
     models.register("fake", provider)
@@ -77,7 +79,12 @@ def _loop(responses, binding):
     tools = ToolRegistry()
     tools.register_binding(binding)
     tool_executor = ToolExecutor(tools)
-    return ReactAgentLoop(model_executor, tools, tool_executor), provider
+    return ReactAgentLoop(
+        model_executor,
+        tools,
+        tool_executor,
+        store=store,
+    ), provider
 
 
 def _context(**kwargs):
@@ -262,3 +269,143 @@ async def test_react_loop_enforces_step_and_tool_budgets():
 
     assert max_steps.stop_reason == StopReason.MAX_STEPS
     assert max_tools.stop_reason == StopReason.MAX_TOOL_CALLS
+
+
+@pytest.mark.asyncio
+async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_path):
+    saved = []
+
+    def save(text: str) -> str:
+        saved.append(text)
+        return "saved"
+
+    binding = python_tool(save, side_effect=ToolSideEffect.WRITE)
+    first_store = JsonlRunStore(tmp_path)
+    first_loop, first_provider = _loop(
+        [
+            (
+                (
+                    ToolCallContent("write-1", "save", '{"text":"value"}'),
+                    ToolCallContent("write-2", "save", '{"text":"second"}'),
+                ),
+                FinishReason.TOOL_CALLS,
+            )
+        ],
+        binding,
+        store=first_store,
+    )
+    initial = await first_loop.run(
+        AgentDefinition("writer"),
+        _context(session_id="session-1"),
+    )
+
+    assert initial.stop_reason == StopReason.NEEDS_APPROVAL
+    assert initial.checkpoint_id == "run-1"
+    assert len(first_provider.requests) == 1
+    assert saved == []
+
+    second_store = JsonlRunStore(tmp_path)
+    second_loop, second_provider = _loop(
+        [((TextContent("both saved"),), FinishReason.STOP)],
+        binding,
+        store=second_store,
+    )
+    resumed = await second_loop.resume(
+        "run-1",
+        tool_context=ToolExecutionContext(
+            approved_call_ids=frozenset({"write-1", "write-2"})
+        ),
+    )
+
+    assert resumed.stop_reason == StopReason.COMPLETED
+    assert resumed.output == "both saved"
+    assert saved == ["value", "second"]
+    assert len(first_provider.requests) == 1
+    assert len(second_provider.requests) == 1
+    assert resumed.events[0].type == RunEventType.RUN_STARTED
+    assert any(event.type == RunEventType.RUN_RESUMED for event in resumed.events)
+    assert [event.sequence for event in resumed.events] == list(
+        range(1, len(resumed.events) + 1)
+    )
+    assert all(event.session_id == "session-1" for event in resumed.events)
+    assert await second_store.load_checkpoint("run-1") is None
+    assert (tmp_path / "runs" / "run-1" / "events.jsonl").is_file()
+
+
+@pytest.mark.asyncio
+async def test_resume_without_approval_recreates_pending_checkpoint(tmp_path):
+    calls = []
+
+    def save(text: str) -> str:
+        calls.append(text)
+        return "saved"
+
+    binding = python_tool(save, side_effect=ToolSideEffect.WRITE)
+    store = JsonlRunStore(tmp_path)
+    loop, provider = _loop(
+        [
+            (
+                (ToolCallContent("write-1", "save", '{"text":"value"}'),),
+                FinishReason.TOOL_CALLS,
+            ),
+            ((TextContent("saved"),), FinishReason.STOP),
+        ],
+        binding,
+        store=store,
+    )
+    await loop.run(AgentDefinition("writer"), _context())
+
+    still_pending = await loop.resume(
+        "run-1",
+        tool_context=ToolExecutionContext(),
+    )
+    completed = await loop.resume(
+        "run-1",
+        tool_context=ToolExecutionContext(
+            approved_call_ids=frozenset({"write-1"})
+        ),
+    )
+
+    assert still_pending.stop_reason == StopReason.NEEDS_APPROVAL
+    assert completed.stop_reason == StopReason.COMPLETED
+    assert calls == ["value"]
+    assert len(provider.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_claimed_checkpoint_refuses_unsafe_duplicate_resume(tmp_path):
+    calls = []
+
+    def save(text: str) -> str:
+        calls.append(text)
+        return "saved"
+
+    store = JsonlRunStore(tmp_path)
+    loop, _ = _loop(
+        [
+            (
+                (ToolCallContent("write-1", "save", '{"text":"value"}'),),
+                FinishReason.TOOL_CALLS,
+            )
+        ],
+        python_tool(save, side_effect=ToolSideEffect.WRITE),
+        store=store,
+    )
+    await loop.run(AgentDefinition("writer"), _context())
+    lazy = loop.resume_stream(
+        "run-1",
+        tool_context=ToolExecutionContext(
+            approved_call_ids=frozenset({"write-1"})
+        ),
+    )
+
+    checkpoint = await store.load_checkpoint("run-1")
+    assert checkpoint is not None
+    assert checkpoint.status.value == "pending-approval"
+    await store.claim_checkpoint("run-1")
+
+    with pytest.raises(RunResumeConflictError):
+        async for _ in lazy:
+            pass
+
+    assert calls == []

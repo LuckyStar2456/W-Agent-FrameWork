@@ -10,7 +10,7 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult` |
+| Agent | `BaseAgent`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -130,7 +130,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，公开单次消费的进程内 RunEvent 流，并在需要审批时返回 `pending_tool_call`。当前没有持久化 Session、恢复句柄或 Agent 逐 Token 事件。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`resume()` 原地继续待审批工具与剩余调用，不重复之前的模型请求。`InMemoryRunStore` 和本地 `JsonlRunStore` 已实现；完整 Session 生命周期和 Agent 逐 Token 事件仍为 `Planned`。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 8. Workflow 协议
 

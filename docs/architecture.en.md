@@ -130,11 +130,11 @@ See [Models, routing, and endpoint probing](./model-routing.en.md).
 
 ## 7. Agent runtime
 
-Status: public run/loop contracts, a bounded single-agent ReAct template, and an in-process event stream are `Implemented`; durable sessions, event storage, and approval resume remain `Planned`.
+Status: public run/loop contracts, bounded single-agent ReAct, in-process/JSONL event storage, and approval resume are `Implemented`; full session lifecycle and general replay remain `Planned`.
 
 The runtime defines run lifecycle, context, events, cancellation, budgets, and results without prescribing one reasoning policy. The first release provides a usable ReAct template. Users can replace the entire loop, insert pipelines between phases, add step types, choose the next step dynamically, or invoke a workflow from an agent.
 
-The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step/tool-call budgets, and stop safely for approval. Current RunEvents are in-process and model calls are collected. Later durable events must reconstruct all model-visible content and add token output plus true resume semantics. See [Agent runtime and ReAct loop](./agents.en.md).
+The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step/tool-call budgets, and stop safely for approval. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Model calls remain collected; agent token events, full session projections, and general recovery are later work. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 8. Workflow
 

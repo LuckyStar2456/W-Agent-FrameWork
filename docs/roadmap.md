@@ -38,10 +38,11 @@
 | 跨流断点恢复与续传 | `Planned` | Phase 2B |
 | 单 Agent ReAct/tool loop 模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
+| 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP/MCP/命令行工具适配器 | `Planned` | Phase 3/5 |
-| Session 事件记录与回放 | `Planned` | Phase 3 |
+| 完整 Session 生命周期与通用回放 | `Planned` | Phase 3 |
 | DAG、状态图、Python Workflow | `Planned` | Phase 4 |
 | 节点级 Checkpoint、暂停和恢复 | `Planned` | Phase 4 |
 | Docker/OCI 编码沙箱 | `Planned` | Phase 5 |
@@ -82,9 +83,9 @@
 
 ### Phase 3：Agent 与工具
 
-- 状态：工具执行基础、Run 协议和单 Agent ReAct 为 `Implemented`；持久化 Session/恢复为 `Planned`。
-- 已实现可替换 Agent Loop、默认 ReAct 模板、进程内 RunEvent 流和步骤/工具预算。
-- 后续实现持久化 Session、追加式事件记录、审批后恢复和 Agent 逐 Token 事件。
+- 状态：工具执行基础、Run 协议、单 Agent ReAct、本地事件记录与审批恢复为 `Implemented`；完整 Session 生命周期为 `Planned`。
+- 已实现可替换 Agent Loop、默认 ReAct 模板、进程内/JSONL RunEvent、步骤/工具预算和不重复首轮模型调用的审批恢复。
+- 后续实现 Session 列表/归档、通用事件投影与 Agent 逐 Token 事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
 - 后续实现 HTTP/MCP/命令行工具适配与沙箱绑定。
 
