@@ -65,8 +65,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Unified `SandboxProvider`/`SandboxRegistry` contracts, a Docker/OCI lifecycle backend, an explicitly runtime-authorized `UnsafeLocalSandboxProvider`, and policy-protected `sandbox_command_tool()`.
 - Bidirectional agent/workflow adapters plus fully overridable customer-support/RAG and coding-agent templates.
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
+- Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, parallel or nested workflows, composition dependency installation/load confirmation, and a TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
 ## Next-generation module map
 
@@ -158,6 +159,7 @@ A composition code carries a portable manifest, never secrets. It does not bundl
 - [HTTP providers and vendor templates](./docs/provider-templates.en.md)
 - [Tool registration, policy, and execution](./docs/tools.en.md)
 - [Agent runtime and ReAct loop](./docs/agents.en.md)
+- [Session lifecycle and cross-run context](./docs/sessions.en.md)
 - [Workflows and node-boundary recovery](./docs/workflows.en.md)
 - [Sandbox and local execution](./docs/sandbox.en.md)
 - [CLI and TUI](./docs/tui.en.md)

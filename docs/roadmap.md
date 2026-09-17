@@ -48,7 +48,8 @@
 | HTTP 与无 Shell 命令工具适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
 | MCP 客户端绑定适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 官方 MCP stdio/HTTP 会话客户端与发现 | `Planned` | Phase 3/5 |
-| 完整 Session 生命周期与通用回放 | `Planned` | Phase 3 |
+| 本地 Session 生命周期与跨 Run 文本投影 | `Implemented` | Phase 3 / 2.0.0a1 |
+| 多模态/工具/RunEvent 通用回放 | `Planned` | Phase 3/6 |
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
 | 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/Workflow 双向便捷适配器 | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -92,12 +93,13 @@
 
 ### Phase 3：Agent 与工具
 
-- 状态：工具执行基础、Run 协议、单 Agent ReAct、本地事件记录与审批恢复为 `Implemented`；完整 Session 生命周期为 `Planned`。
+- 状态：工具执行基础、Run 协议、单 Agent ReAct、本地事件记录、审批恢复与本地 Session 生命周期为 `Implemented`；通用事件回放为 `Planned`。
 - 已实现可替换 Agent Loop、默认 ReAct 模板、进程内/JSONL RunEvent、步骤/工具预算和不重复首轮模型调用的审批恢复。
 - 已实现 `TokenBudget` 的 Run 级输入、输出、总量硬限制，`RunResult.usage` 与 `TOKEN_USAGE` 事件公开累计值；审批 Checkpoint 保存计量状态。`max_output_tokens` 仍只表示单次模型生成上限。
 - 当前预算依据成功响应中 Provider 返回的实际用量在响应后核算，并用剩余输出/总量收紧下一次请求上限；可用 `require_usage=True` 在 Provider 不上报时失败关闭。首个请求的输入 Token 不能在没有分词器时精确预知，失败/中断的重试尝试也可能已经产生未上报用量。
 - 后续实现 Session/Agent 级聚合、覆盖重试/故障转移的逐尝试账本、可插拔调用前 Token 预估器、软阈值动作与费用预算。费用预算必须基于显式版本化价格表，不从 Token 数静默推断。
-- 后续实现 Session 列表/归档、通用事件投影与 Agent 逐 Token 文本事件。
+- 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
+- 后续实现多模态、工具和任意 RunEvent 的通用投影/回放，以及 Agent 逐 Token 文本事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
 - 已实现固定端点 HTTP、无 Shell 命令工具，以及传输中立的 MCP 客户端绑定；后续提供官方 MCP stdio/HTTP 会话客户端、发现和沙箱绑定。
 

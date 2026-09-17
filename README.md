@@ -65,8 +65,9 @@ W-Agent 遵循以下原则：
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
 - Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
+- 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、并行或嵌套 Workflow、装配依赖安装/加载确认和 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -158,6 +159,7 @@ CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experim
 - [HTTP Provider 与厂商模板](./docs/provider-templates.md)
 - [工具注册、策略与执行](./docs/tools.md)
 - [Agent Runtime 与 ReAct Loop](./docs/agents.md)
+- [Session 生命周期与跨 Run 上下文](./docs/sessions.md)
 - [Workflow 与节点恢复](./docs/workflows.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)

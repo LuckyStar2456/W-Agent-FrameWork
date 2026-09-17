@@ -2,7 +2,7 @@
 
 [English](./agents.en.md) | 简体中文
 
-状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、追加式本地 RunStore 和审批后恢复为 `Implemented`（Phase 3 / `2.0.0a1`）。完整 Session 生命周期、通用回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
+状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、追加式本地 RunStore、审批后恢复和本地 Session 生命周期为 `Implemented`（Phase 3 / `2.0.0a1`）。通用事件回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
 
 ## 分层
 
@@ -103,6 +103,6 @@ resumed = await loop.resume(
 
 恢复会继续执行原待审批调用、同一模型响应中的剩余调用，再进入下一模型步骤，不会重新发起审批前的模型请求。Checkpoint 在执行副作用前被原子 claim；若进程在结果确定落盘前退出，状态停在 `RESUMING`，下一次恢复抛出 `RunResumeConflictError`，要求开发者人工核实，而不会静默重复副作用。未提供批准时，Checkpoint 恢复为 `PENDING_APPROVAL`。
 
-Checkpoint 不保存权限或批准凭据。恢复时必须由本地应用重新提供。完整 Session 列表、归档、跨 Run 对话投影和任意位置恢复仍为 `Planned`。
+Checkpoint 不保存权限或批准凭据。恢复时必须由本地应用重新提供。`SessionManager` 已提供列表、归档、跨 Run 文本对话投影和审批恢复协调；多模态/工具事件通用回放和任意位置恢复仍为 `Planned`。详见[Session 生命周期与跨 Run 上下文](./sessions.md)。
 
 其他停止原因包括 `MAX_STEPS`、`MAX_TOOL_CALLS`、`TOKEN_BUDGET`、`TOKEN_USAGE_UNAVAILABLE`、`MODEL_ERROR` 和 `CANCELLED`。模型错误不会泄露 Prompt；工具异常正文不会直接回送模型。

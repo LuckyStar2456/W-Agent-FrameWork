@@ -128,11 +128,13 @@ See [Models, routing, and endpoint probing](./model-routing.en.md).
 
 ## 7. Agent runtime
 
-Status: public run/loop contracts, bounded single-agent ReAct, in-process/JSONL event storage, and approval resume are `Implemented`; full session lifecycle and general replay remain `Planned`.
+Status: public run/loop contracts, bounded single-agent ReAct, in-process/JSONL event storage, approval resume, and local session lifecycle are `Implemented`; general event replay remains `Planned`.
 
 The runtime defines run lifecycle, context, events, cancellation, budgets, and results without prescribing one reasoning policy. The first release provides a usable ReAct template. Users can replace the entire loop, insert pipelines between phases, add step types, choose the next step dynamically, or invoke a workflow from an agent.
 
-The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step, tool-call, and run-level token budgets, and stop safely for approval. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request, while checkpoints preserve cumulative token usage. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Model calls remain collected; per-token text events, full session projections, per-attempt usage ledgers, and general recovery are later work. See [Agent runtime and ReAct loop](./agents.en.md).
+The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step, tool-call, and run-level token budgets, and stop safely for approval. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request, while checkpoints preserve cumulative token usage. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Model calls remain collected; per-token text events, complete multimodal/tool-event projections, per-attempt usage ledgers, and general recovery are later work. See [Agent runtime and ReAct loop](./agents.en.md).
+
+`SessionManager` sits outside the loop and uses public contracts to manage create/list/archive, cross-run text projection, and approval resume with memory/JSON stores. It reads no private loop state and never presents tool or multimodal events as replayed content.
 
 ## 8. Workflow
 

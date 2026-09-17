@@ -108,6 +108,17 @@ from w_agent.sandbox import (
     UnsafeLocalSandboxProvider,
     WorkspaceAccess,
 )
+from w_agent.sessions import (
+    InMemorySessionStore,
+    JsonSessionStore,
+    SessionError,
+    SessionManager,
+    SessionMessage,
+    SessionRecord,
+    SessionRunRecord,
+    SessionStatus,
+    SessionStore,
+)
 from w_agent.exceptions.framework_errors import (
     BeanNotFoundError,
     CircularDependencyError,
@@ -623,6 +634,15 @@ __all__ = [
     "agent_workflow_node",
     "workflow_resume_tool",
     "workflow_start_tool",
+    "InMemorySessionStore",
+    "JsonSessionStore",
+    "SessionError",
+    "SessionManager",
+    "SessionMessage",
+    "SessionRecord",
+    "SessionRunRecord",
+    "SessionStatus",
+    "SessionStore",
     "WorkflowStore",
     "WorkflowStoreError",
     "WORKFLOW_DEFINITION_CAPABILITY",

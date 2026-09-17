@@ -48,7 +48,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | HTTP and shell-free command tool adapters | `Implemented` | Phase 3 / 2.0.0a1 |
 | MCP client binding adapter | `Implemented` | Phase 3 / 2.0.0a1 |
 | First-party MCP stdio/HTTP session clients and discovery | `Planned` | Phase 3/5 |
-| Full session lifecycle and general replay | `Planned` | Phase 3 |
+| Local session lifecycle and cross-run text projection | `Implemented` | Phase 3 / 2.0.0a1 |
+| General multimodal/tool/RunEvent replay | `Planned` | Phase 3/6 |
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
 | Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/workflow convenience adapters | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -92,12 +93,13 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 3: agents and tools
 
-- Status: the tool foundation, run contracts, single-agent ReAct, local event recording, and approval resume are `Implemented`; full session lifecycle remains `Planned`.
+- Status: the tool foundation, run contracts, single-agent ReAct, local event recording, approval resume, and local session lifecycle are `Implemented`; general event replay remains `Planned`.
 - Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
 - Implemented run-level input, output, and total hard limits through `TokenBudget`; `RunResult.usage` and `TOKEN_USAGE` events expose cumulative values, and approval checkpoints preserve metering state. `max_output_tokens` remains a per-model-request generation cap.
 - Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. Exact first-request input usage cannot be known without a tokenizer, and failed or interrupted retry attempts may already have incurred unreported usage.
 - Later work adds session/agent aggregation, a per-attempt ledger covering retry/failover, a pluggable pre-call token estimator, soft-threshold actions, and cost budgets. Cost control will require an explicit versioned price table and will not silently infer money from token counts.
-- Later session listing/archival, general event projections, and per-token text events.
+- Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
+- Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
 - Implemented fixed-endpoint HTTP, shell-free command tools, and transport-neutral MCP client binding; later work adds first-party MCP stdio/HTTP session clients, discovery, and sandbox binding.
 

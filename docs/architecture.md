@@ -128,7 +128,7 @@ ModelRequest(
 
 ## 7. Agent Runtime
 
-状态：公开 Run/Loop 协议、有界单 Agent ReAct、进程内/JSONL 事件存储和审批恢复为 `Implemented`；完整 Session 生命周期和通用回放为 `Planned`。
+状态：公开 Run/Loop 协议、有界单 Agent ReAct、进程内/JSONL 事件存储、审批恢复和本地 Session 生命周期为 `Implemented`；通用事件回放为 `Planned`。
 
 Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和结果，不规定唯一推理策略。首版提供一个可用 ReAct 模板，用户可以：
 
@@ -138,7 +138,9 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 - 动态选择下一步。
 - 从 Agent 调用 Workflow。
 
-当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用和 Run 级 Token 预算，并在工具需要审批时安全停止。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token 也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。模型调用目前采用收集模式；文本逐 Token 事件、完整 Session 投影、逐尝试用量账本和通用恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用和 Run 级 Token 预算，并在工具需要审批时安全停止。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token 也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。模型调用目前采用收集模式；文本逐 Token 事件、完整多模态/工具事件投影、逐尝试用量账本和通用恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+
+`SessionManager` 在 Loop 外通过公开协议管理创建、列表、归档、跨 Run 文本投影和审批恢复，并提供内存/JSON Store。它不读取 Loop 私有状态，也不把工具或多模态事件伪装成已回放内容。
 
 ## 8. Workflow
 

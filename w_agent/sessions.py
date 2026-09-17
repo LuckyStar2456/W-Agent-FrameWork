@@ -1,0 +1,509 @@
+"""Local session lifecycle and cross-run text conversation projection."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import math
+import os
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
+from threading import RLock
+from types import MappingProxyType
+from typing import Any, Mapping, Protocol
+from uuid import uuid4
+
+from w_agent.agents import AgentDefinition, AgentLoop, RunContext, RunResult
+from w_agent.kernel import ScopePath
+from w_agent.models import (
+    CancellationToken,
+    MessageRole,
+    ModelMessage,
+    TextContent,
+    TokenUsage,
+)
+from w_agent.tools import ToolExecutionContext
+
+_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+class SessionError(RuntimeError):
+    """Session state is missing, invalid, archived, or conflicting."""
+
+
+class SessionStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+@dataclass(frozen=True, slots=True)
+class SessionMessage:
+    role: MessageRole
+    text: str
+    run_id: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        _validate_id(self.run_id, "run")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionRunRecord:
+    run_id: str
+    agent_name: str
+    stop_reason: str
+    output: str
+    usage: TokenUsage
+    usage_complete: bool
+    steps: int
+    tool_calls: int
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        _validate_id(self.run_id, "run")
+        if self.steps < 0 or self.tool_calls < 0:
+            raise ValueError("session run counters must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionRecord:
+    session_id: str
+    title: str
+    status: SessionStatus = SessionStatus.ACTIVE
+    messages: tuple[SessionMessage, ...] = ()
+    runs: tuple[SessionRunRecord, ...] = ()
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        _validate_id(self.session_id, "session")
+        if not self.title.strip():
+            raise ValueError("session title must not be empty")
+        if self.schema_version != 1:
+            raise ValueError("unsupported session schema version")
+        object.__setattr__(self, "messages", tuple(self.messages))
+        object.__setattr__(self, "runs", tuple(self.runs))
+        _validate_json(self.metadata, "session metadata")
+        object.__setattr__(self, "metadata", _freeze_json(self.metadata))
+
+
+class SessionStore(Protocol):
+    async def save(self, session: SessionRecord) -> None: ...
+
+    async def get(self, session_id: str) -> SessionRecord | None: ...
+
+    async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]: ...
+
+
+class ResumableAgentLoop(Protocol):
+    async def resume(
+        self,
+        run_id: str,
+        *,
+        tool_context: ToolExecutionContext,
+        cancellation: CancellationToken | None = None,
+    ) -> RunResult: ...
+
+
+class InMemorySessionStore:
+    def __init__(self) -> None:
+        self._sessions: dict[str, SessionRecord] = {}
+        self._lock = asyncio.Lock()
+
+    async def save(self, session: SessionRecord) -> None:
+        async with self._lock:
+            self._sessions[session.session_id] = session
+
+    async def get(self, session_id: str) -> SessionRecord | None:
+        async with self._lock:
+            return self._sessions.get(session_id)
+
+    async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]:
+        async with self._lock:
+            values = tuple(self._sessions.values())
+        return _visible_sessions(values, include_archived)
+
+
+class JsonSessionStore:
+    """Atomic JSON session records for one local lifecycle owner."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._lock = RLock()
+
+    async def save(self, session: SessionRecord) -> None:
+        await asyncio.to_thread(self._save_sync, session)
+
+    async def get(self, session_id: str) -> SessionRecord | None:
+        return await asyncio.to_thread(self._get_sync, session_id)
+
+    async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]:
+        return await asyncio.to_thread(self._list_sync, include_archived)
+
+    def _path(self, session_id: str) -> Path:
+        _validate_id(session_id, "session")
+        path = (self.root / f"{session_id}.json").resolve()
+        if path.parent != self.root:
+            raise SessionError("session path escapes the store root")
+        return path
+
+    def _save_sync(self, session: SessionRecord) -> None:
+        with self._lock:
+            path = self._path(session.session_id)
+            temporary = path.with_suffix(".json.tmp")
+            payload = json.dumps(
+                _session_to_data(session),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                stream.write(payload + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+
+    def _get_sync(self, session_id: str) -> SessionRecord | None:
+        with self._lock:
+            path = self._path(session_id)
+            if not path.is_file():
+                return None
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return _session_from_data(data)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+                raise SessionError("session record is corrupt") from error
+
+    def _list_sync(self, include_archived: bool) -> tuple[SessionRecord, ...]:
+        with self._lock:
+            sessions = tuple(
+                self._get_sync(path.stem)
+                for path in self.root.glob("*.json")
+                if _SAFE_ID.fullmatch(path.stem)
+            )
+        return _visible_sessions(
+            (item for item in sessions if item is not None),
+            include_archived,
+        )
+
+
+class SessionManager:
+    """Coordinate sessions and ordinary AgentLoop runs without private hooks."""
+
+    def __init__(self, store: SessionStore | None = None) -> None:
+        self.store = store or InMemorySessionStore()
+        self._lock = asyncio.Lock()
+
+    async def create(
+        self,
+        title: str,
+        *,
+        session_id: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> SessionRecord:
+        session = SessionRecord(
+            session_id or f"session-{uuid4().hex}",
+            title,
+            metadata=metadata or {},
+        )
+        async with self._lock:
+            if await self.store.get(session.session_id) is not None:
+                raise SessionError("session already exists")
+            await self.store.save(session)
+        return session
+
+    async def get(self, session_id: str) -> SessionRecord:
+        session = await self.store.get(session_id)
+        if session is None:
+            raise SessionError("session does not exist")
+        return session
+
+    async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]:
+        return await self.store.list(include_archived=include_archived)
+
+    async def archive(self, session_id: str, *, archived: bool = True) -> SessionRecord:
+        async with self._lock:
+            session = await self.get(session_id)
+            updated = replace(
+                session,
+                status=(SessionStatus.ARCHIVED if archived else SessionStatus.ACTIVE),
+                updated_at=datetime.now(UTC),
+            )
+            await self.store.save(updated)
+        return updated
+
+    async def conversation(self, session_id: str) -> tuple[ModelMessage, ...]:
+        session = await self.get(session_id)
+        return tuple(
+            ModelMessage.text(message.role, message.text)
+            for message in session.messages
+        )
+
+    async def run_agent(
+        self,
+        loop: AgentLoop,
+        definition: AgentDefinition,
+        session_id: str,
+        messages: Iterable[ModelMessage],
+        *,
+        run_id: str | None = None,
+        include_history: bool = True,
+        scope: ScopePath | None = None,
+        cancellation: CancellationToken | None = None,
+        tool_context: ToolExecutionContext | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> RunResult:
+        current = tuple(messages)
+        if not current:
+            raise ValueError("session run needs at least one current message")
+        session = await self._active(session_id)
+        history = await self.conversation(session_id) if include_history else ()
+        resolved_run_id = run_id or f"run-{uuid4().hex}"
+        result = await loop.run(
+            definition,
+            RunContext(
+                resolved_run_id,
+                (*history, *current),
+                scope=scope or ScopePath.application(),
+                cancellation=cancellation,
+                tool_context=tool_context or ToolExecutionContext(),
+                session_id=session_id,
+                metadata=metadata or {},
+            ),
+        )
+        if result.run_id != resolved_run_id:
+            raise SessionError("agent returned a different run id")
+        await self._record(session, definition, current, result, append_input=True)
+        return result
+
+    async def resume_agent(
+        self,
+        loop: ResumableAgentLoop,
+        session_id: str,
+        run_id: str,
+        *,
+        tool_context: ToolExecutionContext,
+        cancellation: CancellationToken | None = None,
+    ) -> RunResult:
+        session = await self._active(session_id)
+        if not any(item.run_id == run_id for item in session.runs):
+            raise SessionError("run does not belong to session")
+        result = await loop.resume(
+            run_id,
+            tool_context=tool_context,
+            cancellation=cancellation,
+        )
+        if result.run_id != run_id:
+            raise SessionError("resumed agent returned a different run id")
+        await self._record(
+            session,
+            AgentDefinition(next(item.agent_name for item in session.runs if item.run_id == run_id)),
+            (),
+            result,
+            append_input=False,
+        )
+        return result
+
+    async def _active(self, session_id: str) -> SessionRecord:
+        session = await self.get(session_id)
+        if session.status is SessionStatus.ARCHIVED:
+            raise SessionError("archived session is read-only")
+        return session
+
+    async def _record(
+        self,
+        session: SessionRecord,
+        definition: AgentDefinition,
+        current: tuple[ModelMessage, ...],
+        result: RunResult,
+        *,
+        append_input: bool,
+    ) -> None:
+        async with self._lock:
+            latest = await self.get(session.session_id)
+            messages = list(latest.messages)
+            if append_input:
+                messages.extend(_project_messages(current, result.run_id))
+            existing = next((item for item in latest.runs if item.run_id == result.run_id), None)
+            if result.output and (existing is None or existing.output != result.output):
+                messages.append(
+                    SessionMessage(MessageRole.ASSISTANT, result.output, result.run_id)
+                )
+            now = datetime.now(UTC)
+            run = SessionRunRecord(
+                result.run_id,
+                definition.name,
+                result.stop_reason.value,
+                result.output,
+                result.usage,
+                result.usage_complete,
+                result.steps,
+                result.tool_calls,
+                created_at=existing.created_at if existing is not None else now,
+                updated_at=now,
+            )
+            runs = tuple(
+                run if item.run_id == result.run_id else item for item in latest.runs
+            )
+            if existing is None:
+                runs = (*runs, run)
+            await self.store.save(
+                replace(
+                    latest,
+                    messages=tuple(messages),
+                    runs=runs,
+                    updated_at=now,
+                )
+            )
+
+
+def _project_messages(
+    messages: Iterable[ModelMessage],
+    run_id: str,
+) -> tuple[SessionMessage, ...]:
+    projected: list[SessionMessage] = []
+    for message in messages:
+        text = "".join(
+            block.text for block in message.content if isinstance(block, TextContent)
+        )
+        if text:
+            projected.append(SessionMessage(message.role, text, run_id))
+    return tuple(projected)
+
+
+def _visible_sessions(
+    sessions: Iterable[SessionRecord],
+    include_archived: bool,
+) -> tuple[SessionRecord, ...]:
+    values = (
+        item
+        for item in sessions
+        if include_archived or item.status is SessionStatus.ACTIVE
+    )
+    return tuple(sorted(values, key=lambda item: item.updated_at, reverse=True))
+
+
+def _validate_id(value: str, label: str) -> None:
+    if not _SAFE_ID.fullmatch(value):
+        raise ValueError(f"{label} id is not safe for local persistence")
+
+
+def _session_to_data(session: SessionRecord) -> dict[str, Any]:
+    return {
+        "schema_version": session.schema_version,
+        "session_id": session.session_id,
+        "title": session.title,
+        "status": session.status.value,
+        "messages": [
+            {
+                "role": item.role.value,
+                "text": item.text,
+                "run_id": item.run_id,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in session.messages
+        ],
+        "runs": [
+            {
+                "run_id": item.run_id,
+                "agent_name": item.agent_name,
+                "stop_reason": item.stop_reason,
+                "output": item.output,
+                "usage": {
+                    "input_tokens": item.usage.input_tokens,
+                    "output_tokens": item.usage.output_tokens,
+                    "cached_input_tokens": item.usage.cached_input_tokens,
+                },
+                "usage_complete": item.usage_complete,
+                "steps": item.steps,
+                "tool_calls": item.tool_calls,
+                "created_at": item.created_at.isoformat(),
+                "updated_at": item.updated_at.isoformat(),
+            }
+            for item in session.runs
+        ],
+        "metadata": _thaw_json(session.metadata),
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+    }
+
+
+def _session_from_data(data: Mapping[str, Any]) -> SessionRecord:
+    return SessionRecord(
+        session_id=str(data["session_id"]),
+        title=str(data["title"]),
+        status=SessionStatus(str(data["status"])),
+        messages=tuple(
+            SessionMessage(
+                MessageRole(str(item["role"])),
+                str(item["text"]),
+                str(item["run_id"]),
+                datetime.fromisoformat(str(item["created_at"])),
+            )
+            for item in data.get("messages", ())
+        ),
+        runs=tuple(_run_from_data(item) for item in data.get("runs", ())),
+        metadata=data.get("metadata", {}),
+        created_at=datetime.fromisoformat(str(data["created_at"])),
+        updated_at=datetime.fromisoformat(str(data["updated_at"])),
+        schema_version=int(data["schema_version"]),
+    )
+
+
+def _run_from_data(data: Mapping[str, Any]) -> SessionRunRecord:
+    usage = data["usage"]
+    return SessionRunRecord(
+        str(data["run_id"]),
+        str(data["agent_name"]),
+        str(data["stop_reason"]),
+        str(data["output"]),
+        TokenUsage(
+            int(usage["input_tokens"]),
+            int(usage["output_tokens"]),
+            int(usage.get("cached_input_tokens", 0)),
+        ),
+        bool(data["usage_complete"]),
+        int(data["steps"]),
+        int(data["tool_calls"]),
+        datetime.fromisoformat(str(data["created_at"])),
+        datetime.fromisoformat(str(data["updated_at"])),
+    )
+
+
+def _validate_json(value: Any, path: str) -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            _validate_json(item, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _validate_json(item, f"{path}[{index}]")
+    elif isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{path} contains a non-finite number")
+    elif value is not None and not isinstance(value, (str, int, float, bool)):
+        raise ValueError(f"{path} contains a non-JSON value")
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze_json(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json(item) for item in value)
+    return value
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value

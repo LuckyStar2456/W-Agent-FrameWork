@@ -2,7 +2,7 @@
 
 English | [简体中文](./agents.md)
 
-Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, an append-only local RunStore, and post-approval resume are `Implemented` in Phase 3 / `2.0.0a1`. Full session lifecycle, general replay, and multi-agent orchestration remain `Planned` or `Reserved`.
+Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, an append-only local RunStore, post-approval resume, and the local session lifecycle are `Implemented` in Phase 3 / `2.0.0a1`. General event replay and multi-agent orchestration remain `Planned` or `Reserved`.
 
 ## Layers
 
@@ -103,6 +103,6 @@ resumed = await loop.resume(
 
 Resume executes the original pending call and remaining calls from the same model response, then enters the next model step without repeating the pre-approval model request. A checkpoint is atomically claimed before a side effect runs. If the process exits before its result is durably known, status remains `RESUMING`; a later attempt raises `RunResumeConflictError` for manual reconciliation instead of silently duplicating the effect. Missing approval returns the checkpoint to `PENDING_APPROVAL`.
 
-Checkpoints store neither permissions nor approval credentials; the local application must provide them again. Full session listing/archival, cross-run conversation projections, and arbitrary-position recovery remain `Planned`.
+Checkpoints store neither permissions nor approval credentials; the local application must provide them again. `SessionManager` now provides listing, archival, cross-run text conversation projection, and approval-resume coordination. General multimodal/tool event replay and arbitrary-position recovery remain `Planned`. See [Session lifecycle and cross-run context](./sessions.en.md).
 
 Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `TOKEN_BUDGET`, `TOKEN_USAGE_UNAVAILABLE`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.
