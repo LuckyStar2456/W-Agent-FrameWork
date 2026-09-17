@@ -206,35 +206,53 @@ class CompositionStore:
             )
         )
 
+    def entries(self) -> tuple[tuple[str, str], ...]:
+        """List stored composition identities without loading plugin code."""
+
+        entries: list[tuple[str, str]] = []
+        for directory in self.root.iterdir():
+            if directory.is_dir() and _SAFE_NAME.fullmatch(directory.name):
+                entries.extend(
+                    (directory.name, version)
+                    for version in self.versions(directory.name)
+                )
+        return tuple(entries)
+
     def _aliases(self) -> dict[str, str]:
         path = self.root / "aliases.json"
         return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
 def _canonical(manifest: CompositionManifest) -> bytes:
-    return _json_bytes(
-        {
-            "name": manifest.name,
-            "version": manifest.version,
-            "description": manifest.description,
-            "requires_python": manifest.requires_python,
-            "requires_wagent": manifest.requires_wagent,
-            "plugins": [
-                {
-                    "name": item.name,
-                    "version": item.version,
-                    "source": item.source,
-                }
-                for item in manifest.plugins
-            ],
-            "profiles": _thaw_json(manifest.profiles),
-            "policies": _thaw_json(manifest.policies),
-            "routing": _thaw_json(manifest.routing),
-            "workflows": _thaw_json(manifest.workflows),
-            "tools": _thaw_json(manifest.tools),
-            "schema_version": manifest.schema_version,
-        }
-    )
+    return _json_bytes(manifest_to_dict(manifest))
+
+
+def manifest_to_dict(manifest: CompositionManifest) -> dict[str, Any]:
+    """Return a detached, JSON-compatible manifest mapping."""
+
+    return {
+        "name": manifest.name,
+        "version": manifest.version,
+        "description": manifest.description,
+        "requires_python": manifest.requires_python,
+        "requires_wagent": manifest.requires_wagent,
+        "plugins": [
+            {"name": item.name, "version": item.version, "source": item.source}
+            for item in manifest.plugins
+        ],
+        "profiles": _thaw_json(manifest.profiles),
+        "policies": _thaw_json(manifest.policies),
+        "routing": _thaw_json(manifest.routing),
+        "workflows": _thaw_json(manifest.workflows),
+        "tools": _thaw_json(manifest.tools),
+        "schema_version": manifest.schema_version,
+    }
+
+
+def manifest_from_dict(data: Mapping[str, Any]) -> CompositionManifest:
+    """Validate an untrusted JSON-compatible manifest mapping."""
+
+    return _manifest_from_data(data)
 
 
 def _json_bytes(value: Any) -> bytes:

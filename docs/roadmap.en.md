@@ -32,7 +32,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Python and YAML routing | `Implemented` | Phase 2A / 2.0.0a1 |
 | Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
 | Automatic safe probing and health bridging through the explicit registration service | `Implemented` | Phase 2B / 2.0.0a1 |
-| CLI/TUI probe entry points | `Planned` | Phase 2B |
+| CLI/TUI safe endpoint-probe entry points | `Implemented` | Phase 2B / 2.0.0a1 |
+| CLI/TUI active provider-probe assembly | `Planned` | Phase 2B/6 |
 | Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Normalized provider input/output token metering | `Implemented` | Phase 2B / 2.0.0a1 |
@@ -56,7 +57,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
 | Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
-| CLI and Textual TUI | `Planned` | Phase 6 |
+| Typer/Rich CLI and Textual TUI foundation | `Experimental` | Phase 6 / 2.0.0a1 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
 | Minimal 1.x compatibility adapter | `Planned` | Maintained through every phase |
 
@@ -87,7 +88,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2B implements collecting and event-pass-through executors with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records. Pass-through execution prohibits silent replay after any event becomes visible.
 - 2B normalizes provider-reported input, output, and cached-input tokens. `usage_reported` distinguishes a real zero-token report from missing provider metadata instead of presenting a zero value as complete metering.
 - 2B implements optional register-and-safe-probe through `ModelRegistrationProbeService` and `ProbeHealthBridge`; low-level `ModelRegistry.register()` keeps pure registration semantics.
-- Later 2B work plans OpenAI Responses/vLLM differences, CLI/TUI entry points, and cross-stream recovery.
+- 2B now includes credential-free L1 safe endpoint probes in the CLI/TUI. Later work adds OpenAI Responses/vLLM differences, configured active provider probes, and cross-stream recovery.
 
 ### Phase 3: agents and tools
 
@@ -122,7 +123,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 - Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
 - Preview performs no network access, installation, import, or plugin execution. Dependency resolution plus installation/load confirmations remain `Planned`.
-- CLI, Textual TUI, event inspection, and checkpoint recovery.
+- An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, and offline TUI composition inspection.
+- Configured interactive agent runs, RunEvent views, cross-store checkpoint listing/recovery, plugin-load confirmation, and evaluation screens remain `Planned`.
 - Mocks, record/replay, and customer-support and coding benchmark tasks.
 
 ## Reserved without a release phase

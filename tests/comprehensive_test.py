@@ -6,7 +6,7 @@ W-Agent框架核心功能综合测试
 import asyncio
 import pytest
 from w_agent.core.agent import BaseAgent
-from w_agent.core.decorators import AgentComponent, ServiceComponent, PostConstruct, PreDestroy
+from w_agent.core.decorators import PostConstruct, PreDestroy
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.lifecycle.manager import LifecycleManager
@@ -247,7 +247,9 @@ async def test_cli_functionality():
         text=True
     )
     assert result.returncode == 0
-    assert "W-Agent version 1.5.2" in result.stdout
+    from w_agent import __version__
+
+    assert f"W-Agent version {__version__}" in result.stdout
 
 async def test_comprehensive_integration():
     """综合集成测试"""

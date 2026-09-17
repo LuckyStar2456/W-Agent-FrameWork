@@ -28,11 +28,14 @@ setup(
         "redis",
         "packaging>=23",
         "pyyaml>=6",
+        "typer>=0.12,<1",
+        "rich>=13,<15",
     ],
     extras_require={
         "fastapi": ["fastapi", "uvicorn"],
         "langchain": ["langchain"],
         "models": ["httpx>=0.27,<1"],
+        "tui": ["textual>=0.70,<9"],
         "wasm": ["wasmer-sdk>=0.1.2,<0.2; platform_system != 'Windows'"],
         "opentelemetry": [
             "opentelemetry-api",
@@ -41,7 +44,12 @@ setup(
         ],
         "testing": ["pytest", "pytest-asyncio"],
     },
-    entry_points={"console_scripts": ["w-agent=w_agent.cli:main"]},
+    entry_points={
+        "console_scripts": [
+            "wagent=w_agent.cli:main",
+            "w-agent=w_agent.cli:main",
+        ]
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

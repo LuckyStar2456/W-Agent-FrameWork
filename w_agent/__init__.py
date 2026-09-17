@@ -44,6 +44,8 @@ from w_agent.compositions import (
     decode_composition,
     encode_composition,
     inspect_composition,
+    manifest_from_dict,
+    manifest_to_dict,
 )
 from w_agent.core.decorators import (
     AgentComponent,
@@ -366,6 +368,8 @@ __all__ = [
     "decode_composition",
     "encode_composition",
     "inspect_composition",
+    "manifest_from_dict",
+    "manifest_to_dict",
     "AgentComponent",
     "ServiceComponent",
     "ToolComponent",

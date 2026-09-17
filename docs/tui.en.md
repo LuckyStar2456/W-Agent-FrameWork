@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: `Planned`. Version 1.5.2 has only a basic `w-agent` CLI. This document defines the next-generation local development interface.
+Status: the Typer/Rich CLI and a launchable Textual TUI foundation are `Experimental` in `2.0.0a1`; configured agent runs, checkpoint management, plugin operations, and evaluation remain `Planned`.
 
 ## Principles
 
@@ -11,26 +11,26 @@ Status: `Planned`. Version 1.5.2 has only a basic `w-agent` CLI. This document d
 - The interface owns no private framework capability; public Python APIs can perform every operation.
 - Installing code, incurring model cost, or accessing the host requires confirmation.
 
-## Planned CLI
+## Current CLI
 
 ```text
 wagent init
-wagent config validate
-wagent plugins list|inspect|enable|disable
-wagent profile list|resolve
-wagent probe
+wagent profile list
+wagent probe <endpoint>
 wagent doctor
-wagent run
-wagent checkpoint list|resume
-wagent composition export|inspect|import
+wagent composition export|inspect|save|list
 wagent tui
 ```
 
-The CLI prints human-readable text by default and offers structured JSON output. Failed commands return stable exit codes and never present a warning as success.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition-inspect, and list commands offer structured JSON. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
+
+The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
+
+`config validate`, plugin operations, interactive `run`, checkpoint management, and composition install/load confirmation remain `Planned`.
 
 ## TUI technology
 
-The TUI uses Textual through the optional `wagent-framework[tui]` dependency. The base CLI uses Typer/Rich. The TUI starts the framework in process and requires no resident daemon; remote connections are `Reserved`.
+The TUI uses Textual through the optional `wagent-framework[tui]` dependency. The base CLI uses Typer/Rich. The TUI starts the framework in process and requires no resident daemon; remote connections are `Reserved`. The current UI has all nine first-release sections plus real offline composition inspection, safe endpoint probing, template information, and Docker availability checks. Sections without runtime operations state that they are planned instead of presenting placeholders as functional controls.
 
 The canonical next-generation command is `wagent`; the existing `w-agent` command remains a compatibility alias during migration.
 

@@ -32,7 +32,8 @@
 | Python/YAML 模型路由 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 手动探测 API、缓存与周期调度 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 显式注册服务的自动安全探测与健康桥接 | `Implemented` | Phase 2B / 2.0.0a1 |
-| CLI/TUI 探测入口 | `Planned` | Phase 2B |
+| CLI/TUI 安全端点探测入口 | `Implemented` | Phase 2B / 2.0.0a1 |
+| CLI/TUI 主动 Provider 探测装配 | `Planned` | Phase 2B/6 |
 | 收集式调用、超时、重试与故障转移执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | 安全逐事件透传执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | Provider 输入/输出 Token 规范化计量 | `Implemented` | Phase 2B / 2.0.0a1 |
@@ -56,7 +57,7 @@
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 客服/RAG 与编码 Agent 模板 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
-| CLI 与 Textual TUI | `Planned` | Phase 6 |
+| Typer/Rich CLI 与 Textual TUI 基础 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
 | 1.x 最小兼容适配器 | `Planned` | 每阶段同步维护 |
 
@@ -87,7 +88,7 @@
 - 2B 已实现默认单次调用、显式有界重试/故障转移、逐尝试超时与审计记录的收集式和逐事件透传执行器；透传一旦暴露任何事件便禁止静默重放。
 - 2B 已统一 Provider 上报的输入、输出和缓存输入 Token；`usage_reported` 明确区分真实零用量与 Provider 未上报，不用零值伪装完整计量。
 - 2B 已实现可选的 `ModelRegistrationProbeService` 注册安全探测路径和 `ProbeHealthBridge`；底层 `ModelRegistry.register()` 保持纯注册语义。
-- 2B 后续计划提供 OpenAI Responses/vLLM 差异适配、CLI/TUI 入口和跨流断点恢复。
+- 2B 已提供 CLI/TUI 的无凭据 L1 安全端点探测；后续提供 OpenAI Responses/vLLM 差异适配、配置化主动 Provider 探测和跨流断点恢复。
 
 ### Phase 3：Agent 与工具
 
@@ -122,7 +123,8 @@
 
 - 已实现命名和版本化的 `CompositionManifest`、确定性编码/解码、大小限制、完整性校验、安全预览与冲突安全的本地版本/别名库。
 - 装配预览阶段不访问网络、不安装、不导入也不执行插件；依赖解析、安装确认与加载确认仍为 `Planned`。
-- CLI、Textual TUI、事件查看和 Checkpoint 恢复。
+- 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表，以及 TUI 离线装配检查。
+- 配置化 Agent 交互运行、RunEvent 查看、跨 Store Checkpoint 列表/恢复、插件加载确认与评测页面仍为 `Planned`。
 - Mock、录制回放、客服与编码基准任务。
 
 ## 保留但未排期

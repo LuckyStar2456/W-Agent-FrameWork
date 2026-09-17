@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：`Planned`。当前 1.5.2 只有基础 `w-agent` CLI；本文描述下一代本地开发界面。
+状态：Typer/Rich CLI 与可启动 Textual TUI 基础为 `Experimental`（`2.0.0a1`）；配置化 Agent 运行、Checkpoint 管理、插件操作与评测仍为 `Planned`。
 
 ## 原则
 
@@ -11,26 +11,26 @@
 - 界面不拥有框架专用能力；所有操作可以通过公开 Python API 完成。
 - 可能安装代码、产生模型费用或访问宿主机的操作必须确认。
 
-## CLI 计划
+## 当前 CLI
 
 ```text
 wagent init
-wagent config validate
-wagent plugins list|inspect|enable|disable
-wagent profile list|resolve
-wagent probe
+wagent profile list
+wagent probe <endpoint>
 wagent doctor
-wagent run
-wagent checkpoint list|resume
-wagent composition export|inspect|import
+wagent composition export|inspect|save|list
 wagent tui
 ```
 
-CLI 默认输出适合人阅读的文本，并提供结构化 JSON 输出选项。命令失败返回稳定退出码，不把警告当作成功。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查和列表提供结构化 JSON。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
+
+兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
+
+`config validate`、插件操作、交互 `run`、Checkpoint 管理和装配安装/加载确认仍为 `Planned`。
 
 ## TUI 技术
 
-TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 CLI 使用 Typer/Rich。TUI 采用进程内模式启动框架，不要求常驻守护进程；远程连接能力为 `Reserved`。
+TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 CLI 使用 Typer/Rich。TUI 采用进程内模式启动框架，不要求常驻守护进程；远程连接能力为 `Reserved`。当前界面提供九个首版分区、真实的离线装配检查、安全端点探测、模板信息和 Docker 可用性检查；尚未实现的分区会明确显示 Planned，而不伪装可操作。
 
 下一代 CLI 的规范命令为 `wagent`；现有 `w-agent` 在兼容期作为别名保留。
 

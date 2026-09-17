@@ -92,6 +92,7 @@ Optional dependencies:
 pip install "wagent-framework[fastapi,langchain,opentelemetry]"
 pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
+pip install "wagent-framework[tui]"
 ```
 
 PyPI 1.x supports Python 3.9+. The current `2.0.0a1` source requires Python 3.11+.
@@ -122,24 +123,21 @@ asyncio.run(main())
 
 This is a 1.x compatibility example and does not automatically use the new ReAct, model, or tool runtime.
 
-## Planned local developer experience
+## Local developer experience
 
-The following commands are `Planned` and are not all available in the current release:
+The current source provides:
 
 ```text
 wagent init
-wagent config validate
-wagent plugins list
-wagent profile resolve
-wagent probe
+wagent profile list
+wagent probe <endpoint>
 wagent doctor
-wagent run
 wagent tui
 wagent composition export
-wagent composition import
+wagent composition inspect|save|list
 ```
 
-The CLI and TUI will use only public Python APIs. The TUI is planned to cover model configuration and probing, plugin management, profile selection, interactive runs, workflow state, checkpoint recovery, sandbox approvals, and event inspection.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, and composition management/offline preview. Configured interactive runs, plugin operations, checkpoint management, event inspection, and evaluation remain `Planned`.
 
 ## Portable project compositions
 

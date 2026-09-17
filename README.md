@@ -92,6 +92,7 @@ pip install wagent-framework
 pip install "wagent-framework[fastapi,langchain,opentelemetry]"
 pip install "wagent-framework[models]"
 pip install "wagent-framework[wasm]"
+pip install "wagent-framework[tui]"
 ```
 
 PyPI 1.x 支持 Python 3.9+；当前 `2.0.0a1` 源码要求 Python 3.11+。
@@ -122,24 +123,21 @@ asyncio.run(main())
 
 这段代码只展示 1.x 兼容用法，不会自动接入新的 ReAct、模型或工具运行时。
 
-## 计划中的本地开发体验
+## 本地开发体验
 
-以下命令为 `Planned`，当前版本尚未全部提供：
+当前源码已提供：
 
 ```text
 wagent init
-wagent config validate
-wagent plugins list
-wagent profile resolve
-wagent probe
+wagent profile list
+wagent probe <endpoint>
 wagent doctor
-wagent run
 wagent tui
 wagent composition export
-wagent composition import
+wagent composition inspect|save|list
 ```
 
-CLI 与 TUI 将只调用公开 Python API。TUI 计划覆盖模型配置与探测、插件管理、Profile 选择、交互运行、Workflow 状态、Checkpoint 恢复、沙箱确认和事件查看。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测和装配管理/离线预览；配置化交互运行、插件操作、Checkpoint 管理、事件查看和评测仍为 `Planned`。
 
 ## 工程装配分享
 
