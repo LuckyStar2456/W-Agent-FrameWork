@@ -6,6 +6,8 @@ import pytest
 from w_agent import (
     BlockEnd,
     BlockStart,
+    CancellationToken,
+    CandidateState,
     EndpointProbe,
     FinishEvent,
     FinishReason,
@@ -14,13 +16,17 @@ from w_agent import (
     ModelDescriptor,
     ModelMessage,
     ModelProviderProbe,
+    ModelRegistrationProbeService,
+    ModelRegistry,
     PeriodicProbeService,
     ProbeCache,
     ProbeCheck,
+    ProbeHealthBridge,
     ProbeLevel,
     ProbeMode,
     ProbeResult,
     ProbeStatus,
+    HealthStatus,
     TextContent,
     TextDelta,
 )
@@ -174,3 +180,67 @@ async def test_periodic_probe_service_runs_and_stops_idempotently():
     await service.stop()
 
     assert service.running is False
+
+
+@pytest.mark.asyncio
+async def test_registration_service_runs_safe_probe_and_bridges_health():
+    provider = FakeProvider()
+    models = ModelRegistry()
+    state = CandidateState()
+    service = ModelRegistrationProbeService(models, state)
+
+    outcome = await service.register("fake", provider, version="1")
+
+    assert outcome.health == HealthStatus.HEALTHY
+    assert outcome.probe_result.mode == ProbeMode.SAFE
+    assert outcome.probe_result.routes == (("fake", "chat"),)
+    assert state.health[("fake", "chat")] == HealthStatus.HEALTHY
+    assert service.cache.get("fake") is outcome.probe_result
+    assert models.provider("fake") is provider
+    assert provider.stream_calls == 0
+
+    outcome.dispose()
+    assert outcome.disposed is True
+    assert models.providers() == ()
+
+
+@pytest.mark.asyncio
+async def test_registration_probe_cancellation_rolls_back_registration():
+    provider = FakeProvider()
+    models = ModelRegistry()
+    state = CandidateState()
+    service = ModelRegistrationProbeService(models, state)
+    cancellation = CancellationToken()
+    cancellation.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await service.register("fake", provider, cancellation=cancellation)
+
+    assert models.providers() == ()
+
+
+def test_probe_health_bridge_expires_observations_to_unknown():
+    now = datetime.now(UTC)
+    result = ProbeResult(
+        target="fake",
+        mode=ProbeMode.SAFE,
+        checks=(
+            ProbeCheck(
+                ProbeLevel.L3_CATALOG,
+                "catalog",
+                ProbeStatus.PASS,
+                "ok",
+            ),
+        ),
+        started_at=now,
+        completed_at=now,
+        expires_at=now + timedelta(seconds=1),
+        routes=(("fake", "chat"),),
+    )
+    state = CandidateState()
+    bridge = ProbeHealthBridge()
+
+    health = bridge.apply(result, state, now=now + timedelta(seconds=2))
+
+    assert health == HealthStatus.UNKNOWN
+    assert state.health[("fake", "chat")] == HealthStatus.UNKNOWN

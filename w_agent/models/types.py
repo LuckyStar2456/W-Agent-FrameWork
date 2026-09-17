@@ -310,51 +310,68 @@ class ModelStreamProtocolError(ValueError):
     """A provider emitted an invalid stream-event sequence."""
 
 
-async def collect_stream(events: AsyncIterable[StreamEvent]) -> ModelResponse:
-    """Validate and collect a model stream into a final response."""
+class ModelStreamValidator:
+    """Incrementally validate events and expose a response after completion."""
 
-    open_blocks: dict[int, str] = {}
-    completed: dict[int, ContentBlock] = {}
-    usage = TokenUsage()
-    finish: FinishReason | None = None
+    def __init__(self) -> None:
+        self._open_blocks: dict[int, str] = {}
+        self._completed: dict[int, ContentBlock] = {}
+        self._usage = TokenUsage()
+        self._finish: FinishReason | None = None
 
-    async for event in events:
-        if finish is not None:
+    def feed(self, event: StreamEvent) -> None:
+        """Validate and consume one stream event."""
+
+        if self._finish is not None:
             raise ModelStreamProtocolError("provider emitted an event after finish")
         if isinstance(event, BlockStart):
             if (
                 event.index < 0
-                or event.index in open_blocks
-                or event.index in completed
+                or event.index in self._open_blocks
+                or event.index in self._completed
             ):
                 raise ModelStreamProtocolError(
                     f"invalid block start index {event.index}"
                 )
-            open_blocks[event.index] = event.block_type
+            self._open_blocks[event.index] = event.block_type
         elif isinstance(event, (TextDelta, ToolCallDelta)):
-            if event.index not in open_blocks:
+            if event.index not in self._open_blocks:
                 raise ModelStreamProtocolError(
                     f"delta references unopened block {event.index}"
                 )
         elif isinstance(event, BlockEnd):
-            if event.index not in open_blocks:
+            if event.index not in self._open_blocks:
                 raise ModelStreamProtocolError(
                     f"block {event.index} ended without start"
                 )
-            open_blocks.pop(event.index)
-            completed[event.index] = event.block
+            self._open_blocks.pop(event.index)
+            self._completed[event.index] = event.block
         elif isinstance(event, UsageEvent):
-            usage = event.usage
+            self._usage = event.usage
         elif isinstance(event, ErrorEvent):
             raise ModelError(event.failure)
         elif isinstance(event, FinishEvent):
-            if open_blocks:
+            if self._open_blocks:
                 raise ModelStreamProtocolError(
                     "provider finished with open content blocks"
                 )
-            finish = event.reason
+            self._finish = event.reason
 
-    if finish is None:
-        raise ModelStreamProtocolError("provider stream ended without finish")
-    ordered = tuple(completed[index] for index in sorted(completed))
-    return ModelResponse(ordered, usage, finish)
+    def finish(self) -> ModelResponse:
+        """Validate terminal state and return the collected response metadata."""
+
+        if self._finish is None:
+            raise ModelStreamProtocolError("provider stream ended without finish")
+        ordered = tuple(
+            self._completed[index] for index in sorted(self._completed)
+        )
+        return ModelResponse(ordered, self._usage, self._finish)
+
+
+async def collect_stream(events: AsyncIterable[StreamEvent]) -> ModelResponse:
+    """Validate and collect a model stream into a final response."""
+
+    validator = ModelStreamValidator()
+    async for event in events:
+        validator.feed(event)
+    return validator.finish()

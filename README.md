@@ -57,9 +57,10 @@ W-Agent 遵循以下原则：
 - 可替换传输的 OpenAI-compatible Chat Completions Provider，适用于声明兼容接口的本地或远程服务。
 - 可插拔的通用 HTTP 请求映射层与 JSON/SSE/NDJSON 传输。
 - Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
-- 默认单次调用、可显式启用有界重试/故障转移的 `ModelExecutor`，包含超时与 Prompt-free 尝试记录。
+- 同时支持完整收集和逐事件透传的 `ModelExecutor`；默认单次调用，可显式启用有界重试/故障转移，并记录不含 Prompt 的尝试审计。
+- 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
 
-当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses 与 vLLM 差异适配、逐 Token 透传执行、标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses 与 vLLM 差异适配、跨流断点恢复、标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 

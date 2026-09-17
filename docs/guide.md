@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核和 Phase 2A 模型基础。IOC、AOP、配置、生命周期、弹性、观测、技能沙箱、模型协议、路由策略和 Python 探测 API 为 `Implemented`；具体首方模型适配器、ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行和 Python 探测 API。ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -123,7 +123,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板和收集式调用执行器为 `Implemented`；CLI/TUI 入口、OpenAI Responses、vLLM 差异适配与透传流执行为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器和显式注册安全探测服务为 `Implemented`；CLI/TUI 入口、OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
@@ -164,7 +164,17 @@ result = await ModelProviderProbe().probe(
 
 Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible 和 Turbo 模板可以通过 `builtin_provider_template_registry()` 装配。Qwen 同时支持原生 DashScope 与兼容入口；Turbo 模板指 Turbo AI/SIAM.AI，必须提供部署地址。详见 [HTTP Provider 与厂商模板](./provider-templates.md)。
 
-执行路由决定时使用独立 `ModelExecutor`。默认只调用一次；只有显式提高 `InvocationPolicy.max_attempts_per_route` 或 `max_routes` 才会重试或切换备用路由。当前返回完整收集结果，不是逐 Token 透传。详见[模型、路由与接口探测](./model-routing.md#调用重试与故障转移)。
+执行路由决定时使用独立 `ModelExecutor`。默认只调用一次；只有显式提高 `InvocationPolicy.max_attempts_per_route` 或 `max_routes` 才会重试或切换备用路由。`invoke()` 返回完整收集结果；`stream()` 实时输出标准事件，并在首个事件对调用者可见后禁止重试或故障转移：
+
+```python
+execution = executor.stream(request)
+async for event in execution:
+    print(event)
+
+assert execution.response is not None
+```
+
+需要注册后立即执行无生成费用的安全探测时，使用 `ModelRegistrationProbeService.register()`；直接 `ModelRegistry.register()` 始终不发起网络请求。详见[模型、路由与接口探测](./model-routing.md#调用重试与故障转移)。
 
 以下 CLI 体验仍为 `Planned`：
 

@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、首批厂商模板与收集式调用/重试/故障转移执行器为 `Implemented`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配、透传流执行、注册自动探测和 CLI/TUI 入口为 `Planned`。
+状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、首批厂商模板、收集式/逐事件透传执行器和显式注册安全探测服务为 `Implemented`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配、跨流断点恢复和 CLI/TUI 入口为 `Planned`。
 
 ## 已实现边界
 
@@ -16,7 +16,8 @@
 - 可替换的 `HttpModelProvider`、请求/流帧、映射器、流解码器与 HTTP 传输协议；默认传输支持 JSON、SSE 和 NDJSON。
 - Anthropic Messages、Gemini `streamGenerateContent`、Ollama `/api/chat` 和 Qwen DashScope 原生模板。
 - DeepSeek、GLM、Qwen OpenAI-compatible 和 Turbo AI/SIAM.AI 模板及独立模板注册表。
-- `ModelExecutor` 收集式调用、逐尝试超时、显式有界重试/故障转移和不含 Prompt 的尝试记录。
+- `ModelExecutor` 收集式与逐事件透传调用、逐尝试超时、显式有界重试/故障转移和不含 Prompt 的尝试记录。
+- `ModelRegistrationProbeService` 注册安全探测路径，以及把未过期结果映射到外部 `CandidateState` 的 `ProbeHealthBridge`。
 
 当前仍未内置专用 OpenAI Responses 或 vLLM 差异适配器。模板经过模拟传输一致性测试，但仓库测试不携带真实凭据，也不把某一远程型号的在线可用性当作已验证事实。完整模板说明见 [HTTP Provider 与厂商模板](./provider-templates.md)。
 
@@ -39,7 +40,7 @@ class ModelProvider(Protocol):
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`collect_stream()` 拒绝未开始块的增量、重复块、存在未关闭块的 Finish、Finish 后事件以及没有 Finish 的不完整流。Provider 可抛出 `ModelError`，也可发送 `ErrorEvent`；两者携带同一 `ModelFailure` 分类。
+`ModelStreamValidator` 增量校验事件；`collect_stream()` 复用同一校验器并收集最终响应。它们拒绝未开始块的增量、重复块、存在未关闭块的 Finish、Finish 后事件以及没有 Finish 的不完整流。Provider 可抛出 `ModelError`，也可发送 `ErrorEvent`；两者携带同一 `ModelFailure` 分类。
 
 ## Provider 注册
 
@@ -140,7 +141,7 @@ weights:
 
 ## 调用、重试与故障转移
 
-`ModelExecutor.invoke()` 消费路由决定并返回 `ModelInvocationResult`，其中包含完整 `ModelResponse`、实际成功的 Provider/模型、原始 `RouteDecision` 和不可变 `AttemptRecord` 列表。
+`ModelExecutor.invoke()` 消费路由决定并返回 `ModelInvocationResult`，其中包含完整 `ModelResponse`、实际成功的 Provider/模型、原始 `RouteDecision` 和不可变 `AttemptRecord` 列表。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，实时暴露标准 `StreamEvent`；迭代完成后可读取 `response`、实际 Provider/模型和尝试记录。
 
 ```python
 from w_agent import InvocationPolicy, ModelExecutor
@@ -156,13 +157,19 @@ executor = ModelExecutor(
     ),
 )
 result = await executor.invoke(request)
+
+execution = executor.stream(request)
+async for event in execution:
+    handle(event)
+
+final_response = execution.response
 ```
 
 默认策略为每条路由一次、最多一条路由，即不会在未配置时产生额外可能计费的模型请求。把任一上限提高视为开发者对本次装配的显式重放授权。只有同时标记 `retryable=True` 且属于限流、超时、网络或 Provider 故障的标准错误才会重试；鉴权、配置、内容策略和协议错误默认立即停止。退避是确定、有上限且可替换的；自定义策略只需满足 `InvocationPolicyProtocol`。
 
-当前执行器在返回前通过 `collect_stream()` 收集并校验整个 Provider 流。这允许在半截结果尚未暴露给调用者时安全切换路由，但不提供逐 Token 透传。低延迟透传模式需要“一旦输出事件就禁止自动重放”的独立执行语义，仍为 `Planned`。
+收集模式在返回前通过 `collect_stream()` 校验整个 Provider 流，因此失败发生在结果暴露前，可以按策略安全切换路由。透传模式使用增量校验器逐事件输出：首个事件可见前仍可按策略重试或切换路由；任何事件一旦可见，后续失败立即结束本次执行，绝不静默重放，避免重复文本或工具调用增量。透传模式的 `timeout` 约束等待 Provider 下一帧的时间，不把调用者处理事件所用时间计入超时。
 
-调用者可传入 `replay_safe=False` 强制只执行选中路由一次，即使装配策略允许重试。尝试记录只保存 Provider、模型、序号、耗时、标准失败和下次退避，不保存消息、Prompt、请求体或凭据。执行器不会自动修改 `CandidateState`，健康反馈仍由显式观测插件负责。
+调用者可传入 `replay_safe=False` 强制只执行选中路由一次，即使装配策略允许重试。尝试记录只保存 Provider、模型、序号、耗时、已输出事件数、标准失败和下次退避，不保存消息、Prompt、请求体或凭据。普通模型执行不会自动修改 `CandidateState`；健康反馈必须通过显式观测或注册探测服务接入。
 
 ## 接口探测
 
@@ -178,9 +185,9 @@ result = await executor.invoke(request)
 
 `EndpointProbe` 不发送凭据和请求体，结果目标会移除 URL 用户信息、查询串和片段。HTTP 4xx/5xx 仍证明端点可达；鉴权语义由 Provider Probe 处理。
 
-`ProbeResult` 包含模式、分项状态、时间、延迟、失败类别、探测器版本和过期时间。`ProbeCache` 不返回过期结果。`PeriodicProbeService` 可以周期运行任意探测回调，但只产生结果，不修改用户配置。
+`ProbeResult` 包含模式、分项状态、时间、延迟、失败类别、探测器版本、过期时间和实际发现的 Provider/模型路由。`ProbeCache` 不返回过期结果。`PeriodicProbeService` 可以周期运行任意探测回调，但只产生结果，不修改用户配置。
 
-手动 Python API 和通用周期调度已经实现。插件可以在注册流程中显式调用同一 API；框架级注册自动挂接及 `wagent probe`/TUI 页面仍为 `Planned`。
+手动 Python API 和通用周期调度已经实现。需要“注册即安全探测”的装配使用 `ModelRegistrationProbeService.register()`：它始终运行 `ProbeMode.SAFE`、不会调用生成接口，把结果写入缓存，并通过 `ProbeHealthBridge` 只更新本次发现的路由；过期结果映射为 `UNKNOWN`。取消或未处理异常会撤销刚完成的注册。直接调用 `ModelRegistry.register()` 仍是无 I/O 的纯注册操作。`wagent probe`/TUI 页面仍为 `Planned`。
 
 ## 错误与安全边界
 
@@ -191,6 +198,6 @@ result = await executor.invoke(request)
 ## Phase 2B 后续计划
 
 - 专用 OpenAI Responses 与 vLLM 差异适配器；扩展现有模板的 Reasoning 增量和更多厂商特性。
-- 注册时自动安全探测、CLI/TUI 探测入口和健康状态桥接。
-- 逐 Token 透传调用、跨流断点恢复以及与健康状态/限流器的可插拔反馈桥接。
+- CLI/TUI 探测入口。
+- 跨流断点恢复，以及与限流器的可插拔反馈桥接。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

@@ -63,11 +63,20 @@ class ScriptedProvider:
         if outcome == "protocol":
             yield BlockStart(0, "text")
             return
+        if isinstance(outcome, PartialFailure):
+            yield BlockStart(0, "text")
+            yield TextDelta(0, "partial")
+            raise ModelError(outcome.failure)
         text = str(outcome)
         yield BlockStart(0, "text")
         yield TextDelta(0, text)
         yield BlockEnd(0, TextContent(text))
         yield FinishEvent(FinishReason.STOP)
+
+
+class PartialFailure:
+    def __init__(self, failure):
+        self.failure = failure
 
 
 def _failure(kind=ModelFailureKind.NETWORK, *, retryable=True):
@@ -252,3 +261,88 @@ def test_invocation_policy_validates_limits_and_backoff():
         max_backoff=2,
     )
     assert [policy.retry_delay(index) for index in (1, 2, 3)] == [0.5, 1.5, 2]
+
+
+@pytest.mark.asyncio
+async def test_stream_executor_exposes_validated_events_and_final_state():
+    primary = ScriptedProvider("primary", "chat", ["streamed"])
+    executor = _executor(primary)
+    execution = executor.stream(_request())
+
+    events = [event async for event in execution]
+
+    assert [event.type for event in events] == [
+        "block-start",
+        "text-delta",
+        "block-end",
+        "finish",
+    ]
+    assert execution.response is not None
+    assert execution.response.text == "streamed"
+    assert (execution.provider, execution.model) == ("primary", "chat")
+    assert execution.attempts[0].events_emitted == 4
+    with pytest.raises(RuntimeError, match="single-use"):
+        execution.__aiter__()
+
+
+@pytest.mark.asyncio
+async def test_stream_executor_retries_only_before_first_visible_event():
+    primary = ScriptedProvider("primary", "chat", [_failure(), "recovered"])
+    executor = _executor(
+        primary,
+        policy=InvocationPolicy(max_attempts_per_route=2, initial_backoff=0),
+    )
+    execution = executor.stream(_request())
+
+    events = [event async for event in execution]
+
+    assert next(event for event in events if isinstance(event, TextDelta)).text == (
+        "recovered"
+    )
+    assert [attempt.events_emitted for attempt in execution.attempts] == [0, 4]
+
+
+@pytest.mark.asyncio
+async def test_stream_executor_never_replays_after_visible_event():
+    primary = ScriptedProvider(
+        "primary",
+        "chat",
+        [PartialFailure(_failure()), "must-not-run"],
+    )
+    backup = ScriptedProvider("backup", "chat", ["must-not-run"])
+    executor = _executor(
+        primary,
+        backup,
+        policy=InvocationPolicy(max_attempts_per_route=2, max_routes=2),
+    )
+    execution = executor.stream(_request())
+    observed = []
+
+    with pytest.raises(ModelInvocationError) as caught:
+        async for event in execution:
+            observed.append(event)
+
+    assert [event.type for event in observed] == ["block-start", "text-delta"]
+    assert caught.value.attempts[0].events_emitted == 2
+    assert len(primary.requests) == 1
+    assert backup.requests == []
+
+
+@pytest.mark.asyncio
+async def test_stream_executor_can_fail_over_before_visibility():
+    primary = ScriptedProvider("primary", "chat", [_failure()])
+    backup = ScriptedProvider("backup", "chat", ["backup"])
+    executor = _executor(
+        primary,
+        backup,
+        policy=InvocationPolicy(max_routes=2),
+    )
+    execution = executor.stream(_request())
+
+    events = [event async for event in execution]
+
+    assert next(event for event in events if isinstance(event, TextDelta)).text == (
+        "backup"
+    )
+    assert (execution.provider, execution.model) == ("backup", "chat")
+    assert [attempt.events_emitted for attempt in execution.attempts] == [0, 4]

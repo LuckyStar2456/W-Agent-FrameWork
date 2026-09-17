@@ -93,7 +93,7 @@ class ModelProvider(Protocol):
 
 ## 5. Routing protocol
 
-Status: `Implemented` for Phase 2A policy/decisions and Phase 2B collecting invocation.
+Status: `Implemented` for Phase 2A policy/decisions and Phase 2B collecting/event-pass-through invocation.
 
 ```python
 class RoutingPolicy(Protocol):
@@ -102,7 +102,7 @@ class RoutingPolicy(Protocol):
 
 `RouteDecision` contains candidates, rejection reasons, scores, the selected route, fallback routes, and the policy version, but no prompt plaintext. `WeightedRoutingPolicy` and the `yaml.safe_load`-based `YamlRoutingPolicy` produce the same type. `ModelRouter` reads the current model catalog and applies a policy; it still does not execute providers directly.
 
-`ModelExecutor.invoke()` consumes a decision. `InvocationPolicy` bounds per-attempt timeout, retry count, route count, and deterministic backoff, and the call returns `ModelInvocationResult`. The default performs one call only; higher limits may create extra billable requests. `AttemptRecord` contains no prompt or credential. A final failure raises `ModelInvocationError` with the decision and every completed attempt. The current API collects a complete stream before returning; token pass-through is `Planned`.
+`ModelExecutor.invoke()` consumes a decision and returns `ModelInvocationResult`; `InvocationPolicy` bounds per-attempt timeout, retry count, route count, and deterministic backoff. `ModelExecutor.stream()` returns a single-use `ModelStreamExecution` that validates and yields events with `ModelStreamValidator`; policy-driven retry/failover is allowed before the first visible event and silent replay is prohibited afterward. The default performs one call only; higher limits may create extra billable requests. `AttemptRecord` records emitted-event count but no prompt or credential. A final failure raises `ModelInvocationError` with the decision and every completed attempt.
 
 ## 6. Probe protocols
 
@@ -112,7 +112,8 @@ Status: `Implemented` as a Phase 2A foundation.
 - `ModelProviderProbe.probe()`: L2/L3 provider access and model-catalog checks.
 - `ProbeMode.ACTIVE`: runs an L4/L5 minimal generation and stream-protocol check only with `allow_active=True`.
 - `ProbeMode.CAPABILITY`: currently reports L6/L7 declarations as `SKIPPED`; it never presents declarations as active verification.
-- `ProbeCache` and `PeriodicProbeService`: shared building blocks for manual, registration, and health plugins. Automatic registration wiring and CLI/TUI entry points remain `Planned`.
+- `ProbeCache` and `PeriodicProbeService`: shared building blocks for manual and periodic probes.
+- `ModelRegistrationProbeService` and `ProbeHealthBridge`: explicit register-and-safe-probe wiring plus external routing-health projection; direct `ModelRegistry.register()` performs no I/O. CLI/TUI entry points remain `Planned`.
 
 ## 7. Agent protocol
 

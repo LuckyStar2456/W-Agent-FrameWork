@@ -93,7 +93,7 @@ class ModelProvider(Protocol):
 
 ## 5. 路由协议
 
-状态：`Implemented`（Phase 2A 策略与决策、Phase 2B 收集式调用执行）。
+状态：`Implemented`（Phase 2A 策略与决策、Phase 2B 收集式与逐事件透传调用执行）。
 
 ```python
 class RoutingPolicy(Protocol):
@@ -102,7 +102,7 @@ class RoutingPolicy(Protocol):
 
 `RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略，仍不直接执行调用。
 
-`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 不包含 Prompt 或凭据。执行失败抛出携带决定和全部尝试的 `ModelInvocationError`。当前 API 收集完整流后返回；逐 Token 透传为 `Planned`。
+`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，使用 `ModelStreamValidator` 实时校验和透传事件；首个事件可见前允许按策略重试/故障转移，之后禁止静默重放。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 记录已输出事件数但不包含 Prompt 或凭据。执行失败抛出携带决定和全部已完成尝试的 `ModelInvocationError`。
 
 ## 6. 探测协议
 
@@ -112,7 +112,8 @@ class RoutingPolicy(Protocol):
 - `ModelProviderProbe.probe()`：L2/L3 Provider 访问和模型目录检查。
 - `ProbeMode.ACTIVE`：只有 `allow_active=True` 时才执行 L4/L5 最小生成与流协议检查。
 - `ProbeMode.CAPABILITY`：L6/L7 当前只报告 Provider 声明，明确标记 `SKIPPED`，不会伪装成主动验证。
-- `ProbeCache` 与 `PeriodicProbeService`：为手动、注册插件和健康插件提供公共构件；注册自动挂接及 CLI/TUI 入口仍为 `Planned`。
+- `ProbeCache` 与 `PeriodicProbeService`：为手动和周期探测提供公共构件。
+- `ModelRegistrationProbeService` 与 `ProbeHealthBridge`：提供显式的注册安全探测和外部路由健康映射；直接 `ModelRegistry.register()` 不执行 I/O。CLI/TUI 入口仍为 `Planned`。
 
 ## 7. Agent 协议
 

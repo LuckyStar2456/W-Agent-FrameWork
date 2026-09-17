@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, and collecting invocation/retry/failover executor are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, pass-through streaming execution, automatic registration probes, and CLI/TUI entry points are `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, collecting/event-pass-through executors, and an explicit register-and-safe-probe service are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, cross-stream recovery, and CLI/TUI entry points are `Planned`.
 
 ## Implemented boundary
 
@@ -16,7 +16,8 @@ Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, Op
 - Replaceable `HttpModelProvider`, request/frame, mapper, stream-decoder, and transport protocols; the default transport supports JSON, SSE, and NDJSON.
 - Native templates for Anthropic Messages, Gemini `streamGenerateContent`, Ollama `/api/chat`, and Qwen DashScope.
 - DeepSeek, GLM, Qwen OpenAI-compatible, and Turbo AI/SIAM.AI templates plus an independent template registry.
-- `ModelExecutor` collecting invocation, per-attempt timeouts, explicit bounded retry/failover, and prompt-free attempt records.
+- `ModelExecutor` collecting and event-pass-through invocation, per-attempt timeouts, explicit bounded retry/failover, and prompt-free attempt records.
+- `ModelRegistrationProbeService` register-and-safe-probe wiring plus `ProbeHealthBridge` projection of fresh observations into external `CandidateState`.
 
 Dedicated OpenAI Responses and vLLM-specific adapters are not built in yet. Templates have fake-transport conformance tests, but repository tests contain no live credentials and do not claim that any individual remote model has been validated online. See [HTTP providers and vendor templates](./provider-templates.en.md) for details.
 
@@ -39,7 +40,7 @@ class ModelProvider(Protocol):
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`collect_stream()` rejects deltas for unopened blocks, duplicate blocks, finish with open blocks, events after finish, and incomplete streams without finish. A provider may raise `ModelError` or send `ErrorEvent`; both carry the same `ModelFailure` categories.
+`ModelStreamValidator` validates events incrementally; `collect_stream()` reuses it to build a final response. They reject deltas for unopened blocks, duplicate blocks, finish with open blocks, events after finish, and incomplete streams without finish. A provider may raise `ModelError` or send `ErrorEvent`; both carry the same `ModelFailure` categories.
 
 ## Provider registration
 
@@ -140,7 +141,7 @@ weights:
 
 ## Invocation, retry, and failover
 
-`ModelExecutor.invoke()` consumes a route decision and returns `ModelInvocationResult`, containing the complete `ModelResponse`, the provider/model that succeeded, the original `RouteDecision`, and immutable `AttemptRecord` entries.
+`ModelExecutor.invoke()` consumes a route decision and returns `ModelInvocationResult`, containing the complete `ModelResponse`, the provider/model that succeeded, the original `RouteDecision`, and immutable `AttemptRecord` entries. `ModelExecutor.stream()` returns a single-use `ModelStreamExecution` that exposes standard `StreamEvent` objects as they arrive; after iteration completes, its `response`, actual provider/model, and attempt records are available.
 
 ```python
 from w_agent import InvocationPolicy, ModelExecutor
@@ -156,13 +157,19 @@ executor = ModelExecutor(
     ),
 )
 result = await executor.invoke(request)
+
+execution = executor.stream(request)
+async for event in execution:
+    handle(event)
+
+final_response = execution.response
 ```
 
 The default policy permits one attempt on one route, so it never creates extra potentially billable calls without configuration. Raising either limit is explicit replay authorization by the developer assembling that executor. A failure is replayed only when it has `retryable=True` and its normalized kind is rate limit, timeout, network, or provider failure. Authentication, configuration, content-policy, and protocol errors stop immediately by default. Backoff is deterministic, bounded, and replaceable; custom policies only need to satisfy `InvocationPolicyProtocol`.
 
-The current executor collects and validates the complete provider stream through `collect_stream()` before returning. This permits safe route switching before partial output reaches the caller, but it is not token-by-token pass-through. Low-latency pass-through needs separate semantics that prohibit replay once any event has escaped and remains `Planned`.
+Collecting mode validates the complete provider stream through `collect_stream()` before returning, so policy-driven route switching remains safe before results become visible. Pass-through mode validates and yields each event incrementally: retry or failover is allowed before the first event becomes visible, but any later failure terminates the execution without silent replay, preventing duplicated text or tool-call deltas. In pass-through mode, `timeout` bounds waiting for the provider's next frame and excludes time spent by the caller processing an event.
 
-Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. Attempt records contain provider/model identity, indexes, duration, normalized failure, and next delay only—never messages, prompts, bodies, or credentials. The executor does not mutate `CandidateState`; an explicit observation plugin remains responsible for health feedback.
+Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. Attempt records contain provider/model identity, indexes, duration, emitted-event count, normalized failure, and next delay only—never messages, prompts, bodies, or credentials. Ordinary model execution does not mutate `CandidateState`; health feedback must be attached through an explicit observation or registration-probe service.
 
 ## Endpoint probing
 
@@ -178,9 +185,9 @@ Callers may set `replay_safe=False` to force one attempt on the selected route e
 
 `EndpointProbe` sends no credentials or request body. Its result target strips URL user information, query data, and fragments. HTTP 4xx/5xx still proves reachability; provider probes handle authentication semantics.
 
-`ProbeResult` contains the mode, individual statuses, timestamps, latency, failure category, probe version, and expiry. `ProbeCache` never returns expired results. `PeriodicProbeService` can run any probe callback periodically, but it only emits results and never edits user configuration.
+`ProbeResult` contains the mode, individual statuses, timestamps, latency, failure category, probe version, expiry, and discovered provider/model routes. `ProbeCache` never returns expired results. `PeriodicProbeService` can run any probe callback periodically, but it only emits results and never edits user configuration.
 
-The manual Python API and generic periodic scheduler are implemented. A plugin can explicitly call the same API during registration. Framework-level automatic registration wiring and `wagent probe`/TUI surfaces remain `Planned`.
+The manual Python API and generic periodic scheduler are implemented. Compositions that need register-and-safe-probe use `ModelRegistrationProbeService.register()`: it always runs `ProbeMode.SAFE`, never calls generation, caches the result, and uses `ProbeHealthBridge` to update only routes found by that probe; expired observations map to `UNKNOWN`. Cancellation or an unexpected exception rolls back the new registration. Direct `ModelRegistry.register()` remains pure and performs no I/O. The `wagent probe` command and TUI surfaces remain `Planned`.
 
 ## Errors and safety boundary
 
@@ -191,6 +198,6 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 ## Remaining Phase 2B plan
 
 - Dedicated OpenAI Responses and vLLM differences, plus reasoning deltas and more vendor-specific features in existing templates.
-- Automatic safe registration probes, CLI/TUI probe entry points, and health-state bridging.
-- Token-pass-through invocation, cross-stream recovery, and pluggable feedback bridges to health state and rate limiters.
+- CLI/TUI probe entry points.
+- Cross-stream recovery and pluggable feedback bridges to rate limiters.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

@@ -16,8 +16,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
+from w_agent.kernel import Registration, ScopePath
+
 from .errors import ModelError, ModelFailureKind
-from .provider import CancellationToken, ModelProvider
+from .provider import CancellationToken, ModelProvider, ModelRegistry
+from .routing import CandidateState, HealthStatus
 from .types import (
     MessageRole,
     ModelCapability,
@@ -74,6 +77,7 @@ class ProbeResult:
     started_at: datetime
     completed_at: datetime
     expires_at: datetime
+    routes: tuple[tuple[str, str], ...] = ()
     probe_version: str = "1"
 
     @property
@@ -235,6 +239,8 @@ class ModelProviderProbe:
     ) -> ProbeResult:
         """Inspect a provider, keeping all potentially billed calls opt-in."""
 
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         started = datetime.now(UTC)
         checks: list[ProbeCheck] = []
         descriptors = ()
@@ -280,6 +286,8 @@ class ModelProviderProbe:
                 )
             )
         else:
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
             latency = _elapsed_ms(catalog_started)
             checks.append(
                 ProbeCheck(
@@ -359,6 +367,10 @@ class ModelProviderProbe:
             started_at=started,
             completed_at=completed,
             expires_at=completed + self.ttl,
+            routes=tuple(
+                (descriptor.provider, descriptor.model)
+                for descriptor in descriptors
+            ),
         )
 
     async def _active_probe(
@@ -474,6 +486,108 @@ class ProbeCache:
         if result is None or result.expires_at <= current:
             return None
         return result
+
+
+class ProbeHealthBridge:
+    """Project safe probe observations into external routing health state."""
+
+    def health(
+        self,
+        result: ProbeResult,
+        *,
+        now: datetime | None = None,
+    ) -> HealthStatus:
+        current = now or datetime.now(UTC)
+        if result.expires_at <= current:
+            return HealthStatus.UNKNOWN
+        if any(check.status == ProbeStatus.FAIL for check in result.checks):
+            return HealthStatus.UNHEALTHY
+        if any(check.status == ProbeStatus.PASS for check in result.checks):
+            return HealthStatus.HEALTHY
+        return HealthStatus.UNKNOWN
+
+    def apply(
+        self,
+        result: ProbeResult,
+        state: CandidateState,
+        *,
+        now: datetime | None = None,
+    ) -> HealthStatus:
+        """Update only routes named by the probe and return derived health."""
+
+        health = self.health(result, now=now)
+        for provider, model in result.routes:
+            state.update(provider, model, health=health)
+        return health
+
+
+@dataclass(frozen=True, slots=True)
+class ProbedModelRegistration:
+    """Registration handle plus the automatic safe-probe observation."""
+
+    registration: Registration
+    probe_result: ProbeResult
+    health: HealthStatus
+
+    @property
+    def disposed(self) -> bool:
+        return self.registration.disposed
+
+    def dispose(self) -> None:
+        self.registration.dispose()
+
+
+class ModelRegistrationProbeService:
+    """Register a provider, run a non-billable probe, and bridge health."""
+
+    def __init__(
+        self,
+        models: ModelRegistry,
+        state: CandidateState,
+        *,
+        probe: ModelProviderProbe | None = None,
+        cache: ProbeCache | None = None,
+        bridge: ProbeHealthBridge | None = None,
+    ) -> None:
+        self.models = models
+        self.state = state
+        self.probe = probe or ModelProviderProbe()
+        self.cache = cache or ProbeCache()
+        self.bridge = bridge or ProbeHealthBridge()
+
+    async def register(
+        self,
+        name: str,
+        provider: ModelProvider,
+        *,
+        version: str = "0",
+        scope: ScopePath | None = None,
+        owner: str | None = None,
+        cancellation: CancellationToken | None = None,
+    ) -> ProbedModelRegistration:
+        """Register and always use ``ProbeMode.SAFE`` without generation."""
+
+        registration = self.models.register(
+            name,
+            provider,
+            version=version,
+            scope=scope,
+            owner=owner,
+        )
+        try:
+            result = await self.probe.probe(
+                name,
+                provider,
+                mode=ProbeMode.SAFE,
+                allow_active=False,
+                cancellation=cancellation,
+            )
+        except BaseException:
+            registration.dispose()
+            raise
+        self.cache.put(result)
+        health = self.bridge.apply(result, self.state)
+        return ProbedModelRegistration(registration, result, health)
 
 
 class PeriodicProbeService:

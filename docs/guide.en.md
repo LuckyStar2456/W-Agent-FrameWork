@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel and Phase 2A model foundation. IOC, AOP, configuration, lifecycle, resilience, observability, skill sandboxes, model protocols, routing policies, and Python probe APIs are `Implemented`. Concrete first-party model adapters, the ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, and Python probe APIs. The ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -123,7 +123,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, and collecting invocation executor are `Implemented`; CLI/TUI entry points, dedicated OpenAI Responses/vLLM differences, and pass-through streaming are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, and explicit register-and-safe-probe service are `Implemented`; CLI/TUI entry points, dedicated OpenAI Responses/vLLM differences, and cross-stream recovery are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
@@ -164,7 +164,17 @@ result = await ModelProviderProbe().probe(
 
 Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo templates can be assembled through `builtin_provider_template_registry()`. Qwen has both native DashScope and compatible entry points. The Turbo template means Turbo AI/SIAM.AI and requires a deployment URL. See [HTTP providers and vendor templates](./provider-templates.en.md).
 
-Use the separate `ModelExecutor` to execute a route decision. The default performs one call; retry or fallback happens only after explicitly raising `InvocationPolicy.max_attempts_per_route` or `max_routes`. The current result is fully collected rather than token-pass-through. See [Models, routing, and endpoint probing](./model-routing.en.md#invocation-retry-and-failover).
+Use the separate `ModelExecutor` to execute a route decision. The default performs one call; retry or fallback happens only after explicitly raising `InvocationPolicy.max_attempts_per_route` or `max_routes`. `invoke()` returns a fully collected result; `stream()` yields standard events in real time and prohibits retry or failover after the first event becomes visible:
+
+```python
+execution = executor.stream(request)
+async for event in execution:
+    print(event)
+
+assert execution.response is not None
+```
+
+For a non-generating safety probe immediately after registration, use `ModelRegistrationProbeService.register()`; direct `ModelRegistry.register()` never initiates network I/O. See [Models, routing, and endpoint probing](./model-routing.en.md#invocation-retry-and-failover).
 
 The following CLI experience remains `Planned`:
 

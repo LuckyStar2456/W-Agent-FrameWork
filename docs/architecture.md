@@ -120,13 +120,13 @@ ModelRequest(
 
 ## 6. 模型、路由与探测
 
-状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板和收集式调用/故障转移执行器为 `Implemented`；OpenAI Responses/vLLM 差异适配与透传流执行为 `Planned`。
+状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/透传调用执行器和显式注册安全探测服务为 `Implemented`；OpenAI Responses/vLLM 差异适配与跨流恢复为 `Planned`。
 
 模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力。当前已提供 OpenAI-compatible Chat Completions Provider、可拆换请求映射/流解码/传输的通用 HTTP Provider，以及 Anthropic、Gemini、Ollama、Qwen、DeepSeek、GLM 和 Turbo 模板。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集；模板不会根据模型名称猜测能力。
 
-路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分和选择。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。调用属于独立的 `ModelExecutor` Consumer；它收集并校验 Provider 流，按显式策略执行超时、重试与故障转移，不反向污染路由策略。
+路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分和选择。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。调用属于独立的 `ModelExecutor` Consumer；它可以收集完整流或实时透传事件，按显式策略执行超时、重试与故障转移，且透传后禁止静默重放，不反向污染路由策略。
 
-当前接口探测实现 L1 URL/DNS/TCP/TLS/HTTP、L2 Provider 访问、L3 模型目录和显式授权的 L4/L5 生成/流协议检查，并提供缓存与通用周期调度器。L6/L7 当前只报告声明并标记未主动验证；注册时自动挂接和 CLI/TUI 入口为 `Planned`。可能产生费用的主动探测必须传入 `allow_active=True`。
+当前接口探测实现 L1 URL/DNS/TCP/TLS/HTTP、L2 Provider 访问、L3 模型目录和显式授权的 L4/L5 生成/流协议检查，并提供缓存与通用周期调度器。`ModelRegistrationProbeService` 提供可选的“注册即安全探测”装配路径，并把新鲜结果映射到外部路由健康状态；底层注册表不执行 I/O。L6/L7 当前只报告声明并标记未主动验证，CLI/TUI 入口为 `Planned`。可能产生费用的主动探测必须传入 `allow_active=True`。
 
 详细设计见[模型、路由与接口探测](./model-routing.md)。
 

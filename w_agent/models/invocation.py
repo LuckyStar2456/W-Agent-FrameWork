@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -19,6 +19,8 @@ from .types import (
     ModelRequest,
     ModelResponse,
     ModelStreamProtocolError,
+    ModelStreamValidator,
+    StreamEvent,
     collect_stream,
 )
 
@@ -105,6 +107,7 @@ class AttemptRecord:
     started_at: datetime
     completed_at: datetime
     duration_ms: float
+    events_emitted: int = 0
     failure: ModelFailure | None = None
     next_delay: float | None = None
 
@@ -113,6 +116,8 @@ class AttemptRecord:
             raise ValueError("invalid attempt indexes")
         if self.duration_ms < 0:
             raise ValueError("duration_ms must not be negative")
+        if self.events_emitted < 0:
+            raise ValueError("events_emitted must not be negative")
         if self.outcome == AttemptOutcome.SUCCEEDED and self.failure is not None:
             raise ValueError("successful attempts cannot have a failure")
         if self.outcome == AttemptOutcome.FAILED and self.failure is None:
@@ -142,6 +147,45 @@ class ModelInvocationError(ModelError):
         super().__init__(failure)
         self.decision = decision
         self.attempts = attempts
+
+
+class ModelStreamExecution:
+    """Single-use async stream handle with observable execution state."""
+
+    def __init__(
+        self,
+        executor: "ModelExecutor",
+        request: ModelRequest,
+        *,
+        decision: RouteDecision | None,
+        policy: InvocationPolicyProtocol,
+        scope: ScopePath | None,
+        cancellation: CancellationToken | None,
+        replay_safe: bool,
+    ) -> None:
+        self._executor = executor
+        self._request = request
+        self._provided_decision = decision
+        self._policy = policy
+        self._scope = scope
+        self._cancellation = cancellation
+        self._replay_safe = replay_safe
+        self._started = False
+        self.decision: RouteDecision | None = decision
+        self.provider: str | None = None
+        self.model: str | None = None
+        self.response: ModelResponse | None = None
+        self._attempts: list[AttemptRecord] = []
+
+    @property
+    def attempts(self) -> tuple[AttemptRecord, ...]:
+        return tuple(self._attempts)
+
+    def __aiter__(self) -> AsyncIterator[StreamEvent]:
+        if self._started:
+            raise RuntimeError("model stream execution is single-use")
+        self._started = True
+        return self._executor._stream_execution(self)
 
 
 class ModelExecutor:
@@ -273,6 +317,156 @@ class ModelExecutor:
         )
         raise ModelInvocationError(failure, route_decision, tuple(attempts))
 
+    def stream(
+        self,
+        request: ModelRequest,
+        *,
+        decision: RouteDecision | None = None,
+        policy: InvocationPolicyProtocol | None = None,
+        scope: ScopePath | None = None,
+        cancellation: CancellationToken | None = None,
+        replay_safe: bool = True,
+    ) -> ModelStreamExecution:
+        """Create a single-use pass-through execution handle.
+
+        Retry and failover are allowed only before the first event is yielded to
+        the caller. After that boundary, every failure is final and observable.
+        """
+
+        return ModelStreamExecution(
+            self,
+            request,
+            decision=decision,
+            policy=policy or self.policy,
+            scope=scope,
+            cancellation=cancellation,
+            replay_safe=replay_safe,
+        )
+
+    async def _stream_execution(
+        self,
+        execution: ModelStreamExecution,
+    ) -> AsyncIterator[StreamEvent]:
+        cancellation = execution._cancellation
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        decision = execution._provided_decision or await self.router.route(
+            execution._request,
+            scope=execution._scope,
+        )
+        execution.decision = decision
+        policy = execution._policy
+        routes = ((decision.provider, decision.model), *decision.fallbacks)
+        route_limit = policy.max_routes if execution._replay_safe else 1
+        attempt_limit = (
+            policy.max_attempts_per_route if execution._replay_safe else 1
+        )
+        routes = routes[:route_limit]
+        last_failure: ModelFailure | None = None
+
+        for route_index, (provider_name, model) in enumerate(routes):
+            for route_attempt in range(1, attempt_limit + 1):
+                if cancellation is not None:
+                    cancellation.raise_if_cancelled()
+                ordinal = len(execution._attempts) + 1
+                started_at = datetime.now(UTC)
+                started = time.perf_counter()
+                emitted = 0
+                validator = ModelStreamValidator()
+                try:
+                    provider = self.models.provider(
+                        provider_name,
+                        scope=execution._scope,
+                    )
+                    routed_request = replace(execution._request, model=model)
+                    provider_stream = provider.stream(
+                        routed_request,
+                        cancellation=cancellation,
+                    )
+                    try:
+                        while True:
+                            try:
+                                async with asyncio.timeout(policy.timeout):
+                                    event = await provider_stream.__anext__()
+                            except StopAsyncIteration:
+                                break
+                            validator.feed(event)
+                            emitted += 1
+                            yield event
+                    finally:
+                        closer = getattr(provider_stream, "aclose", None)
+                        if closer is not None:
+                            await closer()
+                    response = validator.finish()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    failure = _normalize_failure(error, provider_name, model)
+                    last_failure = failure
+                    before_visibility = emitted == 0
+                    can_replay = (
+                        execution._replay_safe
+                        and before_visibility
+                        and policy.permits_retry(failure)
+                    )
+                    retry_same_route = can_replay and route_attempt < attempt_limit
+                    can_failover = can_replay and route_index + 1 < len(routes)
+                    delay = (
+                        policy.retry_delay(route_attempt)
+                        if retry_same_route
+                        else None
+                    )
+                    execution._attempts.append(
+                        _attempt_record(
+                            ordinal=ordinal,
+                            route_index=route_index,
+                            route_attempt=route_attempt,
+                            provider=provider_name,
+                            model=model,
+                            outcome=AttemptOutcome.FAILED,
+                            started_at=started_at,
+                            started=started,
+                            events_emitted=emitted,
+                            failure=failure,
+                            next_delay=delay,
+                        )
+                    )
+                    if retry_same_route:
+                        await self._wait_for_retry(delay or 0, cancellation)
+                        continue
+                    if can_failover:
+                        break
+                    raise ModelInvocationError(
+                        failure,
+                        decision,
+                        execution.attempts,
+                    ) from error
+
+                execution._attempts.append(
+                    _attempt_record(
+                        ordinal=ordinal,
+                        route_index=route_index,
+                        route_attempt=route_attempt,
+                        provider=provider_name,
+                        model=model,
+                        outcome=AttemptOutcome.SUCCEEDED,
+                        started_at=started_at,
+                        started=started,
+                        events_emitted=emitted,
+                    )
+                )
+                execution.provider = provider_name
+                execution.model = model
+                execution.response = response
+                return
+
+        failure = last_failure or ModelFailure(
+            ModelFailureKind.CONFIGURATION,
+            "no-executable-route",
+            "route decision did not contain an executable route",
+        )
+        raise ModelInvocationError(failure, decision, execution.attempts)
+
     async def _wait_for_retry(
         self,
         delay: float,
@@ -315,6 +509,7 @@ def _attempt_record(
     started: float,
     failure: ModelFailure | None = None,
     next_delay: float | None = None,
+    events_emitted: int = 0,
 ) -> AttemptRecord:
     return AttemptRecord(
         ordinal=ordinal,
@@ -326,6 +521,7 @@ def _attempt_record(
         started_at=started_at,
         completed_at=datetime.now(UTC),
         duration_ms=round((time.perf_counter() - started) * 1000, 3),
+        events_emitted=events_emitted,
         failure=failure,
         next_delay=next_delay,
     )
