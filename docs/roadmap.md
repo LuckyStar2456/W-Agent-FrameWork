@@ -35,9 +35,12 @@
 | CLI/TUI 探测入口 | `Planned` | Phase 2B |
 | 收集式调用、超时、重试与故障转移执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | 安全逐事件透传执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
+| Provider 输入/输出 Token 规范化计量 | `Implemented` | Phase 2B / 2.0.0a1 |
 | 跨流断点恢复与续传 | `Planned` | Phase 2B |
 | 单 Agent ReAct/tool loop 模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
+| Run 级 Token 可见计量与硬预算 | `Implemented` | Phase 3 / 2.0.0a1 |
+| Session/Agent 级聚合、尝试账本、预估器与费用预算 | `Planned` | Phase 3/6 |
 | 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -82,6 +85,7 @@
 - 2B 已实现带可替换 HTTP 传输的 OpenAI-compatible Chat Completions Provider。
 - 2B 已实现通用 HTTP 请求映射层、JSON/SSE/NDJSON 传输、四种原生模板和四种兼容厂商模板。
 - 2B 已实现默认单次调用、显式有界重试/故障转移、逐尝试超时与审计记录的收集式和逐事件透传执行器；透传一旦暴露任何事件便禁止静默重放。
+- 2B 已统一 Provider 上报的输入、输出和缓存输入 Token；`usage_reported` 明确区分真实零用量与 Provider 未上报，不用零值伪装完整计量。
 - 2B 已实现可选的 `ModelRegistrationProbeService` 注册安全探测路径和 `ProbeHealthBridge`；底层 `ModelRegistry.register()` 保持纯注册语义。
 - 2B 后续计划提供 OpenAI Responses/vLLM 差异适配、CLI/TUI 入口和跨流断点恢复。
 
@@ -89,7 +93,10 @@
 
 - 状态：工具执行基础、Run 协议、单 Agent ReAct、本地事件记录与审批恢复为 `Implemented`；完整 Session 生命周期为 `Planned`。
 - 已实现可替换 Agent Loop、默认 ReAct 模板、进程内/JSONL RunEvent、步骤/工具预算和不重复首轮模型调用的审批恢复。
-- 后续实现 Session 列表/归档、通用事件投影与 Agent 逐 Token 事件。
+- 已实现 `TokenBudget` 的 Run 级输入、输出、总量硬限制，`RunResult.usage` 与 `TOKEN_USAGE` 事件公开累计值；审批 Checkpoint 保存计量状态。`max_output_tokens` 仍只表示单次模型生成上限。
+- 当前预算依据成功响应中 Provider 返回的实际用量在响应后核算，并用剩余输出/总量收紧下一次请求上限；可用 `require_usage=True` 在 Provider 不上报时失败关闭。首个请求的输入 Token 不能在没有分词器时精确预知，失败/中断的重试尝试也可能已经产生未上报用量。
+- 后续实现 Session/Agent 级聚合、覆盖重试/故障转移的逐尝试账本、可插拔调用前 Token 预估器、软阈值动作与费用预算。费用预算必须基于显式版本化价格表，不从 Token 数静默推断。
+- 后续实现 Session 列表/归档、通用事件投影与 Agent 逐 Token 文本事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
 - 已实现固定端点 HTTP、无 Shell 命令工具，以及传输中立的 MCP 客户端绑定；后续提供官方 MCP stdio/HTTP 会话客户端、发现和沙箱绑定。
 

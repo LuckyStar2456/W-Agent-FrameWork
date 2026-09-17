@@ -15,6 +15,7 @@ from w_agent.models import (
     ModelInvocationError,
     ModelMessage,
     ModelRequest,
+    TokenUsage,
     ToolCallContent,
     ToolResultContent,
 )
@@ -45,6 +46,9 @@ class _ReactState:
     steps: int = 0
     tool_calls: int = 0
     latest_output: str = ""
+    usage: TokenUsage = TokenUsage()
+    model_calls: int = 0
+    reported_usage_calls: int = 0
 
 
 class ReactAgentExecution:
@@ -100,6 +104,13 @@ class ReactAgentExecution:
             steps=state.steps,
             tool_calls=state.tool_calls,
             pending_call_id=pending.id if pending is not None else None,
+            input_tokens=state.usage.input_tokens,
+            output_tokens=state.usage.output_tokens,
+            total_tokens=state.usage.total_tokens,
+            cached_input_tokens=state.usage.cached_input_tokens,
+            model_calls=state.model_calls,
+            reported_usage_calls=state.reported_usage_calls,
+            usage_complete=state.reported_usage_calls == state.model_calls,
         )
         self.result = RunResult(
             run_id=self._context.run_id,
@@ -115,6 +126,9 @@ class ReactAgentExecution:
                 if reason == StopReason.NEEDS_APPROVAL
                 else None
             ),
+            usage=state.usage,
+            model_calls=state.model_calls,
+            reported_usage_calls=state.reported_usage_calls,
         )
         return event
 
@@ -267,6 +281,9 @@ class ReactAgentLoop:
             checkpoint.steps,
             checkpoint.tool_calls,
             checkpoint.latest_output,
+            checkpoint.usage,
+            checkpoint.model_calls,
+            checkpoint.reported_usage_calls,
         )
         yield await execution.emit(
             RunEventType.RUN_RESUMED,
@@ -317,6 +334,23 @@ class ReactAgentLoop:
         definition = execution._definition
         context = execution._context
         while state.steps < definition.max_steps:
+            exhausted = _exhausted_budget_limits(definition, state.usage)
+            if state.model_calls and exhausted:
+                yield await execution.emit(
+                    RunEventType.TOKEN_BUDGET_STOPPED,
+                    step=state.steps,
+                    reason=StopReason.TOKEN_BUDGET.value,
+                    exceeded_limits=exhausted,
+                    input_tokens=state.usage.input_tokens,
+                    output_tokens=state.usage.output_tokens,
+                    total_tokens=state.usage.total_tokens,
+                )
+                yield await self._finish_terminal(
+                    execution,
+                    state,
+                    StopReason.TOKEN_BUDGET,
+                )
+                return
             cancellation = context.cancellation
             if cancellation is not None and cancellation.cancelled:
                 yield await self._finish_terminal(
@@ -337,7 +371,7 @@ class ReactAgentLoop:
                 model=definition.model,
                 tools=definitions,
                 temperature=definition.temperature,
-                max_output_tokens=definition.max_output_tokens,
+                max_output_tokens=_request_output_limit(definition, state.usage),
                 extensions=definition.extensions,
             )
             try:
@@ -370,6 +404,10 @@ class ReactAgentLoop:
                 return
 
             response = invocation.response
+            state.model_calls += 1
+            if response.usage_reported:
+                state.usage = _add_usage(state.usage, response.usage)
+                state.reported_usage_calls += 1
             state.latest_output = response.text
             calls = tuple(
                 block
@@ -388,7 +426,58 @@ class ReactAgentLoop:
                 finish_reason=response.finish_reason.value,
                 text=state.latest_output,
                 tool_call_ids=tuple(call.id for call in calls),
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                total_tokens=response.usage.total_tokens,
+                cached_input_tokens=response.usage.cached_input_tokens,
+                usage_reported=response.usage_reported,
             )
+            yield await execution.emit(
+                RunEventType.TOKEN_USAGE,
+                step=state.steps,
+                input_tokens=state.usage.input_tokens,
+                output_tokens=state.usage.output_tokens,
+                total_tokens=state.usage.total_tokens,
+                cached_input_tokens=state.usage.cached_input_tokens,
+                model_calls=state.model_calls,
+                reported_usage_calls=state.reported_usage_calls,
+                usage_complete=(
+                    state.reported_usage_calls == state.model_calls
+                ),
+            )
+
+            budget = definition.token_budget
+            if budget is not None:
+                if budget.require_usage and not response.usage_reported:
+                    yield await execution.emit(
+                        RunEventType.TOKEN_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.TOKEN_USAGE_UNAVAILABLE.value,
+                        exceeded_limits=(),
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.TOKEN_USAGE_UNAVAILABLE,
+                    )
+                    return
+                exceeded = budget.exceeded_limits(state.usage)
+                if exceeded:
+                    yield await execution.emit(
+                        RunEventType.TOKEN_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.TOKEN_BUDGET.value,
+                        exceeded_limits=exceeded,
+                        input_tokens=state.usage.input_tokens,
+                        output_tokens=state.usage.output_tokens,
+                        total_tokens=state.usage.total_tokens,
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.TOKEN_BUDGET,
+                    )
+                    return
 
             if not calls:
                 yield await self._finish_terminal(
@@ -593,6 +682,9 @@ class ReactAgentLoop:
             tool_calls=state.tool_calls,
             latest_output=state.latest_output,
             status=status,
+            usage=state.usage,
+            model_calls=state.model_calls,
+            reported_usage_calls=state.reported_usage_calls,
         )
 
     async def _save_ready_checkpoint(
@@ -626,6 +718,59 @@ def _require_result(result: RunResult | None) -> RunResult:
     if result is None:
         raise RuntimeError("agent execution ended without a result")
     return result
+
+
+def _add_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
+    return TokenUsage(
+        input_tokens=left.input_tokens + right.input_tokens,
+        output_tokens=left.output_tokens + right.output_tokens,
+        cached_input_tokens=(
+            left.cached_input_tokens + right.cached_input_tokens
+        ),
+    )
+
+
+def _request_output_limit(
+    definition: AgentDefinition,
+    usage: TokenUsage,
+) -> int | None:
+    """Cap a request by the remaining measurable output/total run budget."""
+
+    limits = [definition.max_output_tokens]
+    budget = definition.token_budget
+    if budget is not None:
+        if budget.max_output_tokens is not None:
+            limits.append(budget.max_output_tokens - usage.output_tokens)
+        if budget.max_total_tokens is not None:
+            limits.append(budget.max_total_tokens - usage.total_tokens)
+    available = [limit for limit in limits if limit is not None]
+    return min(available) if available else None
+
+
+def _exhausted_budget_limits(
+    definition: AgentDefinition,
+    usage: TokenUsage,
+) -> tuple[str, ...]:
+    budget = definition.token_budget
+    if budget is None:
+        return ()
+    exhausted: list[str] = []
+    if (
+        budget.max_input_tokens is not None
+        and usage.input_tokens >= budget.max_input_tokens
+    ):
+        exhausted.append("input_tokens")
+    if (
+        budget.max_output_tokens is not None
+        and usage.output_tokens >= budget.max_output_tokens
+    ):
+        exhausted.append("output_tokens")
+    if (
+        budget.max_total_tokens is not None
+        and usage.total_tokens >= budget.max_total_tokens
+    ):
+        exhausted.append("total_tokens")
+    return tuple(exhausted)
 
 
 def _tool_context(context: RunContext) -> ToolExecutionContext:

@@ -10,7 +10,12 @@ from types import MappingProxyType
 from typing import Any, Mapping, Protocol
 
 from w_agent.kernel import ScopePath
-from w_agent.models import CancellationToken, ModelMessage, ToolCallContent
+from w_agent.models import (
+    CancellationToken,
+    ModelMessage,
+    TokenUsage,
+    ToolCallContent,
+)
 from w_agent.tools import ToolCall, ToolExecutionContext
 
 
@@ -19,6 +24,8 @@ class StopReason(StrEnum):
     NEEDS_APPROVAL = "needs-approval"
     MAX_STEPS = "max-steps"
     MAX_TOOL_CALLS = "max-tool-calls"
+    TOKEN_BUDGET = "token-budget"
+    TOKEN_USAGE_UNAVAILABLE = "token-usage-unavailable"
     MODEL_ERROR = "model-error"
     CANCELLED = "cancelled"
 
@@ -28,6 +35,8 @@ class RunEventType(StrEnum):
     MODEL_STARTED = "model-started"
     MODEL_COMPLETED = "model-completed"
     MODEL_FAILED = "model-failed"
+    TOKEN_USAGE = "token-usage"
+    TOKEN_BUDGET_STOPPED = "token-budget-stopped"
     TOOL_REQUESTED = "tool-requested"
     TOOL_COMPLETED = "tool-completed"
     RUN_RESUMED = "run-resumed"
@@ -38,6 +47,46 @@ class CheckpointStatus(StrEnum):
     PENDING_APPROVAL = "pending-approval"
     READY = "ready"
     RESUMING = "resuming"
+
+
+@dataclass(frozen=True, slots=True)
+class TokenBudget:
+    """Cumulative provider-reported token limits for one agent run."""
+
+    max_input_tokens: int | None = None
+    max_output_tokens: int | None = None
+    max_total_tokens: int | None = None
+    require_usage: bool = False
+
+    def __post_init__(self) -> None:
+        limits = (
+            self.max_input_tokens,
+            self.max_output_tokens,
+            self.max_total_tokens,
+        )
+        if any(value is not None and value <= 0 for value in limits):
+            raise ValueError("token budget limits must be positive")
+
+    def exceeded_limits(self, usage: TokenUsage) -> tuple[str, ...]:
+        """Return stable names for every exceeded cumulative limit."""
+
+        exceeded: list[str] = []
+        if (
+            self.max_input_tokens is not None
+            and usage.input_tokens > self.max_input_tokens
+        ):
+            exceeded.append("input_tokens")
+        if (
+            self.max_output_tokens is not None
+            and usage.output_tokens > self.max_output_tokens
+        ):
+            exceeded.append("output_tokens")
+        if (
+            self.max_total_tokens is not None
+            and usage.total_tokens > self.max_total_tokens
+        ):
+            exceeded.append("total_tokens")
+        return tuple(exceeded)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +101,7 @@ class AgentDefinition:
     temperature: float | None = None
     max_output_tokens: int | None = None
     extensions: Mapping[str, Any] = field(default_factory=dict)
+    token_budget: TokenBudget | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
@@ -115,12 +165,22 @@ class RunCheckpoint:
     session_id: str | None = None
     status: CheckpointStatus = CheckpointStatus.PENDING_APPROVAL
     schema_version: int = 1
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    model_calls: int = 0
+    reported_usage_calls: int = 0
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported run checkpoint schema version")
-        if self.steps < 0 or self.tool_calls < 0:
+        if min(
+            self.steps,
+            self.tool_calls,
+            self.model_calls,
+            self.reported_usage_calls,
+        ) < 0:
             raise ValueError("checkpoint counters must not be negative")
+        if self.reported_usage_calls > self.model_calls:
+            raise ValueError("reported usage calls cannot exceed model calls")
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(
             self,
@@ -140,6 +200,15 @@ class RunResult:
     tool_calls: int
     pending_tool_call: ToolCall | None = None
     checkpoint_id: str | None = None
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    model_calls: int = 0
+    reported_usage_calls: int = 0
+
+    @property
+    def usage_complete(self) -> bool:
+        """Whether every completed model call supplied usage metadata."""
+
+        return self.reported_usage_calls == self.model_calls
 
 
 class AgentExecution(Protocol):

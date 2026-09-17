@@ -86,7 +86,7 @@ class ModelProvider(Protocol):
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`StreamEvent` covers content-block start/delta/end, text/tool-call deltas, usage, normalized errors, and finish. `collect_stream()` validates block ordering and an explicit terminal event. A provider reports unsupported standard fields and never silently ignores them.
+`StreamEvent` covers content-block start/delta/end, text/tool-call deltas, usage, normalized errors, and finish. `TokenUsage` normalizes input, output, and cached-input tokens and exposes `total_tokens` without double-counting the cached subset; `ModelResponse.usage_reported` distinguishes omitted metadata from a real zero report. `collect_stream()` validates block ordering and an explicit terminal event. A provider reports unsupported standard fields and never silently ignores them.
 
 `OpenAICompatibleProvider` implements `/models` and streaming `/chat/completions` with a replaceable `OpenAICompatibleTransport`. Generic `HttpModelProvider` exposes `HttpRequest`, `HttpStreamFrame`, `HttpProviderMapping`, `HttpStreamDecoder`, and `HttpProviderTransport`; the default `HttpxProviderTransport` supports JSON, SSE, and NDJSON.
 
@@ -131,7 +131,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `resume()` continues the pending and remaining calls without repeating the earlier model request. `InMemoryRunStore` and local `JsonlRunStore` are implemented; full session lifecycle and agent token events remain `Planned`. See [Agent runtime and ReAct loop](./agents.en.md).
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `TokenBudget` adds cumulative run input/output/total limits; `TOKEN_USAGE`, `RunResult.usage`, and `usage_complete` expose metering, and checkpoints preserve totals through approval resume. `resume()` continues the pending and remaining calls without repeating the earlier model request. `InMemoryRunStore` and local `JsonlRunStore` are implemented; full session lifecycle and per-token text events remain `Planned`. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 8. Workflow protocol
 

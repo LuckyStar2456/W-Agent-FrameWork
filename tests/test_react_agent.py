@@ -21,12 +21,15 @@ from w_agent import (
     StopReason,
     TextContent,
     TextDelta,
+    TokenBudget,
+    TokenUsage,
     ToolCallContent,
     ToolExecutionContext,
     ToolExecutor,
     ToolRegistry,
     ToolResultContent,
     ToolSideEffect,
+    UsageEvent,
     WeightedRoutingPolicy,
     python_tool,
 )
@@ -58,12 +61,15 @@ class AgentProvider:
 
     async def stream(self, request, *, cancellation=None):
         self.requests.append(request)
-        blocks, reason = self.responses.pop(0)
+        response = self.responses.pop(0)
+        blocks, reason = response[:2]
         for index, block in enumerate(blocks):
             yield BlockStart(index, block.type)
             if isinstance(block, TextContent):
                 yield TextDelta(index, block.text)
             yield BlockEnd(index, block)
+        if len(response) == 3:
+            yield UsageEvent(response[2])
         yield FinishEvent(reason)
 
 
@@ -272,6 +278,104 @@ async def test_react_loop_enforces_step_and_tool_budgets():
 
 
 @pytest.mark.asyncio
+async def test_react_loop_exposes_cumulative_input_and_output_usage():
+    loop, _ = _loop(
+        [
+            (
+                (ToolCallContent("ping-1", "ping", "{}"),),
+                FinishReason.TOOL_CALLS,
+                TokenUsage(10, 2, 3),
+            ),
+            (
+                (TextContent("done"),),
+                FinishReason.STOP,
+                TokenUsage(12, 3, 4),
+            ),
+        ],
+        python_tool(lambda: "pong", name="ping"),
+    )
+
+    result = await loop.run(AgentDefinition("metered"), _context())
+
+    assert result.usage == TokenUsage(22, 5, 7)
+    assert result.usage.total_tokens == 27
+    assert result.model_calls == 2
+    assert result.reported_usage_calls == 2
+    assert result.usage_complete is True
+    usage_events = [
+        event for event in result.events if event.type == RunEventType.TOKEN_USAGE
+    ]
+    assert usage_events[-1].data["input_tokens"] == 22
+    assert usage_events[-1].data["output_tokens"] == 5
+    assert result.events[-1].data["usage_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_react_loop_stops_before_tools_when_actual_usage_exceeds_budget():
+    calls = 0
+
+    def ping() -> str:
+        nonlocal calls
+        calls += 1
+        return "pong"
+
+    loop, provider = _loop(
+        [
+            (
+                (ToolCallContent("ping-1", "ping", "{}"),),
+                FinishReason.TOOL_CALLS,
+                TokenUsage(8, 4),
+            )
+        ],
+        python_tool(ping),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "bounded",
+            max_output_tokens=3,
+            token_budget=TokenBudget(max_total_tokens=10),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason == StopReason.TOKEN_BUDGET
+    assert result.usage == TokenUsage(8, 4)
+    assert calls == 0
+    assert provider.requests[0].max_output_tokens == 3
+    budget_event = next(
+        event
+        for event in result.events
+        if event.type == RunEventType.TOKEN_BUDGET_STOPPED
+    )
+    assert budget_event.data["exceeded_limits"] == ("total_tokens",)
+
+
+@pytest.mark.asyncio
+async def test_react_loop_can_fail_closed_when_provider_omits_usage():
+    loop, _ = _loop(
+        [((TextContent("unmetered"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "strict-metering",
+            token_budget=TokenBudget(
+                max_total_tokens=10,
+                require_usage=True,
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason == StopReason.TOKEN_USAGE_UNAVAILABLE
+    assert result.model_calls == 1
+    assert result.reported_usage_calls == 0
+    assert result.usage_complete is False
+
+
+@pytest.mark.asyncio
 async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_path):
     saved = []
 
@@ -289,6 +393,7 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
                     ToolCallContent("write-2", "save", '{"text":"second"}'),
                 ),
                 FinishReason.TOOL_CALLS,
+                TokenUsage(10, 2),
             )
         ],
         binding,
@@ -306,7 +411,13 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
 
     second_store = JsonlRunStore(tmp_path)
     second_loop, second_provider = _loop(
-        [((TextContent("both saved"),), FinishReason.STOP)],
+        [
+            (
+                (TextContent("both saved"),),
+                FinishReason.STOP,
+                TokenUsage(12, 3),
+            )
+        ],
         binding,
         store=second_store,
     )
@@ -328,6 +439,8 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
         range(1, len(resumed.events) + 1)
     )
     assert all(event.session_id == "session-1" for event in resumed.events)
+    assert resumed.usage == TokenUsage(22, 5)
+    assert resumed.usage_complete is True
     assert await second_store.load_checkpoint("run-1") is None
     assert (tmp_path / "runs" / "run-1" / "events.jsonl").is_file()
 

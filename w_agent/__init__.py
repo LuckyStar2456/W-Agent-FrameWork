@@ -25,6 +25,7 @@ from w_agent.agents import (
     RunStore,
     RunStoreError,
     StopReason,
+    TokenBudget,
 )
 from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
 from w_agent.config.dynamic_config import DynamicConfigManager
@@ -317,6 +318,7 @@ __all__ = [
     "RunStore",
     "RunStoreError",
     "StopReason",
+    "TokenBudget",
     "BeanFactory",
     "BeanDefinition",
     "Scope",

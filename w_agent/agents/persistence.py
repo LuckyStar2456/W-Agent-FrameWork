@@ -20,6 +20,7 @@ from w_agent.models import (
     MessageRole,
     ModelMessage,
     TextContent,
+    TokenUsage,
     ToolCallContent,
     ToolResultContent,
 )
@@ -31,6 +32,7 @@ from .types import (
     RunCheckpoint,
     RunEvent,
     RunEventType,
+    TokenBudget,
 )
 
 
@@ -271,6 +273,16 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
             "temperature": definition.temperature,
             "max_output_tokens": definition.max_output_tokens,
             "extensions": _json_value(definition.extensions),
+            "token_budget": (
+                {
+                    "max_input_tokens": definition.token_budget.max_input_tokens,
+                    "max_output_tokens": definition.token_budget.max_output_tokens,
+                    "max_total_tokens": definition.token_budget.max_total_tokens,
+                    "require_usage": definition.token_budget.require_usage,
+                }
+                if definition.token_budget is not None
+                else None
+            ),
         },
         "scope": [[item.kind, item.value] for item in checkpoint.scope],
         "messages": [_message_to_data(item) for item in checkpoint.messages],
@@ -285,11 +297,20 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
         "steps": checkpoint.steps,
         "tool_calls": checkpoint.tool_calls,
         "latest_output": checkpoint.latest_output,
+        "usage": {
+            "input_tokens": checkpoint.usage.input_tokens,
+            "output_tokens": checkpoint.usage.output_tokens,
+            "cached_input_tokens": checkpoint.usage.cached_input_tokens,
+        },
+        "model_calls": checkpoint.model_calls,
+        "reported_usage_calls": checkpoint.reported_usage_calls,
     }
 
 
 def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
     definition = data["definition"]
+    token_budget = definition.get("token_budget")
+    usage = data.get("usage", {})
     remaining = tuple(_content_from_data(item) for item in data["remaining_tool_calls"])
     if not all(isinstance(item, ToolCallContent) for item in remaining):
         raise RunStoreError("checkpoint contains a non-tool remaining block")
@@ -305,6 +326,16 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
             temperature=definition.get("temperature"),
             max_output_tokens=definition.get("max_output_tokens"),
             extensions=definition.get("extensions", {}),
+            token_budget=(
+                TokenBudget(
+                    max_input_tokens=token_budget.get("max_input_tokens"),
+                    max_output_tokens=token_budget.get("max_output_tokens"),
+                    max_total_tokens=token_budget.get("max_total_tokens"),
+                    require_usage=bool(token_budget.get("require_usage", False)),
+                )
+                if isinstance(token_budget, Mapping)
+                else None
+            ),
         ),
         scope=ScopePath.from_pairs(tuple(tuple(item) for item in data["scope"])),
         messages=tuple(_message_from_data(item) for item in data["messages"]),
@@ -317,6 +348,13 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
         steps=int(data["steps"]),
         tool_calls=int(data["tool_calls"]),
         latest_output=str(data["latest_output"]),
+        usage=TokenUsage(
+            input_tokens=int(usage.get("input_tokens", 0)),
+            output_tokens=int(usage.get("output_tokens", 0)),
+            cached_input_tokens=int(usage.get("cached_input_tokens", 0)),
+        ),
+        model_calls=int(data.get("model_calls", 0)),
+        reported_usage_calls=int(data.get("reported_usage_calls", 0)),
         status=CheckpointStatus(str(data["status"])),
         schema_version=int(data["schema_version"]),
     )

@@ -46,7 +46,22 @@ Each step:
 4. Parses tool-call JSON and delegates it to `ToolExecutorProtocol`.
 5. Sends both successful and failed results back as `ToolResultContent`, then starts the next step.
 
-`max_steps` and `max_tool_calls` are enforced budgets. The current template executes tool calls from one model response sequentially. It neither parallelizes nor retries tools automatically.
+`max_steps` and `max_tool_calls` are enforced budgets. `max_output_tokens` caps one model request; cumulative limits use a separate `TokenBudget` to keep those meanings distinct. The current template executes tool calls from one model response sequentially. It neither parallelizes nor retries tools automatically.
+
+```python
+from w_agent import AgentDefinition, TokenBudget
+
+definition = AgentDefinition(
+    "assistant",
+    max_output_tokens=2_000,
+    token_budget=TokenBudget(
+        max_input_tokens=20_000,
+        max_output_tokens=6_000,
+        max_total_tokens=24_000,
+        require_usage=True,
+    ),
+)
+```
 
 ## Events and results
 
@@ -56,7 +71,11 @@ Each step:
 
 Run events contain model text, tool arguments, and result-stage information needed to reconstruct model context, so callers must treat them as potentially sensitive local run content. Tool audit is separate and stores only minimal metadata such as argument names. The current store does not encrypt content; filesystem access control belongs to the local application.
 
-The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain token deltas. The model layer already supports safe pass-through; adapting those events into agent RunEvents is later work.
+`MODEL_COMPLETED` exposes per-call input, output, total, cached-input tokens, and `usage_reported`; the following `TOKEN_USAGE` event exposes run totals. `RunResult.usage` carries the final totals and `usage_complete` reports whether every model call supplied provider usage. A real zero-token report is not confused with missing metadata.
+
+Hard token budgets reconcile provider-reported actuals after each successful response and stop with `TOKEN_BUDGET` before executing tool calls from a response that exceeded a limit. Remaining output/total allowance also tightens the next request's output cap. Because the core does not assume a tokenizer, it cannot know the first request's exact input usage in advance; failed or interrupted retries may also lack usage. Set `require_usage=True` for accountable runs; missing usage on a successful response then stops with `TOKEN_USAGE_UNAVAILABLE`. Session/agent aggregation, per-attempt ledgers, pre-call estimation, soft thresholds, and cost budgets backed by versioned pricing remain planned.
+
+The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain per-token text deltas. The model layer already supports safe pass-through; adapting text deltas into agent RunEvents is later work.
 
 ## Approval and stopping
 
@@ -80,4 +99,4 @@ Resume executes the original pending call and remaining calls from the same mode
 
 Checkpoints store neither permissions nor approval credentials; the local application must provide them again. Full session listing/archival, cross-run conversation projections, and arbitrary-position recovery remain `Planned`.
 
-Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.
+Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `TOKEN_BUDGET`, `TOKEN_USAGE_UNAVAILABLE`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.

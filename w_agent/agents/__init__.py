@@ -19,6 +19,7 @@ from .types import (
     RunEventType,
     RunResult,
     StopReason,
+    TokenBudget,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "RunStore",
     "RunStoreError",
     "StopReason",
+    "TokenBudget",
 ]

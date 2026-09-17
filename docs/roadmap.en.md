@@ -35,9 +35,12 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | CLI/TUI probe entry points | `Planned` | Phase 2B |
 | Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
+| Normalized provider input/output token metering | `Implemented` | Phase 2B / 2.0.0a1 |
 | Cross-stream recovery and resume | `Planned` | Phase 2B |
 | Single-agent ReAct/tool-loop template | `Implemented` | Phase 3 / 2.0.0a1 |
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
+| Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
+| Session/agent aggregation, attempt ledger, estimators, and cost budgets | `Planned` | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -82,6 +85,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2B implements an OpenAI-compatible Chat Completions provider with replaceable HTTP transport.
 - 2B implements the generic HTTP request-mapping layer, JSON/SSE/NDJSON transport, four native templates, and four compatible-vendor templates.
 - 2B implements collecting and event-pass-through executors with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records. Pass-through execution prohibits silent replay after any event becomes visible.
+- 2B normalizes provider-reported input, output, and cached-input tokens. `usage_reported` distinguishes a real zero-token report from missing provider metadata instead of presenting a zero value as complete metering.
 - 2B implements optional register-and-safe-probe through `ModelRegistrationProbeService` and `ProbeHealthBridge`; low-level `ModelRegistry.register()` keeps pure registration semantics.
 - Later 2B work plans OpenAI Responses/vLLM differences, CLI/TUI entry points, and cross-stream recovery.
 
@@ -89,7 +93,10 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 - Status: the tool foundation, run contracts, single-agent ReAct, local event recording, and approval resume are `Implemented`; full session lifecycle remains `Planned`.
 - Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
-- Later session listing/archival, general event projections, and agent token events.
+- Implemented run-level input, output, and total hard limits through `TokenBudget`; `RunResult.usage` and `TOKEN_USAGE` events expose cumulative values, and approval checkpoints preserve metering state. `max_output_tokens` remains a per-model-request generation cap.
+- Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. Exact first-request input usage cannot be known without a tokenizer, and failed or interrupted retry attempts may already have incurred unreported usage.
+- Later work adds session/agent aggregation, a per-attempt ledger covering retry/failover, a pluggable pre-call token estimator, soft-threshold actions, and cost budgets. Cost control will require an explicit versioned price table and will not silently infer money from token counts.
+- Later session listing/archival, general event projections, and per-token text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
 - Implemented fixed-endpoint HTTP, shell-free command tools, and transport-neutral MCP client binding; later work adds first-party MCP stdio/HTTP session clients, discovery, and sandbox binding.
 

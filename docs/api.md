@@ -86,7 +86,7 @@ class ModelProvider(Protocol):
     ) -> AsyncIterator[StreamEvent]: ...
 ```
 
-`StreamEvent` 已覆盖内容块开始/增量/结束、文本/工具调用增量、Usage、标准错误和 Finish。`collect_stream()` 校验块顺序和明确终止事件。Provider 必须完整报告不支持的标准字段，不得静默忽略。
+`StreamEvent` 已覆盖内容块开始/增量/结束、文本/工具调用增量、Usage、标准错误和 Finish。`TokenUsage` 统一输入、输出和缓存输入 Token，并提供不重复计算缓存子集的 `total_tokens`；`ModelResponse.usage_reported` 区分 Provider 未上报与真实零值。`collect_stream()` 校验块顺序和明确终止事件。Provider 必须完整报告不支持的标准字段，不得静默忽略。
 
 `OpenAICompatibleProvider` 已实现 `/models` 和流式 `/chat/completions`，其 `OpenAICompatibleTransport` 可以替换。通用 `HttpModelProvider` 公开 `HttpRequest`、`HttpStreamFrame`、`HttpProviderMapping`、`HttpStreamDecoder` 与 `HttpProviderTransport`；默认 `HttpxProviderTransport` 支持 JSON、SSE 和 NDJSON。
 
@@ -131,7 +131,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`resume()` 原地继续待审批工具与剩余调用，不重复之前的模型请求。`InMemoryRunStore` 和本地 `JsonlRunStore` 已实现；完整 Session 生命周期和 Agent 逐 Token 事件仍为 `Planned`。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值。`resume()` 原地继续待审批工具与剩余调用，不重复之前的模型请求。`InMemoryRunStore` 和本地 `JsonlRunStore` 已实现；完整 Session 生命周期和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 8. Workflow 协议
 

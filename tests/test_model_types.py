@@ -70,7 +70,13 @@ async def test_collect_stream_validates_and_collects_terminal_response():
 
     assert response.text == "hello"
     assert response.usage.output_tokens == 1
+    assert response.usage.total_tokens == 3
+    assert response.usage_reported is True
     assert response.finish_reason == FinishReason.STOP
+
+    unmetered = await collect_stream(_events(FinishEvent(FinishReason.STOP)))
+    assert unmetered.usage == TokenUsage()
+    assert unmetered.usage_reported is False
 
 
 @pytest.mark.asyncio

@@ -218,6 +218,16 @@ class TokenUsage:
         if min(self.input_tokens, self.output_tokens, self.cached_input_tokens) < 0:
             raise ValueError("token usage must not be negative")
 
+    @property
+    def total_tokens(self) -> int:
+        """Return normalized input plus output tokens.
+
+        ``cached_input_tokens`` is metadata about the input-token subset and is
+        therefore not added a second time.
+        """
+
+        return self.input_tokens + self.output_tokens
+
 
 class FinishReason(StrEnum):
     """Why a model stream ended."""
@@ -296,6 +306,7 @@ class ModelResponse:
     blocks: tuple[ContentBlock, ...]
     usage: TokenUsage
     finish_reason: FinishReason
+    usage_reported: bool = True
 
     @property
     def text(self) -> str:
@@ -317,6 +328,7 @@ class ModelStreamValidator:
         self._open_blocks: dict[int, str] = {}
         self._completed: dict[int, ContentBlock] = {}
         self._usage = TokenUsage()
+        self._usage_reported = False
         self._finish: FinishReason | None = None
 
     def feed(self, event: StreamEvent) -> None:
@@ -348,6 +360,7 @@ class ModelStreamValidator:
             self._completed[event.index] = event.block
         elif isinstance(event, UsageEvent):
             self._usage = event.usage
+            self._usage_reported = True
         elif isinstance(event, ErrorEvent):
             raise ModelError(event.failure)
         elif isinstance(event, FinishEvent):
@@ -365,7 +378,12 @@ class ModelStreamValidator:
         ordered = tuple(
             self._completed[index] for index in sorted(self._completed)
         )
-        return ModelResponse(ordered, self._usage, self._finish)
+        return ModelResponse(
+            ordered,
+            self._usage,
+            self._finish,
+            usage_reported=self._usage_reported,
+        )
 
 
 async def collect_stream(events: AsyncIterable[StreamEvent]) -> ModelResponse:

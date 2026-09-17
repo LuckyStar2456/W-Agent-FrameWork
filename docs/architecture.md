@@ -138,7 +138,7 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 - 动态选择下一步。
 - 从 Agent 调用 Workflow。
 
-当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤/工具调用预算并在工具需要审批时安全停止。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求。副作用执行前原子 claim，状态不确定时拒绝自动重放。模型调用目前采用收集模式；Agent 逐 Token 事件、完整 Session 投影和通用恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用和 Run 级 Token 预算，并在工具需要审批时安全停止。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token 也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。模型调用目前采用收集模式；文本逐 Token 事件、完整 Session 投影、逐尝试用量账本和通用恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 8. Workflow
 
