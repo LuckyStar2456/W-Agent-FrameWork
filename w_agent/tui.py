@@ -26,6 +26,11 @@ from w_agent.compositions import (
     manifest_to_dict,
 )
 from w_agent.models import EndpointProbe
+from w_agent.local_runtime import (
+    LocalRuntimeConfigError,
+    assemble_local_runtime,
+    load_local_runtime_config,
+)
 from w_agent.sandbox import DockerSandboxProvider
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
 
@@ -42,7 +47,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #session-result { min-height: 8; }
+    #composition-result, #probe-result, #session-result, #run-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -99,12 +104,19 @@ class WAgentTui(App[None]):
                 yield Button("Unarchive", id="session-unarchive")
                 yield Static("Loading sessions…", id="session-result", classes="panel")
             with TabPane("Run", id="run"):
-                yield Static(
-                    "Assemble a ModelExecutor, ToolRegistry, and AgentLoop through "
-                    "the public Python API. Interactive configured runs are the "
-                    "next TUI increment.",
-                    classes="panel",
+                yield Label("Configured text agent run")
+                yield Input(value=".wagent/config.json", id="run-config")
+                yield Input(placeholder="Prompt", id="run-prompt")
+                yield Input(
+                    placeholder="Existing session ID (optional)",
+                    id="run-session",
                 )
+                yield Input(
+                    placeholder="Type RUN to authorize the model call",
+                    id="run-confirm",
+                )
+                yield Button("Start configured run", id="run-button", variant="primary")
+                yield Static("No configured run started.", id="run-result", classes="panel")
             with TabPane("Checkpoints", id="checkpoints"):
                 yield Static(
                     "Agent and workflow checkpoint stores are local and fail closed. "
@@ -153,6 +165,8 @@ class WAgentTui(App[None]):
             await self._set_session_archived(True)
         elif event.button.id == "session-unarchive":
             await self._set_session_archived(False)
+        elif event.button.id == "run-button":
+            await self._run_configured_agent()
 
     def _inspect_composition(self) -> None:
         code = self.query_one("#composition-code", Input).value.strip()
@@ -233,6 +247,48 @@ class WAgentTui(App[None]):
         ]
         body = "\n".join(lines) if lines else "No local sessions."
         self.query_one("#session-result", Static).update(prefix + body)
+
+    async def _run_configured_agent(self) -> None:
+        target = self.query_one("#run-result", Static)
+        confirmation = self.query_one("#run-confirm", Input)
+        if confirmation.value.strip() != "RUN":
+            target.update("Rejected: type RUN to authorize the model call")
+            return
+        confirmation.value = ""
+        prompt = self.query_one("#run-prompt", Input).value
+        if not prompt:
+            target.update("Rejected: prompt is required")
+            return
+        source = Path(self.query_one("#run-config", Input).value)
+        if not source.is_absolute():
+            source = self.workspace / source
+        session_id = self.query_one("#run-session", Input).value.strip() or None
+        target.update("Running configured agent…")
+        try:
+            runtime = assemble_local_runtime(
+                load_local_runtime_config(source),
+                self.workspace / ".wagent",
+            )
+            run = await runtime.run(prompt, session_id=session_id)
+        except (LocalRuntimeConfigError, SessionError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Run failed: {type(error).__name__}")
+            return
+        result = run.result
+        target.update(
+            f"Session: {run.session.session_id}\n"
+            f"Run: {result.run_id}\n"
+            f"Stop: {result.stop_reason.value}\n"
+            f"Tokens: in={result.usage.input_tokens}, "
+            f"out={result.usage.output_tokens}, "
+            f"total={result.usage.total_tokens}, "
+            f"complete={result.usage_complete}\n\n"
+            f"{result.output}"
+        )
+        self.query_one("#run-session", Input).value = run.session.session_id
+        await self._refresh_sessions()
 
     @staticmethod
     def _profile_text() -> str:

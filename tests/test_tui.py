@@ -68,3 +68,25 @@ async def test_tui_rejects_invalid_composition_without_loading(tmp_path):
 
         rendered = str(app.query_one("#composition-result").content)
         assert "Rejected: unsupported composition-code prefix" in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_run_requires_explicit_confirmation_before_config_or_network(tmp_path):
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 55)) as pilot:
+        app.query_one(TabbedContent).active = "run"
+        await pilot.pause()
+        app.query_one("#run-prompt").value = "hello"
+        await pilot.click("#run-button")
+        await pilot.pause()
+
+        rendered = str(app.query_one("#run-result").content)
+        assert "type RUN to authorize" in rendered
+
+        app.query_one("#run-confirm").value = "RUN"
+        await pilot.pause()
+        await app._run_configured_agent()
+        await pilot.pause()
+        assert app.query_one("#run-confirm").value == ""
+        assert "config" in str(app.query_one("#run-result").content).lower()

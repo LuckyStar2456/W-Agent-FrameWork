@@ -139,3 +139,31 @@ def test_cli_session_missing_id_has_stable_failure(tmp_path):
 
     assert result.exit_code == 2
     assert "session does not exist" in result.stderr
+
+
+def test_cli_run_requires_explicit_model_call_authorization():
+    result = runner.invoke(app, ["run", "hello"])
+
+    assert result.exit_code == 2
+    assert "--confirm-model-call" in result.stderr
+
+
+def test_cli_run_reports_invalid_config_without_model_call(tmp_path):
+    source = tmp_path / "config.json"
+    source.write_text("{}\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "hello",
+            "--config",
+            str(source),
+            "--state-root",
+            str(tmp_path / "state"),
+            "--confirm-model-call",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "provider must be an object" in result.stderr

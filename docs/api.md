@@ -12,6 +12,7 @@
 |---|---|
 | Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
 | Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
+| 本地装配 | `LocalRuntimeConfig`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_runtime` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -36,6 +37,8 @@ class BaseAgent:
 ```
 
 `BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint、Workflow 节点 Checkpoint，以及本地持久化 Session 生命周期/跨 Run 文本上下文已经实现；通用多模态与工具事件回放仍未接入。
+
+严格本地 JSON 配置可通过 `load_local_runtime_config()` 和 `assemble_local_runtime()` 装配内置 Provider 模板、单 Provider 路由、受限调用策略、ReAct Loop、RunStore 与 SessionStore。配置只接受 `api_key_env` 凭据引用且不自动加载工具；CLI/TUI 调用入口要求逐次显式授权。详见[本地配置化 Runtime](./local-runtime.md)。
 
 ## 2. 下一代导出策略
 

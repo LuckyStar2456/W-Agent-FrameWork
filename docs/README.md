@@ -20,6 +20,7 @@
 - [工具注册、策略与执行](./tools.md)
 - [Agent Runtime 与 ReAct Loop](./agents.md)
 - [Session 生命周期与跨 Run 上下文](./sessions.md)
+- [本地配置化 Agent Runtime](./local-runtime.md)
 - [Workflow 与节点恢复](./workflows.md)
 - [沙箱与本地执行](./sandbox.md)
 - [CLI 与 TUI](./tui.md)

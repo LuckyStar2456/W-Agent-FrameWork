@@ -66,6 +66,7 @@ W-Agent 遵循以下原则：
 - Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
 - 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
+- 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认和可见 Token 预算/计量。
 
 当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
@@ -137,9 +138,10 @@ wagent tui
 wagent composition export
 wagent composition inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent run "hello" --confirm-model-call --json
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览，以及本地 Session 创建/查看/归档/恢复与 Token 汇总；配置化交互运行、插件操作、Checkpoint 管理、事件查看和评测仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览、本地 Session 生命周期，以及需逐次确认的配置化文本 Agent 运行与 Token 汇总；配置化工具/权限、插件操作、Checkpoint 管理、实时事件查看和评测仍为 `Planned`。
 
 ## 工程装配分享
 
@@ -161,6 +163,7 @@ CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experim
 - [工具注册、策略与执行](./docs/tools.md)
 - [Agent Runtime 与 ReAct Loop](./docs/agents.md)
 - [Session 生命周期与跨 Run 上下文](./docs/sessions.md)
+- [本地配置化 Agent Runtime](./docs/local-runtime.md)
 - [Workflow 与节点恢复](./docs/workflows.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)

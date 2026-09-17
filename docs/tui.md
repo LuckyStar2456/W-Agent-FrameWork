@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI 与可启动 Textual TUI 基础为 `Experimental`（`2.0.0a1`）；配置化 Agent 运行、Checkpoint 管理、插件操作与评测仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期和配置化文本 Agent 运行入口为 `Experimental`（`2.0.0a1`）；配置化工具装配、Checkpoint 管理、插件操作与评测仍为 `Planned`。
 
 ## 原则
 
@@ -20,6 +20,7 @@ wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent run <prompt> --confirm-model-call
 wagent tui
 ```
 
@@ -27,7 +28,7 @@ wagent tui
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`config validate`、插件操作、交互 `run`、Checkpoint 管理和装配安装/加载确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置化工具选择、`config validate`、插件操作、Checkpoint 管理和装配安装/加载确认仍为 `Planned`。
 
 ## TUI 技术
 
@@ -55,7 +56,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Run
 
-启动客服、编码或自定义 Agent，流式显示消息、模型选择、工具调用、Workflow 节点、预算和事件。界面通过 RunEvent 投影，不读取 Loop 私有状态。
+当前可读取严格本地配置并启动文本 Agent，显示最终输出和输入/输出 Token；用户必须输入 `RUN` 才会发起模型调用。工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
 
 ### Sessions
 

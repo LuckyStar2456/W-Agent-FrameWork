@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI and a launchable Textual TUI foundation are `Experimental` in `2.0.0a1`; configured agent runs, checkpoint management, plugin operations, and evaluation remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, and configured text-agent entry point are `Experimental` in `2.0.0a1`; configured tool assembly, checkpoint management, plugin operations, and evaluation remain `Planned`.
 
 ## Principles
 
@@ -20,6 +20,7 @@ wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent run <prompt> --confirm-model-call
 wagent tui
 ```
 
@@ -27,7 +28,7 @@ These commands are implemented. The CLI prints human-readable text by default; t
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`config validate`, plugin operations, interactive `run`, checkpoint management, and composition install/load confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configured tool selection, `config validate`, plugin operations, checkpoint management, and composition install/load confirmation remain `Planned`.
 
 ## TUI technology
 
@@ -55,7 +56,7 @@ Displays a resolved profile, compares named versions, exports a code, and previe
 
 ### Run
 
-Starts customer-support, coding, or custom agents and streams messages, model selection, tool calls, workflow nodes, budgets, and events. The UI projects RunEvent values and never reads private loop state.
+The current screen can read strict local configuration, start a text agent, and show final output plus input/output tokens. The user must type `RUN` before a model call. Tool selection, approval resume, and live RunEvent streaming remain `Planned`; the later UI projects RunEvent values and never reads private loop state.
 
 ### Sessions
 

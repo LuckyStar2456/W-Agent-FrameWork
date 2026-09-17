@@ -12,6 +12,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 |---|---|
 | Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
+| Local assembly | `LocalRuntimeConfig`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -36,6 +37,8 @@ class BaseAgent:
 ```
 
 `BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints, workflow node checkpoints, and the local persistent session lifecycle/cross-run text context are implemented; general multimodal and tool-event replay is not yet connected.
+
+Strict local JSON can be assembled by `load_local_runtime_config()` and `assemble_local_runtime()` into a built-in provider template, single-provider route, bounded invocation policy, ReAct loop, RunStore, and SessionStore. Configuration accepts only `api_key_env` credential references and auto-loads no tool; CLI/TUI entry points require explicit authorization for each call. See [locally configured runtime](./local-runtime.en.md).
 
 ## 2. Next-generation export strategy
 

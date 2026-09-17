@@ -66,6 +66,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Bidirectional agent/workflow adapters plus fully overridable customer-support/RAG and coding-agent templates.
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
 - Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
+- A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token budgets/metering.
 
 `BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
@@ -137,9 +138,10 @@ wagent tui
 wagent composition export
 wagent composition inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent run "hello" --confirm-model-call --json
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, composition management/offline preview, and local session create/show/archive/unarchive with visible token totals. Configured interactive runs, plugin operations, checkpoint management, event inspection, and evaluation remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, composition management/offline preview, local session lifecycle, and per-call-confirmed configured text-agent runs with visible token totals. Configured tools/authority, plugin operations, checkpoint management, live event inspection, and evaluation remain `Planned`.
 
 ## Portable project compositions
 
@@ -161,6 +163,7 @@ A composition code carries a portable manifest, never secrets. It does not bundl
 - [Tool registration, policy, and execution](./docs/tools.en.md)
 - [Agent runtime and ReAct loop](./docs/agents.en.md)
 - [Session lifecycle and cross-run context](./docs/sessions.en.md)
+- [Locally configured agent runtime](./docs/local-runtime.en.md)
 - [Workflows and node-boundary recovery](./docs/workflows.en.md)
 - [Sandbox and local execution](./docs/sandbox.en.md)
 - [CLI and TUI](./docs/tui.en.md)

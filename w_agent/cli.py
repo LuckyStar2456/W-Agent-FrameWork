@@ -25,6 +25,11 @@ from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.core.doctor import Doctor
 from w_agent.models import EndpointProbe
+from w_agent.local_runtime import (
+    LocalRuntimeConfigError,
+    assemble_local_runtime,
+    load_local_runtime_config,
+)
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager, SessionRecord
 
 app = typer.Typer(
@@ -168,6 +173,61 @@ def probe(
     _emit(payload, json_output)
     if not result.successful:
         raise typer.Exit(2)
+
+
+@app.command("run")
+def run_command(
+    prompt: str = typer.Argument(..., help="User text for one configured run."),
+    config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    session_id: str | None = typer.Option(None, "--session"),
+    session_title: str | None = typer.Option(None, "--title"),
+    confirm_model_call: bool = typer.Option(
+        False,
+        "--confirm-model-call",
+        help="Explicitly authorize a potentially billable network model call.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Run the configured text agent with persistent run/session state."""
+
+    if not confirm_model_call:
+        _fail("model call not authorized; pass --confirm-model-call")
+    try:
+        runtime = assemble_local_runtime(
+            load_local_runtime_config(config),
+            state_root,
+        )
+        run = asyncio.run(
+            runtime.run(
+                prompt,
+                session_id=session_id,
+                session_title=session_title,
+            )
+        )
+    except (LocalRuntimeConfigError, SessionError, ValueError) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"configured run failed: {type(error).__name__}")
+    result = run.result
+    _emit(
+        {
+            "session_id": run.session.session_id,
+            "run_id": result.run_id,
+            "stop_reason": result.stop_reason.value,
+            "output": result.output,
+            "steps": result.steps,
+            "tool_calls": result.tool_calls,
+            "usage": {
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+                "cached_input_tokens": result.usage.cached_input_tokens,
+                "total_tokens": result.usage.total_tokens,
+                "complete": result.usage_complete,
+            },
+        },
+        json_output,
+    )
 
 
 @profile_app.command("list")
