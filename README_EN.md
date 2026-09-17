@@ -59,7 +59,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Native Anthropic, Gemini, Ollama, and Qwen templates, plus DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI template registration.
 - A `ModelExecutor` for both fully collected and event-pass-through execution, with one call by default, explicitly enabled bounded retry/failover, and prompt-free attempt records.
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
-- Tool definition/binding/registry separation, a Python-function template, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
+- Tool definition/binding/registry separation, Python/HTTP/shell-free command templates, MCP client binding, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, JSONL RunEvent recording, and approval-checkpoint resume.
 - A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
 

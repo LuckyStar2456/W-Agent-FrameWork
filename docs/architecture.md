@@ -151,7 +151,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 
 ## 9. Tools
 
-状态：Python 函数工具模板、统一注册、策略与执行基础为 `Implemented`；HTTP/MCP/命令行/远程适配和沙箱绑定为 `Planned` 或 `Reserved`。
+状态：Python、HTTP、无 Shell 命令工具模板和 MCP 客户端绑定，以及统一注册、策略与执行基础为 `Implemented`；官方 MCP 会话客户端、远程适配和沙箱绑定为 `Planned` 或 `Reserved`。
 
 工具定义、执行、权限和结果彼此分离：
 
@@ -159,7 +159,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-当前已提供 Python 函数模板：工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。HTTP/MCP/命令行与远程执行器后续通过相同公开协议接入。
+当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令模板，以及把任意 MCP Client 接入公共运行时的绑定适配器。工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。命令模板不是沙箱；官方 MCP stdio/HTTP 会话客户端、发现、沙箱绑定与远程执行器仍待实现。
 
 详细设计见[工具注册、策略与执行](./tools.md)。
 

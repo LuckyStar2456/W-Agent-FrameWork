@@ -41,7 +41,9 @@
 | 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
-| HTTP/MCP/命令行工具适配器 | `Planned` | Phase 3/5 |
+| HTTP 与无 Shell 命令工具适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
+| MCP 客户端绑定适配器 | `Implemented` | Phase 3 / 2.0.0a1 |
+| 官方 MCP stdio/HTTP 会话客户端与发现 | `Planned` | Phase 3/5 |
 | 完整 Session 生命周期与通用回放 | `Planned` | Phase 3 |
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
 | 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -88,7 +90,7 @@
 - 已实现可替换 Agent Loop、默认 ReAct 模板、进程内/JSONL RunEvent、步骤/工具预算和不重复首轮模型调用的审批恢复。
 - 后续实现 Session 列表/归档、通用事件投影与 Agent 逐 Token 事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
-- 后续实现 HTTP/MCP/命令行工具适配与沙箱绑定。
+- 已实现固定端点 HTTP、无 Shell 命令工具，以及传输中立的 MCP 客户端绑定；后续提供官方 MCP stdio/HTTP 会话客户端、发现和沙箱绑定。
 
 ### Phase 4：Workflow
 

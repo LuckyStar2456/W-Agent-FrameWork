@@ -145,7 +145,7 @@ Recovery is guaranteed only at node boundaries. A node checkpoint is claimed as 
 
 ## 9. Tools
 
-Status: the Python-function template, unified registration, policy, and execution foundation are `Implemented`; HTTP/MCP/command/remote adapters and sandbox binding remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command templates, MCP client binding, and the unified registration/policy/execution foundation are `Implemented`; first-party MCP session clients, remote adapters, and sandbox binding remain `Planned` or `Reserved`.
 
 Tool definition, execution, policy, and results are separate:
 
@@ -153,7 +153,7 @@ Tool definition, execution, policy, and results are separate:
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-The current Python-function template gives each call a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. HTTP/MCP/command and remote executors will join through the same public contracts.
+Current templates cover Python functions, fixed-endpoint HTTP, shell-free local commands, and binding any MCP client into the common runtime. Each call has a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. The command template is not a sandbox; first-party MCP stdio/HTTP session clients, discovery, sandbox binding, and remote executors remain later work.
 
 See [Tool registration, policy, and execution](./tools.en.md).
 

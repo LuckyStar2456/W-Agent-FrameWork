@@ -41,7 +41,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
-| HTTP/MCP/command tool adapters | `Planned` | Phase 3/5 |
+| HTTP and shell-free command tool adapters | `Implemented` | Phase 3 / 2.0.0a1 |
+| MCP client binding adapter | `Implemented` | Phase 3 / 2.0.0a1 |
+| First-party MCP stdio/HTTP session clients and discovery | `Planned` | Phase 3/5 |
 | Full session lifecycle and general replay | `Planned` | Phase 3 |
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
 | Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
@@ -88,7 +90,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
 - Later session listing/archival, general event projections, and agent token events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
-- Later HTTP/MCP/command adapters and sandbox binding.
+- Implemented fixed-endpoint HTTP, shell-free command tools, and transport-neutral MCP client binding; later work adds first-party MCP stdio/HTTP session clients, discovery, and sandbox binding.
 
 ### Phase 4: workflows
 

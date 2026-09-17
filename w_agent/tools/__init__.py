@@ -1,6 +1,25 @@
 """Open tool definitions, policies, registration, and execution."""
 
+from .command_adapter import (
+    CommandArgumentBuilder,
+    CommandExitError,
+    CommandOutputTooLarge,
+    CommandToolError,
+    command_tool,
+)
 from .execution import InMemoryToolAuditSink, ToolExecutor, validate_tool_arguments
+from .http_adapter import (
+    HttpToolError,
+    HttpToolRequest,
+    HttpToolRequestBuilder,
+    HttpToolResponse,
+    HttpToolResponseTooLarge,
+    HttpToolStatusError,
+    HttpToolTransport,
+    HttpxToolTransport,
+    http_tool,
+)
+from .mcp_adapter import McpRemoteTool, McpToolClient, mcp_tool
 from .policies import (
     PermissionPolicy,
     SideEffectApprovalPolicy,
@@ -27,7 +46,21 @@ from .types import (
 )
 
 __all__ = [
+    "CommandArgumentBuilder",
+    "CommandExitError",
+    "CommandOutputTooLarge",
+    "CommandToolError",
+    "HttpToolError",
+    "HttpToolRequest",
+    "HttpToolRequestBuilder",
+    "HttpToolResponse",
+    "HttpToolResponseTooLarge",
+    "HttpToolStatusError",
+    "HttpToolTransport",
+    "HttpxToolTransport",
     "InMemoryToolAuditSink",
+    "McpRemoteTool",
+    "McpToolClient",
     "PermissionPolicy",
     "SideEffectApprovalPolicy",
     "TOOL_CAPABILITY",
@@ -48,7 +81,10 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "ToolSideEffect",
+    "command_tool",
     "default_tool_policy",
+    "http_tool",
+    "mcp_tool",
     "python_tool",
     "validate_tool_arguments",
 ]

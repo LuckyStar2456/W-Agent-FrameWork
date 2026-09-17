@@ -209,6 +209,8 @@ result = await ToolExecutor(tools).execute(
 
 默认策略只自动执行无须批准的调用。写入、破坏性与外部副作用必须由本地应用为具体调用 ID 提供批准。详见[工具注册、策略与执行](./tools.md)。
 
+同一运行时还提供 `http_tool()`、无 Shell 的 `command_tool()` 和 `mcp_tool()`。HTTP 默认需要 `network.http`，命令需要 `process.execute`，MCP 需要 `mcp.call`，三者默认均视为外部副作用并要求逐调用审批。命令适配器不是沙箱。
+
 ## 10. 当前单 Agent ReAct Loop
 
 状态：公开 Run/Loop 协议、有界 ReAct/tool loop 和进程内事件流为 `Implemented`。

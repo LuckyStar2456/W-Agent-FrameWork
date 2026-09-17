@@ -169,7 +169,7 @@ class ToolPolicy(Protocol):
     ) -> ToolPolicyDecision: ...
 ```
 
-`ToolRegistry` registers `ToolBinding` entries by version and scope in the unified registry. `ToolExecutor.execute()` resolves, validates, applies policy, handles timeout/cancellation, and records audit. The default `PermissionPolicy` checks locally granted authority; `SideEffectApprovalPolicy` requires per-call ID approval for write, destructive, and external effects. A definition owns no execution policy, and the default executor never retries. `python_tool()` is the implemented simple template; HTTP/MCP/command adapters and sandbox binding remain `Planned`. See [Tool registration, policy, and execution](./tools.en.md).
+`ToolRegistry` registers `ToolBinding` entries by version and scope in the unified registry. `ToolExecutor.execute()` resolves, validates, applies policy, handles timeout/cancellation, and records audit. The default `PermissionPolicy` checks locally granted authority; `SideEffectApprovalPolicy` requires per-call ID approval for write, destructive, and external effects. A definition owns no execution policy, and the default executor never retries. `python_tool()`, `http_tool()`, `command_tool()`, and `mcp_tool()` are implemented; MCP stdio/HTTP session clients, discovery, and sandbox binding remain `Planned`. See [Tool registration, policy, and execution](./tools.en.md).
 
 ## 10. Sandbox protocol
 

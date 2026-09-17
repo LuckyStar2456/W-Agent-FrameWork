@@ -2,7 +2,7 @@
 
 English | [简体中文](./tools.md)
 
-Status: the Python-function template, scoped registration, argument validation, permission/approval policies, timeout, cancellation, and auditing are `Implemented` in Phase 3 / `2.0.0a1`. HTTP, MCP, command-line, and remote tool templates remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command templates, MCP client binding, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3 / `2.0.0a1`. First-party MCP session clients, sandbox binding, and remote tools remain `Planned` or `Reserved`.
 
 ## Layers
 
@@ -65,6 +65,54 @@ result = await executor.execute(
 
 `python_tool()` derives a basic JSON Schema from a finite named signature and also accepts a caller-supplied `input_schema`. Both synchronous and asynchronous functions work. `ToolRegistry.register()` can directly attach any implementation satisfying the public `ToolHandler` protocol.
 
+## HTTP tools
+
+`http_tool()` maps GET/HEAD arguments to query parameters by default and uses a JSON body for other methods. The URL, method, and headers come from local configuration rather than model arguments; provide an explicit `request_builder` for another mapping. The default `HttpxToolTransport` validates TLS, does not follow redirects, and streams into a response byte limit. Private transports can replace it.
+
+```python
+from w_agent import http_tool
+
+binding = http_tool(
+    "ticket_create",
+    "Create one support ticket.",
+    {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+        "required": ["title"],
+        "additionalProperties": False,
+    },
+    url="https://support.example/api/tickets",
+    headers={"authorization": "Bearer <local-secret>"},
+)
+```
+
+The default permission is `network.http` and the default effect is `EXTERNAL`, so both authority and per-call ID approval are required. Fixed headers never enter the tool definition, result, or audit record.
+
+## Command tools
+
+`command_tool()` calls only `asyncio.create_subprocess_exec()` and never invokes a shell. Its `argument_builder` returns separate argv strings; semicolons, pipes, and redirection characters remain literal content. stdout and stderr each have a byte limit, and timeout or cancellation terminates the child process.
+
+```python
+from w_agent import command_tool
+
+binding = command_tool(
+    "git_status",
+    "Read repository status.",
+    {"type": "object", "additionalProperties": False},
+    executable="git",
+    base_arguments=("status", "--short"),
+    argument_builder=lambda arguments: (),
+)
+```
+
+The default permission is `process.execute` and the default effect is `EXTERNAL`. Commands inherit the current environment by default for local development. Set `inherit_environment=False` and inject only required values when handling untrusted plugins. This adapter provides shell-free argv, bounds, and policy enforcement; it is **not a sandbox**. Untrusted code still belongs in the planned Docker/OCI sandbox.
+
+## MCP tools
+
+`McpRemoteTool` describes a remote name, description, and input schema. `mcp_tool()` binds any implementation of `McpToolClient.call_tool()` into the common tool runtime and propagates cancellation. It requires `mcp.call` authority and per-call approval by default.
+
+The adapter does not constrain MCP transport, allowing custom stdio, HTTP, or in-process clients. The framework does not yet include first-party session management, discovery, or connection lifecycle. Client values still pass through `ToolExecutor` result normalization, exception sanitization, timeout, and audit.
+
 ## Default safety semantics
 
 - Arguments are validated before the handler runs. The built-in validator covers objects, required and extra fields, basic JSON types, and enums. A fuller schema validator can replace this layer.
@@ -79,7 +127,7 @@ Applications can replace the complete `ToolPolicy` or audit sink. Custom policie
 
 ## Not implemented yet
 
-- HTTP, MCP, command-line, and remote tool adapters.
+- First-party MCP stdio/HTTP session clients, discovery, and connection lifecycle.
 - Sandbox binding and Docker/OCI coding execution.
 - Durable audit, tool caching, record/replay, and result streaming.
 - TUI approval surfaces and cross-process approval recovery.

@@ -209,6 +209,8 @@ result = await ToolExecutor(tools).execute(
 
 The default policy automatically executes only calls that need no approval. Write, destructive, and external effects require the local application to approve the specific call ID. See [Tool registration, policy, and execution](./tools.en.md).
 
+The same runtime also includes `http_tool()`, shell-free `command_tool()`, and `mcp_tool()`. HTTP requires `network.http`, commands require `process.execute`, and MCP requires `mcp.call` by default. All three default to external effects and per-call approval. The command adapter is not a sandbox.
+
 ## 10. Current single-agent ReAct loop
 
 Status: public run/loop contracts, a bounded ReAct/tool loop, and an in-process event stream are `Implemented`.
