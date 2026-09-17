@@ -12,7 +12,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from w_agent.agents import CODING_AGENT_TEMPLATE, CUSTOMER_SUPPORT_AGENT_TEMPLATE
+from w_agent.agents import (
+    CODING_AGENT_TEMPLATE,
+    CUSTOMER_SUPPORT_AGENT_TEMPLATE,
+    RunStoreError,
+)
 from w_agent.compositions import (
     CompositionError,
     CompositionStore,
@@ -31,6 +35,7 @@ from w_agent.local_runtime import (
     load_local_runtime_config,
 )
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager, SessionRecord
+from w_agent.tools import ToolEntryLoadError, load_tool_entries
 
 app = typer.Typer(
     name="wagent",
@@ -187,48 +192,123 @@ def run_command(
         "--confirm-model-call",
         help="Explicitly authorize a potentially billable network model call.",
     ),
+    tool_entry: list[str] = typer.Option(
+        [],
+        "--tool-entry",
+        help="Explicit module:attribute tool binding entry; may repeat.",
+    ),
+    confirm_tool_code: bool = typer.Option(
+        False,
+        "--confirm-tool-code",
+        help="Authorize importing and executing the supplied Python tool entries.",
+    ),
+    grant_permission: list[str] = typer.Option(
+        [],
+        "--grant-permission",
+        help="Grant one runtime tool permission; may repeat.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Run the configured text agent with persistent run/session state."""
 
     if not confirm_model_call:
         _fail("model call not authorized; pass --confirm-model-call")
+    if tool_entry and not confirm_tool_code:
+        _fail("tool code not authorized; pass --confirm-tool-code")
     try:
+        catalog = load_tool_entries(tool_entry) if tool_entry else {}
         runtime = assemble_local_runtime(
             load_local_runtime_config(config),
             state_root,
+            tool_bindings=catalog,
         )
         run = asyncio.run(
             runtime.run(
                 prompt,
                 session_id=session_id,
                 session_title=session_title,
+                permissions=frozenset(grant_permission),
             )
         )
-    except (LocalRuntimeConfigError, SessionError, ValueError) as error:
+    except (
+        LocalRuntimeConfigError,
+        SessionError,
+        ToolEntryLoadError,
+        ValueError,
+    ) as error:
         _fail(str(error))
     except Exception as error:
         _fail(f"configured run failed: {type(error).__name__}")
-    result = run.result
-    _emit(
-        {
-            "session_id": run.session.session_id,
-            "run_id": result.run_id,
-            "stop_reason": result.stop_reason.value,
-            "output": result.output,
-            "steps": result.steps,
-            "tool_calls": result.tool_calls,
-            "attempts": [_attempt_payload(item) for item in result.attempts],
-            "usage": {
-                "input_tokens": result.usage.input_tokens,
-                "output_tokens": result.usage.output_tokens,
-                "cached_input_tokens": result.usage.cached_input_tokens,
-                "total_tokens": result.usage.total_tokens,
-                "complete": result.usage_complete,
-            },
-        },
-        json_output,
-    )
+    _emit(_local_run_payload(run), json_output)
+
+
+@app.command("run-resume")
+def run_resume_command(
+    session_id: str = typer.Argument(..., help="Session owning the checkpoint."),
+    run_id: str = typer.Argument(..., help="Run/checkpoint ID to resume."),
+    approve_tool_call: list[str] = typer.Option(
+        [],
+        "--approve-tool-call",
+        help="Approve one exact pending call ID; may repeat.",
+    ),
+    config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    confirm_model_call: bool = typer.Option(
+        False,
+        "--confirm-model-call",
+        help="Authorize the model call that may follow tool execution.",
+    ),
+    tool_entry: list[str] = typer.Option(
+        [],
+        "--tool-entry",
+        help="Explicit module:attribute tool binding entry; may repeat.",
+    ),
+    confirm_tool_code: bool = typer.Option(
+        False,
+        "--confirm-tool-code",
+        help="Authorize importing and executing the supplied Python tool entries.",
+    ),
+    grant_permission: list[str] = typer.Option(
+        [],
+        "--grant-permission",
+        help="Grant one runtime tool permission; may repeat.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Resume a persisted tool-approval checkpoint with exact call IDs."""
+
+    if not confirm_model_call:
+        _fail("model call not authorized; pass --confirm-model-call")
+    if tool_entry and not confirm_tool_code:
+        _fail("tool code not authorized; pass --confirm-tool-code")
+    if not approve_tool_call:
+        _fail("no tool call approved; pass --approve-tool-call")
+    try:
+        catalog = load_tool_entries(tool_entry) if tool_entry else {}
+        runtime = assemble_local_runtime(
+            load_local_runtime_config(config),
+            state_root,
+            tool_bindings=catalog,
+        )
+        run = asyncio.run(
+            runtime.resume(
+                session_id,
+                run_id,
+                permissions=frozenset(grant_permission),
+                approved_call_ids=frozenset(approve_tool_call),
+            )
+        )
+    except (
+        LocalRuntimeConfigError,
+        RunStoreError,
+        SessionError,
+        ToolEntryLoadError,
+        ValueError,
+    ) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"configured resume failed: {type(error).__name__}")
+    _emit(_local_run_payload(run), json_output)
 
 
 @profile_app.command("list")
@@ -586,6 +666,37 @@ def _attempt_payload(attempt: AttemptRecord) -> dict[str, Any]:
             else None
         ),
         "usage_reported": attempt.usage_reported,
+    }
+
+
+def _local_run_payload(run: Any) -> dict[str, Any]:
+    result = run.result
+    pending = result.pending_tool_call
+    return {
+        "session_id": run.session.session_id,
+        "run_id": result.run_id,
+        "checkpoint_id": result.checkpoint_id,
+        "stop_reason": result.stop_reason.value,
+        "output": result.output,
+        "steps": result.steps,
+        "tool_calls": result.tool_calls,
+        "pending_tool": (
+            {
+                "call_id": pending.id,
+                "name": pending.name,
+                "argument_keys": sorted(pending.arguments),
+            }
+            if pending is not None
+            else None
+        ),
+        "attempts": [_attempt_payload(item) for item in result.attempts],
+        "usage": {
+            "input_tokens": result.usage.input_tokens,
+            "output_tokens": result.usage.output_tokens,
+            "cached_input_tokens": result.usage.cached_input_tokens,
+            "total_tokens": result.usage.total_tokens,
+            "complete": result.usage_complete,
+        },
     }
 
 

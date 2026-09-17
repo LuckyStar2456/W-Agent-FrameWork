@@ -44,6 +44,7 @@ from .mcp_client import (
     McpToolExecutionError,
     McpTransportError,
 )
+from .loading import ToolEntryLoadError, load_tool_entries, load_tool_entry
 from .policies import (
     PermissionPolicy,
     SideEffectApprovalPolicy,
@@ -114,6 +115,7 @@ __all__ = [
     "ToolExecutionContext",
     "ToolExecutor",
     "ToolExecutorProtocol",
+    "ToolEntryLoadError",
     "ToolFailure",
     "ToolHandler",
     "ToolOutcome",
@@ -128,6 +130,8 @@ __all__ = [
     "default_tool_policy",
     "discover_mcp_bindings",
     "http_tool",
+    "load_tool_entries",
+    "load_tool_entry",
     "mcp_tool",
     "python_tool",
     "sandbox_command_tool",

@@ -167,3 +167,37 @@ def test_cli_run_reports_invalid_config_without_model_call(tmp_path):
 
     assert result.exit_code == 2
     assert "provider must be an object" in result.stderr
+
+
+def test_cli_run_requires_separate_authority_for_python_tool_entries():
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "hello",
+            "--confirm-model-call",
+            "--tool-entry",
+            "example:tools",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--confirm-tool-code" in result.stderr
+
+
+def test_cli_run_resume_requires_model_and_exact_tool_call_authority():
+    missing_model = runner.invoke(app, ["run-resume", "session-1", "run-1"])
+    missing_call = runner.invoke(
+        app,
+        [
+            "run-resume",
+            "session-1",
+            "run-1",
+            "--confirm-model-call",
+        ],
+    )
+
+    assert missing_model.exit_code == 2
+    assert "--confirm-model-call" in missing_model.stderr
+    assert missing_call.exit_code == 2
+    assert "--approve-tool-call" in missing_call.stderr

@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期和配置化文本 Agent 运行入口为 `Experimental`（`2.0.0a1`）；配置化工具装配、Checkpoint 管理、插件操作与评测仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口，以及 CLI 工具选择/权限/审批恢复为 `Experimental`（`2.0.0a1`）；TUI 工具审批、Checkpoint 浏览、通用插件操作与评测仍为 `Planned`。
 
 ## 原则
 
@@ -21,6 +21,7 @@ wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent run <prompt> --confirm-model-call
+wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent tui
 ```
 
@@ -28,7 +29,7 @@ wagent tui
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置化工具选择、`config validate`、插件操作、Checkpoint 管理和装配安装/加载确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`run-resume` 要求已知 Session/Run ID 和精确 `--approve-tool-call`。`config validate`、Checkpoint 列表、通用插件操作和装配安装确认仍为 `Planned`。
 
 ## TUI 技术
 
@@ -56,7 +57,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Run
 
-当前可读取严格本地配置并启动文本 Agent，显示最终输出和输入/输出 Token；用户必须输入 `RUN` 才会发起模型调用。工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
+当前可读取严格本地配置并启动文本 Agent，显示最终输出和输入/输出 Token；用户必须输入 `RUN` 才会发起模型调用。TUI 不导入开发者 Python 工具，工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
 
 ### Sessions
 
@@ -80,6 +81,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 - 安装或升级插件。
 - 首次运行未知第三方插件。
+- 导入并执行开发者 Python 工具入口。
 - 启用 `UnsafeLocalSandbox`。
 - 放宽 Docker 挂载或网络策略。
 - 执行可能产生模型费用的主动能力探测。

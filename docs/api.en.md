@@ -12,7 +12,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 |---|---|
 | Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
-| Local assembly | `LocalRuntimeConfig`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_runtime` |
+| Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -22,7 +22,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Observability | `global_tracer`, `CompositeHealthIndicator`, `HealthIndicator`, `LLMHealthIndicator` |
 | Distributed | `RedisDistributedLock`, `LockRenewalPool` |
 | Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox`, `SandboxProvider`, `DockerSandboxProvider`, `UnsafeLocalSandboxProvider` |
-| Tools/scanning | `ToolRegistry`, `ToolExecutor`, `ToolCall`, `ToolResult`, `python_tool`, `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
+| Tools/scanning | `ToolRegistry`, `ToolExecutor`, `ToolCall`, `ToolResult`, `python_tool`, `load_tool_entries`, `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
@@ -38,7 +38,7 @@ class BaseAgent:
 
 `BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints, workflow node checkpoints, and the local persistent session lifecycle/cross-run text context are implemented; general multimodal and tool-event replay is not yet connected.
 
-Strict local JSON can be assembled by `load_local_runtime_config()` and `assemble_local_runtime()` into a built-in provider template, single-provider route, bounded invocation policy, ReAct loop, RunStore, and SessionStore. Configuration accepts only `api_key_env` credential references and auto-loads no tool; CLI/TUI entry points require explicit authorization for each call. See [locally configured runtime](./local-runtime.en.md).
+Strict local JSON can be assembled by `load_local_runtime_config()` and `assemble_local_runtime()` into a built-in provider template, single-provider route, bounded invocation policy, selected ToolBindings, ReAct loop, RunStore, and SessionStore. Configuration accepts only `api_key_env` credential references and can only select from a host catalog; it cannot import, authorize, or approve tools. `LocalAgentRuntime.resume()` and `wagent run-resume` resume approval checkpoints by exact call ID. CLI import of developer tool code additionally requires independent `--confirm-tool-code` authorization. See [locally configured runtime](./local-runtime.en.md).
 
 ## 2. Next-generation export strategy
 

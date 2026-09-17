@@ -18,8 +18,11 @@ from w_agent import (
     TextDelta,
     TokenUsage,
     UsageEvent,
+    ToolCallContent,
+    ToolSideEffect,
     assemble_local_runtime,
     local_runtime_config_from_mapping,
+    python_tool,
 )
 
 
@@ -171,3 +174,135 @@ def test_local_runtime_rejects_unknown_schema_and_invalid_budget():
 
     with pytest.raises(ValueError, match="positive"):
         _config(max_total_tokens=0)
+
+
+class ToolCallingProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__("test-provider", "test-model")
+        self.calls = 0
+
+    async def list_models(self) -> tuple[ModelDescriptor, ...]:
+        return (
+            ModelDescriptor(
+                self.name,
+                self.model,
+                frozenset(
+                    {
+                        ModelCapability.TEXT_INPUT,
+                        ModelCapability.TEXT_OUTPUT,
+                        ModelCapability.TOOL_CALLING,
+                    }
+                ),
+            ),
+        )
+
+    async def stream(self, request, *, cancellation=None) -> AsyncIterator:
+        del request, cancellation
+        self.calls += 1
+        if self.calls == 1:
+            block = ToolCallContent("save-1", "save_note", '{"text":"value"}')
+            yield BlockStart(0, block.type)
+            yield BlockEnd(0, block)
+            yield UsageEvent(TokenUsage(4, 1))
+            yield FinishEvent(FinishReason.TOOL_CALLS)
+            return
+        yield BlockStart(0, "text")
+        yield TextDelta(0, "saved")
+        yield BlockEnd(0, TextContent("saved"))
+        yield UsageEvent(TokenUsage(3, 1))
+        yield FinishEvent(FinishReason.STOP)
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_selects_catalog_tools_and_resumes_approval(tmp_path):
+    provider = ToolCallingProvider()
+    templates = ProviderTemplateRegistry(
+        (
+            ProviderTemplate(
+                "fake",
+                "Fake",
+                "test",
+                None,
+                lambda **options: provider,
+            ),
+        )
+    )
+    writes = []
+
+    def save_note(text: str) -> str:
+        writes.append(text)
+        return "saved"
+
+    config = local_runtime_config_from_mapping(
+        {
+            "provider": {
+                "template": "fake",
+                "name": "test-provider",
+                "model": "test-model",
+            },
+            "agent": {
+                "name": "tools",
+                "max_tool_calls": 1,
+                "require_usage": True,
+            },
+            "tools": {"enabled": ["save_note"]},
+        }
+    )
+    runtime = assemble_local_runtime(
+        config,
+        tmp_path / ".wagent",
+        templates=templates,
+        tool_bindings={
+            "save_note": python_tool(
+                save_note,
+                side_effect=ToolSideEffect.WRITE,
+                required_permissions=frozenset({"notes.write"}),
+            )
+        },
+    )
+
+    pending = await runtime.run(
+        "save",
+        permissions=frozenset({"notes.write"}),
+    )
+
+    assert pending.result.stop_reason.value == "needs-approval"
+    assert pending.result.pending_tool_call is not None
+    assert pending.result.pending_tool_call.id == "save-1"
+    assert writes == []
+
+    completed = await runtime.resume(
+        pending.session.session_id,
+        pending.result.run_id,
+        permissions=frozenset({"notes.write"}),
+        approved_call_ids=frozenset({"save-1"}),
+    )
+
+    assert completed.result.output == "saved"
+    assert completed.result.stop_reason.value == "completed"
+    assert writes == ["value"]
+    assert completed.result.usage == TokenUsage(7, 2)
+
+
+def test_local_runtime_tool_selection_requires_budget_and_authorized_catalog(tmp_path):
+    with pytest.raises(LocalRuntimeConfigError, match="max_tool_calls"):
+        local_runtime_config_from_mapping(
+            {
+                "provider": {"template": "fake", "model": "test-model"},
+                "tools": {"enabled": ["lookup"]},
+            }
+        )
+
+    config = local_runtime_config_from_mapping(
+        {
+            "provider": {"template": "fake", "model": "test-model"},
+            "agent": {"max_tool_calls": 1},
+            "tools": {"enabled": ["lookup"]},
+        }
+    )
+    with pytest.raises(LocalRuntimeConfigError, match="authorized catalog"):
+        assemble_local_runtime(
+            config,
+            tmp_path,
+            templates=_templates({}),
+        )

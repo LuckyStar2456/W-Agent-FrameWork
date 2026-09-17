@@ -42,13 +42,15 @@ wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, model-attempt/usage-report counts, input/output/cached tokens, and `usage_complete` without starting a model or incurring cost. The TUI supports create, refresh, archive, and unarchive; configured text agents can start on the Run screen, while configured tools and approval-resume UI remain `Planned`.
+The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, model-attempt/usage-report counts, input/output/cached tokens, and `usage_complete` without starting a model or incurring cost. The TUI supports create, refresh, archive, and unarchive, and configured agents can start on the Run screen. The CLI can resume approval with known session/run/call IDs; TUI tool and approval screens remain `Planned`.
 
 The next `run_agent()` prepends previously projected text messages by default. Set `include_history=False` to disable automatic context assembly; the current input and result are still recorded.
 
 ## Approval resume
 
 When a run stops with `NEEDS_APPROVAL`, call `resume_agent()` with the same loop/run store and approval granted by the local application. The manager verifies that the run belongs to the session, updates its existing summary instead of creating a duplicate, and does not store user input twice.
+
+Configured applications can call `LocalAgentRuntime.resume()`; the CLI equivalent is `wagent run-resume`. Both require authority and a non-empty exact call-ID set to be supplied again at runtime. Neither session nor checkpoint restores authority.
 
 ## Data and boundaries
 

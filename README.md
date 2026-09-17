@@ -141,7 +141,7 @@ wagent session create|list|show|archive|unarchive
 wagent run "hello" --confirm-model-call --json
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览、本地 Session 生命周期，以及需逐次确认的配置化文本 Agent 运行与 Token 汇总；配置化工具/权限、插件操作、Checkpoint 管理、实时事件查看和评测仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总，以及 CLI 的 Catalog 工具选择、独立代码加载确认、权限授予和精确 Call ID 审批恢复；TUI 工具审批、通用插件操作、Checkpoint 浏览、实时事件查看和评测仍为 `Planned`。
 
 ## 工程装配分享
 

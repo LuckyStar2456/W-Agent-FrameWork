@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, and configured text-agent entry point are `Experimental` in `2.0.0a1`; configured tool assembly, checkpoint management, plugin operations, and evaluation remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, and CLI tool selection/authority/approval resume are `Experimental` in `2.0.0a1`; TUI tool approval, checkpoint browsing, general plugin operations, and evaluation remain `Planned`.
 
 ## Principles
 
@@ -21,6 +21,7 @@ wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent run <prompt> --confirm-model-call
+wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent tui
 ```
 
@@ -28,7 +29,7 @@ These commands are implemented. The CLI prints human-readable text by default; t
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configured tool selection, `config validate`, plugin operations, checkpoint management, and composition install/load confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `run-resume` requires known session/run IDs and exact `--approve-tool-call` values. `config validate`, checkpoint listing, general plugin operations, and composition-install confirmation remain `Planned`.
 
 ## TUI technology
 
@@ -56,7 +57,7 @@ Displays a resolved profile, compares named versions, exports a code, and previe
 
 ### Run
 
-The current screen can read strict local configuration, start a text agent, and show final output plus input/output tokens. The user must type `RUN` before a model call. Tool selection, approval resume, and live RunEvent streaming remain `Planned`; the later UI projects RunEvent values and never reads private loop state.
+The current screen can read strict local configuration, start a text agent, and show final output plus input/output tokens. The user must type `RUN` before a model call. The TUI does not import developer Python tools. Tool selection, approval resume, and live RunEvent streaming remain `Planned`; the later UI projects RunEvent values and never reads private loop state.
 
 ### Sessions
 
@@ -80,6 +81,7 @@ Neither a model nor imported configuration can confirm these operations for the 
 
 - Installing or upgrading a plugin.
 - First execution of an unknown third-party plugin.
+- Importing and executing a developer Python tool entry.
 - Enabling `UnsafeLocalSandbox`.
 - Relaxing Docker mounts or network policy.
 - Running active capability probes that may incur model cost.

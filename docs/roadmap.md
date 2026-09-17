@@ -62,6 +62,7 @@
 | 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
 | Typer/Rich CLI、Textual TUI 与 Session 生命周期界面 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 本地配置化文本 Agent 运行入口 | `Experimental` | Phase 6 / 2.0.0a1 |
+| 配置化工具选择、显式代码加载与 CLI 审批恢复 | `Experimental` | Phase 3/6 / 2.0.0a1 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
 | 1.x 最小 `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
@@ -132,7 +133,8 @@
 - 装配预览阶段不访问网络、不安装、不导入也不执行插件；依赖解析、安装确认与加载确认仍为 `Planned`。
 - 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复和可见 Token 汇总，以及 TUI 离线装配检查。
 - 已实现严格本地 JSON 到 Provider/路由/ReAct/Run/Session 的文本运行装配；CLI/TUI 每次调用均要求显式授权，凭据只从环境变量引用读取。
-- 配置化工具选择与权限、RunEvent 实时查看、跨 Store Checkpoint 列表/恢复、插件加载确认与评测页面仍为 `Planned`。
+- 已实现由宿主 Catalog 限定的配置化工具选择、逐次权限授予、独立 Python 工具代码加载确认，以及已知 Session/Run/Call ID 的 CLI 审批恢复；配置本身不能导入、授权或批准工具。
+- TUI 工具/审批页面、RunEvent 实时查看、Checkpoint 列表/跨 Store 恢复、通用插件安装确认与评测页面仍为 `Planned`。
 - Mock、录制回放、客服与编码基准任务。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 

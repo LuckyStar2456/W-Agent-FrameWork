@@ -19,6 +19,7 @@ from w_agent.agents import (
     TokenBudget,
 )
 from w_agent.models import (
+    CancellationToken,
     InvocationPolicy,
     MessageRole,
     ModelExecutor,
@@ -30,7 +31,7 @@ from w_agent.models import (
     builtin_provider_template_registry,
 )
 from w_agent.sessions import JsonSessionStore, SessionManager, SessionRecord
-from w_agent.tools import ToolExecutor, ToolRegistry
+from w_agent.tools import ToolBinding, ToolExecutionContext, ToolExecutor, ToolRegistry
 
 _COMPATIBLE_TEMPLATES = frozenset({"deepseek", "glm", "qwen", "turbo"})
 _SENSITIVE_PARTS = ("secret", "password", "api_key", "token", "credential")
@@ -113,15 +114,35 @@ class LocalAgentConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LocalToolConfig:
+    """Names selected from a host-supplied catalog, never authority grants."""
+
+    enabled: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        values = tuple(self.enabled)
+        if any(not isinstance(item, str) or not item.strip() for item in values):
+            raise LocalRuntimeConfigError("enabled tool names must be non-empty strings")
+        if len(set(values)) != len(values):
+            raise LocalRuntimeConfigError("enabled tool names must be unique")
+        object.__setattr__(self, "enabled", values)
+
+
+@dataclass(frozen=True, slots=True)
 class LocalRuntimeConfig:
     provider: LocalProviderConfig
     agent: LocalAgentConfig = field(default_factory=LocalAgentConfig)
     invocation: LocalInvocationConfig = field(default_factory=LocalInvocationConfig)
+    tools: LocalToolConfig = field(default_factory=LocalToolConfig)
     schema_version: int = 1
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise LocalRuntimeConfigError("unsupported local runtime schema version")
+        if self.tools.enabled and self.agent.max_tool_calls == 0:
+            raise LocalRuntimeConfigError(
+                "enabled tools require agent.max_tool_calls to be positive"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +168,9 @@ class LocalAgentRuntime:
         *,
         session_id: str | None = None,
         session_title: str | None = None,
+        permissions: frozenset[str] = frozenset(),
+        approved_call_ids: frozenset[str] = frozenset(),
+        cancellation: CancellationToken | None = None,
     ) -> LocalRuntimeRun:
         if not prompt:
             raise ValueError("agent prompt must not be empty")
@@ -159,8 +183,40 @@ class LocalAgentRuntime:
             self.definition,
             session.session_id,
             (ModelMessage.text(MessageRole.USER, prompt),),
+            cancellation=cancellation,
+            tool_context=ToolExecutionContext(
+                permissions=permissions,
+                approved_call_ids=approved_call_ids,
+                cancellation=cancellation,
+            ),
         )
         return LocalRuntimeRun(await self.sessions.get(session.session_id), result)
+
+    async def resume(
+        self,
+        session_id: str,
+        run_id: str,
+        *,
+        permissions: frozenset[str] = frozenset(),
+        approved_call_ids: frozenset[str],
+        cancellation: CancellationToken | None = None,
+    ) -> LocalRuntimeRun:
+        """Resume one persisted approval checkpoint with explicit authority."""
+
+        if not approved_call_ids:
+            raise ValueError("resume requires at least one approved tool call ID")
+        result = await self.sessions.resume_agent(
+            self.loop,
+            session_id,
+            run_id,
+            tool_context=ToolExecutionContext(
+                permissions=permissions,
+                approved_call_ids=approved_call_ids,
+                cancellation=cancellation,
+            ),
+            cancellation=cancellation,
+        )
+        return LocalRuntimeRun(await self.sessions.get(session_id), result)
 
 
 def load_local_runtime_config(path: str | Path) -> LocalRuntimeConfig:
@@ -181,7 +237,11 @@ def load_local_runtime_config(path: str | Path) -> LocalRuntimeConfig:
 def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeConfig:
     """Validate parsed configuration and reject hidden or secret-bearing fields."""
 
-    _known_keys(value, {"schema_version", "provider", "agent", "invocation"}, "config")
+    _known_keys(
+        value,
+        {"schema_version", "provider", "agent", "invocation", "tools"},
+        "config",
+    )
     provider_value = _mapping(value.get("provider"), "provider")
     _known_keys(
         provider_value,
@@ -212,14 +272,18 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
         {"max_attempts_per_route", "max_routes", "timeout"},
         "invocation",
     )
+    tools_value = _mapping(value.get("tools", {}), "tools")
+    _known_keys(tools_value, {"enabled"}, "tools")
     try:
         provider = LocalProviderConfig(**provider_value)
         agent = LocalAgentConfig(**agent_value)
         invocation = LocalInvocationConfig(**invocation_value)
+        tools = LocalToolConfig(**tools_value)
         return LocalRuntimeConfig(
-            provider,
-            agent,
-            invocation,
+            provider=provider,
+            agent=agent,
+            invocation=invocation,
+            tools=tools,
             schema_version=int(value.get("schema_version", 1)),
         )
     except (TypeError, ValueError) as error:
@@ -235,6 +299,7 @@ def assemble_local_runtime(
     templates: ProviderTemplateRegistry | None = None,
     environ: Mapping[str, str] | None = None,
     provider_options: Mapping[str, Any] | None = None,
+    tool_bindings: Mapping[str, ToolBinding] | None = None,
 ) -> LocalAgentRuntime:
     """Assemble public model, routing, tool, agent, run, and session components."""
 
@@ -296,6 +361,18 @@ def assemble_local_runtime(
         ),
     )
     tools = ToolRegistry()
+    catalog = dict(tool_bindings or {})
+    for name in config.tools.enabled:
+        binding = catalog.get(name)
+        if binding is None:
+            raise LocalRuntimeConfigError(
+                f"enabled tool {name!r} is unavailable in the authorized catalog"
+            )
+        if not isinstance(binding, ToolBinding) or binding.definition.name != name:
+            raise LocalRuntimeConfigError(
+                f"tool catalog entry {name!r} does not match its binding"
+            )
+        tools.register_binding(binding)
     tool_executor = ToolExecutor(tools)
     state = Path(state_root)
     loop = ReactAgentLoop(

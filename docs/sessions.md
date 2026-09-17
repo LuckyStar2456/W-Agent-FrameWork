@@ -42,13 +42,15 @@ wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量上报计数、输入/输出/缓存 Token 和 `usage_complete`，不会启动模型或产生费用。TUI 当前提供创建、刷新、归档和恢复；配置化文本 Agent 可在 Run 页面启动，配置化工具与审批恢复界面仍为 `Planned`。
+CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量上报计数、输入/输出/缓存 Token 和 `usage_complete`，不会启动模型或产生费用。TUI 当前提供创建、刷新、归档和恢复；配置化 Agent 可在 Run 页面启动。CLI 已支持通过已知 Session/Run/Call ID 审批恢复；TUI 工具与审批界面仍为 `Planned`。
 
 下一次 `run_agent()` 默认把此前投影的文本消息放在本次消息之前。设置 `include_history=False` 可关闭自动上下文拼接，但本次输入与结果仍会记入 Session。
 
 ## 审批恢复
 
 当 Run 以 `NEEDS_APPROVAL` 停止后，使用同一 Loop/RunStore 和本地应用提供的批准调用 `resume_agent()`。Manager 验证 Run 属于该 Session，更新原 Run 摘要而不是创建重复记录，也不会重复保存用户输入。
+
+配置化入口可调用 `LocalAgentRuntime.resume()`；CLI 对应 `wagent run-resume`。两者都要求运行时重新提供权限与非空精确 Call ID 集合，不从 Session 或 Checkpoint 恢复授权。
 
 ## 数据与边界
 
