@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Mapping
+from contextlib import nullcontext
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import typer
@@ -30,13 +32,30 @@ from w_agent.compositions import (
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.core.doctor import Doctor
-from w_agent.models import AttemptRecord, EndpointProbe
+from w_agent.evaluation import (
+    ContainsTextScorer,
+    EvaluationCase,
+    EvaluationDatasetError,
+    EvaluationReport,
+    EvaluationScorer,
+    ExactTextScorer,
+    JsonEvaluationReporter,
+    LocalEvaluationRunner,
+    evaluation_report_to_dict,
+    load_evaluation_cases,
+)
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
     assemble_local_runtime,
     load_local_runtime_config,
 )
-from w_agent.sessions import JsonSessionStore, SessionError, SessionManager, SessionRecord
+from w_agent.models import AttemptRecord, EndpointProbe
+from w_agent.sessions import (
+    JsonSessionStore,
+    SessionError,
+    SessionManager,
+    SessionRecord,
+)
 from w_agent.tools import ToolEntryLoadError, load_tool_entries
 
 app = typer.Typer(
@@ -313,6 +332,103 @@ def run_resume_command(
     except Exception as error:
         _fail(f"configured resume failed: {type(error).__name__}")
     _emit(_local_run_payload(run), json_output)
+
+
+@app.command("evaluate")
+def evaluate_command(
+    dataset: Path = typer.Argument(..., help="Strict local JSON evaluation dataset."),
+    config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    scorer: list[str] = typer.Option(
+        ["exact-text"],
+        "--scorer",
+        help="exact-text, contains-text, or none; may repeat.",
+    ),
+    case_sensitive: bool = typer.Option(
+        True,
+        "--case-sensitive/--ignore-case",
+    ),
+    report_path: Path | None = typer.Option(None, "--report"),
+    state_root: Path | None = typer.Option(
+        None,
+        "--state-root",
+        help="Persist case sessions here; omitted uses disposable state.",
+    ),
+    include_outputs: bool = typer.Option(
+        False,
+        "--include-outputs",
+        help="Include potentially sensitive model outputs in JSON/report data.",
+    ),
+    confirm_model_call: bool = typer.Option(
+        False,
+        "--confirm-model-call",
+        help="Explicitly authorize potentially billable network model calls.",
+    ),
+    tool_entry: list[str] = typer.Option(
+        [],
+        "--tool-entry",
+        help="Explicit module:attribute tool binding entry; may repeat.",
+    ),
+    confirm_tool_code: bool = typer.Option(
+        False,
+        "--confirm-tool-code",
+        help="Authorize importing and executing the supplied Python tool entries.",
+    ),
+    grant_permission: list[str] = typer.Option(
+        [],
+        "--grant-permission",
+        help="Grant one runtime tool permission; may repeat.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Evaluate the configured agent sequentially against a local dataset."""
+
+    if not confirm_model_call:
+        _fail("model calls not authorized; pass --confirm-model-call")
+    if tool_entry and not confirm_tool_code:
+        _fail("tool code not authorized; pass --confirm-tool-code")
+    try:
+        cases = load_evaluation_cases(dataset)
+        scorers = _evaluation_scorers(scorer, case_sensitive=case_sensitive)
+        catalog = load_tool_entries(tool_entry) if tool_entry else {}
+        config_value = load_local_runtime_config(config)
+        root_context = (
+            TemporaryDirectory(prefix="wagent-eval-")
+            if state_root is None
+            else nullcontext(state_root)
+        )
+        with root_context as evaluation_root:
+            runtime = assemble_local_runtime(
+                config_value,
+                evaluation_root,
+                tool_bindings=catalog,
+            )
+            report = asyncio.run(
+                _run_local_evaluation(
+                    runtime,
+                    cases,
+                    scorers,
+                    permissions=frozenset(grant_permission),
+                )
+            )
+        if report_path is not None:
+            asyncio.run(
+                JsonEvaluationReporter(include_outputs=include_outputs).write(
+                    report,
+                    report_path,
+                )
+            )
+    except (
+        EvaluationDatasetError,
+        LocalRuntimeConfigError,
+        ToolEntryLoadError,
+        OSError,
+        ValueError,
+    ) as error:
+        _fail(str(error))
+    payload = evaluation_report_to_dict(report, include_outputs=include_outputs)
+    _emit_evaluation(payload, json_output=json_output)
+    if report.passed != report.total:
+        raise typer.Exit(1)
 
 
 @profile_app.command("list")
@@ -611,6 +727,80 @@ def _emit(value: Any, json_output: bool) -> None:
         console.print(value, markup=False)
 
 
+def _evaluation_scorers(
+    names: list[str],
+    *,
+    case_sensitive: bool,
+) -> tuple[EvaluationScorer, ...]:
+    if not names:
+        raise ValueError("at least one evaluation scorer is required")
+    normalized = tuple(name.strip().lower() for name in names)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("evaluation scorers must be unique")
+    if "none" in normalized:
+        if normalized != ("none",):
+            raise ValueError("the none scorer cannot be combined with other scorers")
+        return ()
+    available: dict[str, EvaluationScorer] = {
+        "exact-text": ExactTextScorer(case_sensitive=case_sensitive),
+        "contains-text": ContainsTextScorer(case_sensitive=case_sensitive),
+    }
+    unknown = [name for name in normalized if name not in available]
+    if unknown:
+        raise ValueError(f"unsupported evaluation scorer: {unknown[0]}")
+    return tuple(available[name] for name in normalized)
+
+
+async def _run_local_evaluation(
+    runtime: Any,
+    cases: tuple[EvaluationCase, ...],
+    scorers: tuple[EvaluationScorer, ...],
+    *,
+    permissions: frozenset[str],
+) -> EvaluationReport:
+    async def target(case: EvaluationCase):
+        run = await runtime.run(
+            case.prompt,
+            session_title=f"Evaluation: {case.name}",
+            permissions=permissions,
+        )
+        return run.result
+
+    return await LocalEvaluationRunner().run(cases, target, scorers=scorers)
+
+
+def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
+    if json_output:
+        _emit(payload, True)
+        return
+    usage = payload["usage"]
+    console.print(
+        "Evaluation: "
+        f"{payload['passed']}/{payload['total']} passed; "
+        f"input={usage['input_tokens']} output={usage['output_tokens']} "
+        f"total={usage['total_tokens']} complete={payload['usage_complete']}",
+        markup=False,
+    )
+    table = Table(title="Evaluation cases")
+    table.add_column("Case")
+    table.add_column("Status")
+    table.add_column("Latency ms", justify="right")
+    table.add_column("Input", justify="right")
+    table.add_column("Output", justify="right")
+    table.add_column("Tools", justify="right")
+    for case in payload["cases"]:
+        case_usage = case["usage"]
+        table.add_row(
+            str(case["name"]),
+            "PASS" if case["passed"] else "FAIL",
+            f"{case['latency_ms']:.2f}",
+            str(case_usage["input_tokens"]),
+            str(case_usage["output_tokens"]),
+            f"{case['tool_successes']}/{case['tool_failures']}",
+        )
+    console.print(table)
+
+
 def _set_session_archived(
     session_id: str,
     root: Path,
@@ -634,9 +824,7 @@ def _session_payload(
     input_tokens = sum(item.usage.input_tokens for item in session.runs)
     output_tokens = sum(item.usage.output_tokens for item in session.runs)
     model_calls = sum(item.model_calls for item in session.runs)
-    reported_usage_calls = sum(
-        item.reported_usage_calls for item in session.runs
-    )
+    reported_usage_calls = sum(item.reported_usage_calls for item in session.runs)
     payload: dict[str, Any] = {
         "session_id": session.session_id,
         "title": session.title,
@@ -695,9 +883,7 @@ def _attempt_payload(attempt: AttemptRecord) -> dict[str, Any]:
         "model": attempt.model,
         "outcome": attempt.outcome.value,
         "duration_ms": attempt.duration_ms,
-        "failure_code": (
-            attempt.failure.code if attempt.failure is not None else None
-        ),
+        "failure_code": (attempt.failure.code if attempt.failure is not None else None),
         "usage": (
             {
                 "input_tokens": attempt.usage.input_tokens,

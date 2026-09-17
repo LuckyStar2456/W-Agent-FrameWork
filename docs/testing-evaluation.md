@@ -2,7 +2,7 @@
 
 [English](./testing-evaluation.en.md) | 简体中文
 
-状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器和 JSON 报告为 `Experimental`（`2.0.0a1`）。客服/编码内置基准集、费用指标以及 CLI/TUI 评测页面仍为 `Planned`。
+状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告和 CLI 评测入口为 `Experimental`（`2.0.0a1`）。客服/编码内置基准集、费用指标以及 TUI 评测页面仍为 `Planned`。
 
 ## 确定性模型测试
 
@@ -28,6 +28,32 @@ Cassette 的请求指纹只保存模型名、消息角色、内容块类型、�
 - 每个 Scorer 的值、阈值和通过状态。
 
 `JsonEvaluationReporter` 默认不写 Prompt、Metadata、模型输出或异常正文，只保留异常类型。只有显式设置 `include_outputs=True` 才写输出。当前没有内置价格表，因此不会把 Token 静默换算为费用；版本化价格与费用预算仍为 `Planned`。
+
+## CLI 用例集
+
+`load_evaluation_cases()` 读取有大小和数量上限的严格 JSON，不导入或执行代码。用例名必须唯一：
+
+```json
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "hello",
+      "prompt": "Say hello",
+      "expected_output": "hello",
+      "metadata": {"suite": "smoke"}
+    }
+  ]
+}
+```
+
+CLI 顺序运行用例；默认使用 `exact-text`，可重复传入 `--scorer exact-text` / `--scorer contains-text`，或单独使用 `--scorer none` 只检查 Run 是否完成。命令必须显式授权可能计费的模型调用：
+
+```text
+wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --report report.json
+```
+
+默认使用一次性运行状态，结束后删除可能包含 Prompt 的 Session/Run 文件。只有传入 `--state-root` 才持久化它们。`--report` 写入安全默认报告；`--include-outputs` 会同时让报告与 `--json` 输出包含潜在敏感模型输出。只要任一用例失败，命令在输出报告后以状态码 1 结束。工具代码加载与工具权限继续使用 `--confirm-tool-code`、`--tool-entry` 和 `--grant-permission` 独立授权；需要人工批准的工具调用当前记为未通过，不会由评测命令自动批准。
 
 ## 最小示例
 

@@ -123,7 +123,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, and explicit register-and-safe-probe service are `Implemented`; CLI/TUI entry points, dedicated OpenAI Responses/vLLM differences, and cross-stream recovery are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and credential-free L1 CLI/TUI probe entry points are `Implemented`; configured active-provider probing, dedicated OpenAI Responses/vLLM differences, and cross-stream recovery are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
@@ -176,17 +176,13 @@ assert execution.response is not None
 
 For a non-generating safety probe immediately after registration, use `ModelRegistrationProbeService.register()`; direct `ModelRegistry.register()` never initiates network I/O. See [Models, routing, and endpoint probing](./model-routing.en.md#invocation-retry-and-failover).
 
-The following CLI experience remains `Planned`:
+The current CLI performs credential-free L1 probing without a request body:
 
 ```text
-wagent probe https://example.com/v1 --mode safe
-wagent probe https://example.com/v1 --mode active
-wagent probe https://example.com/v1 --mode capability
+wagent probe https://example.com/v1
 ```
 
-- `safe`: network, provider access, and model-catalog checks without intentional generation cost.
-- `active`: sends a minimal text request and requires confirmation.
-- `capability`: the current Python API reports L6/L7 declarations as not actively verified; active verifiers are `Planned`.
+Configured CLI `safe` provider/catalog checks, explicitly authorized `active` minimal generation, and active `capability` verifiers remain `Planned`. The current Python API reports L6/L7 declarations as not actively verified.
 
 ## 9. Current tool-execution API
 
@@ -269,28 +265,39 @@ finally:
 
 Docker defaults to no network and bounded resources. Host execution first requires `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`, constructing `UnsafeLocalSandboxProvider`, and explicitly selecting `SandboxNetwork.BRIDGE` plus read-write workspace access. Docker failure never falls back to local mode. See [Sandbox and local execution](./sandbox.en.md).
 
-## 13. Planned portable project composition
+## 13. Current portable project compositions
 
-Status: `Planned`.
+Status: encoding, offline safety preview, storage, versions, and aliases are `Implemented`; dependency installation and plugin-load confirmation remain `Planned`.
 
 ```text
-wagent composition export --name my-coding-stack --version 1.2.0
-wagent composition import <composition-code>
+wagent composition export manifest.json
+wagent composition inspect <composition-code>
+wagent composition save <composition-code> --alias stable
 ```
 
-Import first shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy. Missing dependencies may be installed and plugins loaded only after user confirmation. Codes contain no secrets.
+Preview shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy without network access, plugin imports, or code execution. Codes contain no secrets. Missing-dependency installation and plugin loading are not implemented yet.
 
-## 14. Planned TUI
+## 14. Current TUI foundation
 
-Status: `Planned`.
+Status: the launchable local Textual foundation is `Experimental`.
 
 ```text
 wagent tui
 ```
 
-The TUI will cover configuration validation, model probing, plugin management, profile selection, conversations, workflow state, checkpoint recovery, sandbox authorization, and event inspection. It uses public Python APIs and needs no hosted backend.
+The TUI currently covers profiles, credential-free endpoint probing, offline composition inspection, local session lifecycle, configured text-agent runs, and prompt-free agent-checkpoint listing. Tool-approval execution, plugin operations, workflow checkpoints, live events, and the evaluation screen remain `Planned`. It uses public Python APIs and needs no hosted backend.
 
-## 15. Next steps
+## 15. Current local evaluation
+
+Status: the API and CLI are `Experimental`.
+
+```text
+wagent evaluate cases.json --confirm-model-call --report report.json
+```
+
+Datasets use strict JSON. The command executes a configured agent sequentially, uses disposable state by default, and exposes input/output tokens, metering completeness, latency, errors, and tool outcomes. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+
+## 16. Next steps
 
 - Architecture and extension points: [Architecture](./architecture.en.md)
 - Delivery order: [Roadmap](./roadmap.en.md)

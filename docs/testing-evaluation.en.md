@@ -2,7 +2,7 @@
 
 English | [简体中文](./testing-evaluation.md)
 
-Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, and JSON reports are `Experimental` in `2.0.0a1`. Built-in customer-support/coding benchmark suites, cost metrics, and CLI/TUI evaluation screens remain `Planned`.
+Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, and the CLI evaluation entry point are `Experimental` in `2.0.0a1`. Built-in customer-support/coding benchmark suites, cost metrics, and the TUI evaluation screen remain `Planned`.
 
 ## Deterministic model tests
 
@@ -28,6 +28,32 @@ The cassette request fingerprint stores only model name, message roles, content-
 - each scorer value, threshold, and pass state.
 
 `JsonEvaluationReporter` omits prompts, metadata, model outputs, and exception bodies by default, retaining only exception types. Outputs are persisted only with explicit `include_outputs=True`. There is no built-in price table yet, so the framework never silently converts tokens into cost; versioned pricing and cost budgets remain `Planned`.
+
+## CLI datasets
+
+`load_evaluation_cases()` reads bounded strict JSON without importing or executing code. Case names must be unique:
+
+```json
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "hello",
+      "prompt": "Say hello",
+      "expected_output": "hello",
+      "metadata": {"suite": "smoke"}
+    }
+  ]
+}
+```
+
+The CLI executes cases sequentially. It uses `exact-text` by default; repeat `--scorer exact-text` / `--scorer contains-text`, or use `--scorer none` alone to check only whether each run completed. Potentially billable model calls require explicit authorization:
+
+```text
+wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --report report.json
+```
+
+Disposable run state is the default, so session/run files that may contain prompts are deleted at exit. Pass `--state-root` only when persistence is intended. `--report` writes the privacy-safe default report; `--include-outputs` makes both the report and `--json` data include potentially sensitive model outputs. If any case fails, the command emits the report and exits with status 1. Tool-code loading and tool permissions still require separate `--confirm-tool-code`, `--tool-entry`, and `--grant-permission` authorization. Tool calls that need human approval currently fail the evaluation case and are never auto-approved.
 
 ## Minimal example
 

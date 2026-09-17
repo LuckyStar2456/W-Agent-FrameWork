@@ -15,6 +15,13 @@ from typing import Any, Protocol
 from w_agent.agents import RunEventType, RunResult, StopReason
 from w_agent.models import CancellationToken, TokenUsage
 
+_MAX_DATASET_BYTES = 8 * 1024 * 1024
+_MAX_DATASET_CASES = 10_000
+
+
+class EvaluationDatasetError(ValueError):
+    """A local evaluation dataset is unreadable or violates its schema."""
+
 
 @dataclass(frozen=True, slots=True)
 class EvaluationCase:
@@ -27,6 +34,68 @@ class EvaluationCase:
         if not self.name.strip() or not self.prompt:
             raise ValueError("evaluation case name and prompt are required")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+
+
+def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
+    """Load a bounded strict JSON dataset without executing code."""
+
+    source = Path(path)
+    try:
+        if source.stat().st_size > _MAX_DATASET_BYTES:
+            raise EvaluationDatasetError("evaluation dataset exceeds the size limit")
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except EvaluationDatasetError:
+        raise
+    except OSError as exc:
+        raise EvaluationDatasetError("evaluation dataset cannot be read") from exc
+    except json.JSONDecodeError as exc:
+        raise EvaluationDatasetError("evaluation dataset is not valid JSON") from exc
+    if not isinstance(data, Mapping):
+        raise EvaluationDatasetError("evaluation dataset must be an object")
+    unknown = set(data) - {"schema_version", "cases"}
+    if unknown:
+        raise EvaluationDatasetError("evaluation dataset has unsupported fields")
+    if data.get("schema_version", 1) != 1:
+        raise EvaluationDatasetError("unsupported evaluation dataset schema version")
+    raw_cases = data.get("cases")
+    if not isinstance(raw_cases, list) or not raw_cases:
+        raise EvaluationDatasetError("evaluation dataset needs a non-empty cases list")
+    if len(raw_cases) > _MAX_DATASET_CASES:
+        raise EvaluationDatasetError("evaluation dataset has too many cases")
+    cases: list[EvaluationCase] = []
+    names: set[str] = set()
+    for raw_case in raw_cases:
+        if not isinstance(raw_case, Mapping):
+            raise EvaluationDatasetError("evaluation case must be an object")
+        unknown = set(raw_case) - {
+            "name",
+            "prompt",
+            "expected_output",
+            "metadata",
+        }
+        if unknown:
+            raise EvaluationDatasetError("evaluation case has unsupported fields")
+        name = raw_case.get("name")
+        prompt = raw_case.get("prompt")
+        expected = raw_case.get("expected_output")
+        metadata = raw_case.get("metadata", {})
+        if not isinstance(name, str) or not isinstance(prompt, str):
+            raise EvaluationDatasetError("evaluation case name/prompt must be strings")
+        if expected is not None and not isinstance(expected, str):
+            raise EvaluationDatasetError(
+                "evaluation case expected_output must be a string or null"
+            )
+        if not isinstance(metadata, Mapping):
+            raise EvaluationDatasetError("evaluation case metadata must be an object")
+        if name in names:
+            raise EvaluationDatasetError("evaluation case names must be unique")
+        try:
+            case = EvaluationCase(name, prompt, expected, metadata)
+        except (TypeError, ValueError) as exc:
+            raise EvaluationDatasetError("evaluation case is invalid") from exc
+        names.add(name)
+        cases.append(case)
+    return tuple(cases)
 
 
 @dataclass(frozen=True, slots=True)

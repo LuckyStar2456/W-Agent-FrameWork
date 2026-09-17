@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总、通用插件操作与评测仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复/本地评测为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总、通用插件操作与评测页面仍为 `Planned`。
 
 ## 原则
 
@@ -23,10 +23,11 @@ wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
+wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表和 Session 生命周期提供结构化 JSON。`session show` 同时展示每个 Run 的输入、输出与缓存输入 Token，并明确标记用量是否完整。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，并明确标记用量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 

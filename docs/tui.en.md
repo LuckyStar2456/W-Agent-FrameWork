@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, and CLI tool selection/authority/approval resume are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, general plugin operations, and evaluation remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, and CLI tool selection/authority/approval resume/local evaluation are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, general plugin operations, and the evaluation screen remain `Planned`.
 
 ## Principles
 
@@ -23,10 +23,11 @@ wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
+wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, and session-lifecycle commands offer structured JSON. `session show` exposes input, output, and cached-input tokens for every run and marks whether usage is complete. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens and mark whether usage is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 

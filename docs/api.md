@@ -209,7 +209,7 @@ CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 
 状态：`Experimental`（`2.0.0a1`）。
 
-`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行 `EvaluationCase`，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token 与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`load_evaluation_cases()` 从有界严格 JSON 加载唯一命名的 `EvaluationCase`。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行用例，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token 与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。CLI `wagent evaluate` 仅在显式模型调用授权后运行，默认使用一次性状态。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 13. 兼容接口
 

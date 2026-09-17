@@ -123,7 +123,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器和显式注册安全探测服务为 `Implemented`；CLI/TUI 入口、OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务，以及 CLI/TUI 无凭据 L1 探测入口为 `Implemented`；配置化主动 Provider 探测、OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
@@ -176,17 +176,13 @@ assert execution.response is not None
 
 需要注册后立即执行无生成费用的安全探测时，使用 `ModelRegistrationProbeService.register()`；直接 `ModelRegistry.register()` 始终不发起网络请求。详见[模型、路由与接口探测](./model-routing.md#调用重试与故障转移)。
 
-以下 CLI 体验仍为 `Planned`：
+当前 CLI 可执行不带凭据和请求体的 L1 探测：
 
 ```text
-wagent probe https://example.com/v1 --mode safe
-wagent probe https://example.com/v1 --mode active
-wagent probe https://example.com/v1 --mode capability
+wagent probe https://example.com/v1
 ```
 
-- `safe`：网络、Provider 访问和模型目录，不主动产生模型生成费用。
-- `active`：发送最小文本请求，需要用户确认。
-- `capability`：当前 Python API 只报告 L6/L7 声明并标记未主动验证；主动验证器为 `Planned`。
+配置化 CLI `safe` Provider/模型目录检查、需明确授权的 `active` 最小生成，以及 `capability` 主动验证器仍为 `Planned`。当前 Python API 的 L6/L7 只报告声明并标记未主动验证。
 
 ## 9. 当前工具执行 API
 
@@ -269,28 +265,39 @@ finally:
 
 Docker 默认断网并限制资源。需要宿主执行时，必须先调用 `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`，再构造 `UnsafeLocalSandboxProvider`，并显式把 Spec 设为 `SandboxNetwork.BRIDGE` 与读写工作区；Docker 失败不会自动回退到本地模式。详见[沙箱与本地执行](./sandbox.md)。
 
-## 13. 计划中的工程装配分享
+## 13. 当前工程装配分享
 
-状态：`Planned`。
+状态：编码、离线安全预览、保存、版本与别名管理为 `Implemented`；依赖安装和插件加载确认为 `Planned`。
 
 ```text
-wagent composition export --name my-coding-stack --version 1.2.0
-wagent composition import <composition-code>
+wagent composition export manifest.json
+wagent composition inspect <composition-code>
+wagent composition save <composition-code> --alias stable
 ```
 
-导入先显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略。只有用户确认后才能安装缺失依赖或加载插件。编码不包含密钥。
+预览显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略，并且不访问网络、不导入插件、不执行代码。编码不包含密钥。缺失依赖安装和插件加载仍未实现。
 
-## 14. 计划中的 TUI
+## 14. 当前 TUI 基础
 
-状态：`Planned`。
+状态：可启动的本地 Textual 基础为 `Experimental`。
 
 ```text
 wagent tui
 ```
 
-TUI 将支持配置校验、模型探测、插件管理、Profile 选择、对话、Workflow 状态、Checkpoint 恢复、沙箱授权和事件查看。它使用公开 Python API，不依赖后台托管服务。
+TUI 当前覆盖模板、无凭据端点探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行和 Agent Checkpoint 脱敏列表。工具批准执行、插件操作、Workflow Checkpoint、实时事件与评测页面仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务。
 
-## 15. 下一步
+## 15. 当前本地评测
+
+状态：API 与 CLI 为 `Experimental`。
+
+```text
+wagent evaluate cases.json --confirm-model-call --report report.json
+```
+
+用例集是严格 JSON。命令顺序运行配置化 Agent，默认使用一次性状态，并显示输入/输出 Token、计量完整性、延迟、错误和工具结果。报告默认排除 Prompt 与模型输出。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+
+## 16. 下一步
 
 - 架构与扩展点：[架构设计](./architecture.md)
 - 实现顺序：[路线图](./roadmap.md)

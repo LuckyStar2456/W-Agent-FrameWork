@@ -144,6 +144,7 @@ from w_agent.evaluation import (
     ContainsTextScorer,
     EvaluationCase,
     EvaluationCaseResult,
+    EvaluationDatasetError,
     EvaluationReport,
     EvaluationScore,
     EvaluationScorer,
@@ -152,6 +153,7 @@ from w_agent.evaluation import (
     JsonEvaluationReporter,
     LocalEvaluationRunner,
     evaluation_report_to_dict,
+    load_evaluation_cases,
 )
 from w_agent.testing import (
     JsonlModelCassette,
@@ -745,6 +747,7 @@ __all__ = [
     "ContainsTextScorer",
     "EvaluationCase",
     "EvaluationCaseResult",
+    "EvaluationDatasetError",
     "EvaluationReport",
     "EvaluationScore",
     "EvaluationScorer",
@@ -753,6 +756,7 @@ __all__ = [
     "JsonEvaluationReporter",
     "LocalEvaluationRunner",
     "evaluation_report_to_dict",
+    "load_evaluation_cases",
     "JsonlModelCassette",
     "ModelCassetteError",
     "ModelCassetteRecord",

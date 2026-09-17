@@ -5,6 +5,7 @@ import pytest
 from w_agent import (
     ContainsTextScorer,
     EvaluationCase,
+    EvaluationDatasetError,
     ExactTextScorer,
     JsonEvaluationReporter,
     LocalEvaluationRunner,
@@ -16,6 +17,7 @@ from w_agent import (
     StopReason,
     TokenUsage,
     evaluation_report_to_dict,
+    load_evaluation_cases,
 )
 
 
@@ -141,3 +143,35 @@ async def test_evaluation_uses_final_tool_outcome_per_call_id():
     assert report.tool_successes == 1
     assert report.tool_failures == 1
     assert report.tool_success_rate == 0.5
+
+
+def test_load_evaluation_cases_uses_strict_bounded_schema(tmp_path):
+    source = tmp_path / "cases.json"
+    source.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "cases": [
+                    {
+                        "name": "hello",
+                        "prompt": "Say hello",
+                        "expected_output": "hello",
+                        "metadata": {"suite": "smoke"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cases = load_evaluation_cases(source)
+
+    assert cases[0].name == "hello"
+    assert cases[0].metadata == {"suite": "smoke"}
+
+    source.write_text(
+        '{"cases":[{"name":"same","prompt":"one"},{"name":"same","prompt":"two"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(EvaluationDatasetError, match="unique"):
+        load_evaluation_cases(source)

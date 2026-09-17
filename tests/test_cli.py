@@ -1,7 +1,10 @@
 import json
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
+import w_agent.cli as cli_module
+from w_agent import MessageRole, ModelMessage, RunResult, StopReason, TokenUsage
 from w_agent.cli import app
 
 runner = CliRunner()
@@ -211,3 +214,77 @@ def test_cli_checkpoint_list_is_machine_readable_and_prompt_free(tmp_path):
 
     assert result.exit_code == 0
     assert json.loads(result.stdout) == []
+
+
+def test_cli_evaluate_requires_explicit_model_call_authorization(tmp_path):
+    result = runner.invoke(app, ["evaluate", str(tmp_path / "cases.json")])
+
+    assert result.exit_code == 2
+    assert "--confirm-model-call" in result.stderr
+
+
+def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypatch):
+    dataset = tmp_path / "cases.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "case-one",
+                        "prompt": "secret prompt",
+                        "expected_output": "VISIBLE_OUTPUT",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class Runtime:
+        async def run(self, prompt, **kwargs):
+            assert prompt == "secret prompt"
+            result = RunResult(
+                "eval-run",
+                StopReason.COMPLETED,
+                "VISIBLE_OUTPUT",
+                (ModelMessage.text(MessageRole.ASSISTANT, "VISIBLE_OUTPUT"),),
+                (),
+                steps=1,
+                tool_calls=0,
+                usage=TokenUsage(3, 2),
+                model_calls=1,
+                reported_usage_calls=1,
+            )
+            return SimpleNamespace(result=result)
+
+    monkeypatch.setattr(cli_module, "load_local_runtime_config", lambda path: object())
+    monkeypatch.setattr(
+        cli_module,
+        "assemble_local_runtime",
+        lambda config, state_root, tool_bindings: Runtime(),
+    )
+    report = tmp_path / "report.json"
+    result = runner.invoke(
+        app,
+        [
+            "evaluate",
+            str(dataset),
+            "--config",
+            str(tmp_path / "config.json"),
+            "--report",
+            str(report),
+            "--confirm-model-call",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    persisted = report.read_text(encoding="utf-8")
+    assert payload["passed"] == 1
+    assert payload["usage"]["input_tokens"] == 3
+    assert payload["usage"]["output_tokens"] == 2
+    assert payload["usage_complete"] is True
+    assert "output" not in payload["cases"][0]
+    assert "secret prompt" not in persisted
+    assert "VISIBLE_OUTPUT" not in persisted
