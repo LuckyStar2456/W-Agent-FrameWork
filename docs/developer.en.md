@@ -147,7 +147,7 @@ First-release capabilities cover at least:
 - Event recording and replay tests.
 - Real composition tests for customer-support or coding profiles.
 
-Model tests prefer deterministic mocks. Real-API tests are opt-in and never expose credentials.
+Model tests prefer deterministic mocks such as `ScriptedModelProvider`. Real-API tests are opt-in and never expose credentials. Model record/replay requires explicit sensitive-content authorization and protected cassette files; evaluation reports omit prompts, outputs, and exception bodies by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 10. Documentation rules
 

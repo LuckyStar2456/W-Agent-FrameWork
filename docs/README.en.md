@@ -24,6 +24,7 @@ This documentation describes stable 1.5.2, the current `2.0.0a1` source, and the
 - [Workflows and node-boundary recovery](./workflows.en.md)
 - [Sandbox and local execution](./sandbox.en.md)
 - [CLI and TUI](./tui.en.md)
+- [Local testing, model replay, and evaluation](./testing-evaluation.en.md)
 - [Portable project compositions](./project-sharing.en.md)
 - [1.x migration](./migration-1x.en.md)
 

@@ -64,7 +64,8 @@
 | 本地配置化文本 Agent 运行入口 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 配置化工具选择、显式代码加载与 CLI 审批恢复 | `Experimental` | Phase 3/6 / 2.0.0a1 |
 | Agent 审批 Checkpoint 脱敏列表（API/CLI/TUI） | `Implemented` | Phase 3/6 / 2.0.0a1 |
-| 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
+| 脚本化模型 Mock、显式录制/回放和本地评测指标 | `Experimental` | Phase 6 / 2.0.0a1 |
+| 客服/编码内置基准集、价格/费用指标与 CLI/TUI 评测 | `Planned` | Phase 6 |
 | 1.x 最小 `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## 实施阶段
@@ -136,8 +137,9 @@
 - 已实现严格本地 JSON 到 Provider/路由/ReAct/Run/Session 的文本运行装配；CLI/TUI 每次调用均要求显式授权，凭据只从环境变量引用读取。
 - 已实现由宿主 Catalog 限定的配置化工具选择、逐次权限授予、独立 Python 工具代码加载确认，以及已知 Session/Run/Call ID 的 CLI 审批恢复；配置本身不能导入、授权或批准工具。
 - 已实现 Agent 审批 Checkpoint 的 API/CLI/TUI 脱敏列表；摘要不含 Prompt、参数值、输出或凭据。
+- 已实现无网络的脚本化 Model Provider、需显式敏感内容授权的 JSONL 录制/顺序回放，以及可替换 Scorer 的顺序评测运行器；JSON 报告默认排除 Prompt、输出、Metadata 和异常正文，并汇总 Token 完整性、延迟、错误与工具成功率。
 - TUI 工具批准执行页面、RunEvent 实时查看、Workflow Checkpoint 汇总/跨 Store 恢复、通用插件安装确认与评测页面仍为 `Planned`。
-- Mock、录制回放、客服与编码基准任务。
+- 客服与编码内置基准任务、版本化价格表、费用指标和 CLI/TUI 评测入口仍为 `Planned`。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 
 ## 保留但未排期

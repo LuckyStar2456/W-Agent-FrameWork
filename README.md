@@ -67,6 +67,7 @@ W-Agent 遵循以下原则：
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
 - 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
 - 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认和可见 Token 预算/计量。
+- 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放，以及本地评测运行器与脱敏 JSON 报告。
 
 当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
@@ -167,6 +168,7 @@ CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experim
 - [Workflow 与节点恢复](./docs/workflows.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)
+- [本地测试、模型回放与评测](./docs/testing-evaluation.md)
 - [1.x 迁移](./docs/migration-1x.md)
 
 ## 明确不做

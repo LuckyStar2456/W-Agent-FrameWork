@@ -27,6 +27,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 | Workflow | `WorkflowEngineProtocol`, `LocalWorkflowEngine`, all three definitions, `WorkflowStore`, `JsonlWorkflowStore`, and related types |
+| Testing/evaluation | `ScriptedModelProvider`, `RecordingModelProvider`, `ReplayModelProvider`, `LocalEvaluationRunner`, scorers, and the JSON reporter |
 
 The only accurate current agent protocol is:
 
@@ -204,7 +205,13 @@ CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 
 Decode and preview perform no network access, install no dependency, load no plugin, and execute no code. Manifests reject secrets, absolute local paths, embedded code, and `UnsafeLocalSandbox` authority; the codec bounds compressed and expanded sizes. Separate post-confirmation install and load operations are not implemented yet.
 
-## 12. Compatibility API
+## 12. Testing and evaluation API
+
+Status: `Experimental` in `2.0.0a1`.
+
+`ScriptedModelProvider` supplies finite deterministic network-free model turns. `RecordingModelProvider` and `ReplayModelProvider` use `JsonlModelCassette` for complete-turn recording and sequential replay behind explicit sensitive-content authorization. `LocalEvaluationRunner` sequentially executes `EvaluationCase` values against asynchronous targets returning the public `RunResult`, with `ExactTextScorer`, `ContainsTextScorer`, or custom `EvaluationScorer` implementations. `EvaluationReport`/`JsonEvaluationReporter` aggregate pass rate, token usage and completeness, latency, errors, and tool outcomes; reports do not persist prompts, metadata, outputs, or exception bodies by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+
+## 13. Compatibility API
 
 Status: `Implemented` (`LegacyAgentAdapter`) / `Deprecated` (1.x abstraction).
 

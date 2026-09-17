@@ -24,6 +24,7 @@
 - [Workflow 与节点恢复](./workflows.md)
 - [沙箱与本地执行](./sandbox.md)
 - [CLI 与 TUI](./tui.md)
+- [本地测试、模型回放与评测](./testing-evaluation.md)
 - [工程装配分享](./project-sharing.md)
 - [1.x 迁移](./migration-1x.md)
 

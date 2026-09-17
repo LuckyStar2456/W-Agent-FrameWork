@@ -67,6 +67,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
 - Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
 - A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token budgets/metering.
+- Deterministic scripted model providers, explicitly authorized JSONL recording/sequential replay, and a local evaluation runner with privacy-safe JSON reports.
 
 `BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
@@ -167,6 +168,7 @@ A composition code carries a portable manifest, never secrets. It does not bundl
 - [Workflows and node-boundary recovery](./docs/workflows.en.md)
 - [Sandbox and local execution](./docs/sandbox.en.md)
 - [CLI and TUI](./docs/tui.en.md)
+- [Local testing, model replay, and evaluation](./docs/testing-evaluation.en.md)
 - [1.x migration](./docs/migration-1x.en.md)
 
 ## Explicit non-goals

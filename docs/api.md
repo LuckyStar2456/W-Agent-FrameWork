@@ -27,6 +27,7 @@
 | 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
 | 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 | Workflow | `WorkflowEngineProtocol`、`LocalWorkflowEngine`、三种 Definition、`WorkflowStore`、`JsonlWorkflowStore` 等 |
+| 测试与评测 | `ScriptedModelProvider`、`RecordingModelProvider`、`ReplayModelProvider`、`LocalEvaluationRunner`、Scorer 与 JSON Reporter |
 
 当前准确的 Agent 协议只有：
 
@@ -204,7 +205,13 @@ CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 
 解码与预览不访问网络、不安装依赖、不加载插件、不执行代码。Manifest 拒绝秘密值、绝对本地路径、内嵌代码和 `UnsafeLocalSandbox` 授权；Codec 设有压缩与解压大小边界。用户确认后的独立安装与加载操作仍未实现。
 
-## 12. 兼容接口
+## 12. 测试与评测 API
+
+状态：`Experimental`（`2.0.0a1`）。
+
+`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行 `EvaluationCase`，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token 与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+
+## 13. 兼容接口
 
 状态：`Implemented`（`LegacyAgentAdapter`）/ `Deprecated`（1.x 抽象）。
 
