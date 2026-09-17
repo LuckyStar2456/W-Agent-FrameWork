@@ -109,3 +109,4 @@ Thumbs.db
 *.db
 *.sqlite3
 w_agent.egg-info/
+wagent-pypi.txt
