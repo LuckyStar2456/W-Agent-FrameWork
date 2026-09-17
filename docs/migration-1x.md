@@ -2,7 +2,7 @@
 
 [English](./migration-1x.en.md) | 简体中文
 
-状态：`Planned`。本文描述下一代实现期间的最小兼容原则；兼容适配器尚未实现。
+状态：`Experimental`。`LegacyAgentAdapter` 已实现；EventBus、配置和旧沙箱到新协议的 Bridge 仍为 `Planned`。
 
 ## 策略
 
@@ -22,7 +22,28 @@ class BaseAgent:
     async def arun(self, prompt: str) -> str: ...
 ```
 
-计划中的 `LegacyAgentAdapter` 将旧 Agent 包装成只能接受简单输入并返回最终文本的 Agent 节点。它不伪造流式事件、工具调用、Checkpoint 或能力声明。
+`LegacyAgentAdapter` 将旧 Agent 包装为普通 Workflow 节点。默认输入和输出必须是文本；非文本输入或结构化输出必须由应用显式提供映射函数。它不伪造流式事件、工具调用、Token 用量、Checkpoint 或能力声明，也无法强制中断正在执行且不协作取消的旧 `arun()`。
+
+```python
+from w_agent import (
+    LegacyAgentAdapter,
+    LocalWorkflowEngine,
+    PythonWorkflowDefinition,
+    WorkflowContext,
+)
+
+adapter = LegacyAgentAdapter(old_agent)
+definition = PythonWorkflowDefinition(
+    "legacy-task",
+    adapter.workflow_node("legacy").handler,
+)
+result = await LocalWorkflowEngine().start(
+    definition,
+    WorkflowContext("workflow-1", input="hello"),
+)
+```
+
+也可使用 `legacy_agent_workflow_node("legacy", old_agent)` 快速构造节点。适配器在旧调用前后检查 Workflow 的协作取消信号；旧 Agent 内部是否支持及时取消仍由旧实现决定。
 
 ## BeanFactory 与组件装饰器
 
@@ -48,7 +69,7 @@ Wasm 和 nsjail 实现计划适配到 `SandboxProvider`。旧调用方式在兼�
 
 ## 迁移完成条件
 
-- 现有基本 Agent 示例可以通过适配器运行。
+- 现有基本 Agent 示例可以通过适配器运行。`Implemented`
 - 旧容器和配置用法具有明确替代方案。
 - 弃用警告包含目标 API 和删除版本。
 - 中英文迁移文档、测试和发行说明同步。

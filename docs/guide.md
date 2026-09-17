@@ -52,7 +52,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`BaseAgent` 当前只定义 `arun(prompt)`，不提供模型接入、工具循环或持久化 Session。
+`BaseAgent` 当前只定义 `arun(prompt)`，不提供模型接入、工具循环或持久化 Session。需要复用旧 Agent 时，可通过 `LegacyAgentAdapter(old_agent).workflow_node("legacy")` 接入新 Workflow；该桥只传递文本和最终结果。
 
 ## 4. 当前配置管理
 

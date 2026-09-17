@@ -67,7 +67,7 @@ W-Agent 遵循以下原则：
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
 - 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -79,7 +79,7 @@ W-Agent 遵循以下原则：
 基础设施         Storage / Telemetry / CLI / TUI / Evaluation
 ```
 
-下一代 API 将直接从 `w_agent` 导出，不引入 `w_agent.v2` 命名空间。1.x API 只通过最小兼容层继续工作。
+下一代 API 直接从 `w_agent` 导出，不引入 `w_agent.v2` 命名空间。已实现的最小兼容层保留必要的 1.x Agent 复用路径。
 
 ## 安装现有版本
 

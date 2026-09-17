@@ -159,6 +159,6 @@ Model tests prefer deterministic mocks. Real-API tests are opt-in and never expo
 
 ## 11. Compatibility policy
 
-Because 1.x adoption is limited, only basic compatibility is retained. Next-generation APIs take the top-level `w_agent` namespace, while a compatibility adapter carries old interfaces such as `BaseAgent`. New capabilities are not added to 1.x abstractions.
+Because 1.x adoption is limited, only basic compatibility is retained. Next-generation APIs take the top-level `w_agent` namespace. The implemented `LegacyAgentAdapter` strictly bridges old `BaseAgent.arun()` calls into text workflow nodes. New capabilities are not added to 1.x abstractions, and other bridges receive demand-driven review.
 
 See [1.x migration](./migration-1x.en.md).

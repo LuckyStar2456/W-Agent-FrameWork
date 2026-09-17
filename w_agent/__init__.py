@@ -6,6 +6,13 @@ __license__ = "MIT"
 
 # 导出核心模块
 from w_agent.core.agent import BaseAgent
+from w_agent.compat import (
+    LegacyAgentAdapter,
+    LegacyAgentAdapterError,
+    LegacyPromptMapper,
+    LegacyResultMapper,
+    legacy_agent_workflow_node,
+)
 from w_agent.agents import (
     AgentDefinition,
     AgentExecution,
@@ -337,6 +344,11 @@ from w_agent.workflows import (
 
 __all__ = [
     "BaseAgent",
+    "LegacyAgentAdapter",
+    "LegacyAgentAdapterError",
+    "LegacyPromptMapper",
+    "LegacyResultMapper",
+    "legacy_agent_workflow_node",
     "AgentMessageFactory",
     "AgentResultMapper",
     "AgentToolContextFactory",

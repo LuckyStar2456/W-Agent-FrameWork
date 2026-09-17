@@ -67,7 +67,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
 - Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
 ## Next-generation module map
 
@@ -79,7 +79,7 @@ Microkernel         Plugin / Registry / Lifecycle / Scope / Events
 Infrastructure      Storage / Telemetry / CLI / TUI / Evaluation
 ```
 
-Next-generation APIs will be exported directly from `w_agent`; no `w_agent.v2` namespace will be introduced. A minimal compatibility layer will keep essential 1.x APIs available.
+Next-generation APIs are exported directly from `w_agent`; no `w_agent.v2` namespace is introduced. The implemented minimal compatibility layer preserves the essential 1.x agent-reuse path.
 
 ## Install the current release
 

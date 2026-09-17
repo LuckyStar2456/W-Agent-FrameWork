@@ -60,7 +60,7 @@
 | 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
 | Typer/Rich CLI、Textual TUI 与 Session 生命周期界面 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
-| 1.x 最小兼容适配器 | `Planned` | 每阶段同步维护 |
+| 1.x 最小 `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## 实施阶段
 
@@ -128,6 +128,7 @@
 - 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复和可见 Token 汇总，以及 TUI 离线装配检查。
 - 配置化 Agent 交互运行、RunEvent 查看、跨 Store Checkpoint 列表/恢复、插件加载确认与评测页面仍为 `Planned`。
 - Mock、录制回放、客服与编码基准任务。
+- 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 
 ## 保留但未排期
 

@@ -159,6 +159,6 @@ extensions={
 
 ## 11. 兼容策略
 
-1.x 使用人数有限，因此只保留基础兼容。下一代 API 直接占用 `w_agent` 顶层命名空间；旧 `BaseAgent` 等接口由兼容适配器承载。新特性不继续加入 1.x 抽象。
+1.x 使用人数有限，因此只保留基础兼容。下一代 API 直接占用 `w_agent` 顶层命名空间；已实现的 `LegacyAgentAdapter` 将旧 `BaseAgent.arun()` 严格桥接为文本 Workflow 节点。新特性不继续加入 1.x 抽象，其他 Bridge 按需求单独评审。
 
 详见[1.x 迁移](./migration-1x.md)。

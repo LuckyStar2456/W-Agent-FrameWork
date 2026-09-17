@@ -60,7 +60,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
 | Typer/Rich CLI, Textual TUI, and session lifecycle UI | `Experimental` | Phase 6 / 2.0.0a1 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
-| Minimal 1.x compatibility adapter | `Planned` | Maintained through every phase |
+| Minimal 1.x `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## Delivery phases
 
@@ -128,6 +128,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
 - Configured interactive agent runs, RunEvent views, cross-store checkpoint listing/recovery, plugin-load confirmation, and evaluation screens remain `Planned`.
 - Mocks, record/replay, and customer-support and coding benchmark tasks.
+- Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 
 ## Reserved without a release phase
 

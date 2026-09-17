@@ -52,7 +52,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`BaseAgent` currently defines only `arun(prompt)` and does not provide model integration, a tool loop, or durable sessions.
+`BaseAgent` currently defines only `arun(prompt)` and does not provide model integration, a tool loop, or durable sessions. Reuse an old agent in a current workflow with `LegacyAgentAdapter(old_agent).workflow_node("legacy")`; this bridge carries text and a final result only.
 
 ## 4. Current configuration management
 

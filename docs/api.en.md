@@ -10,7 +10,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 
 | Group | API |
 |---|---|
-| Agent | `BaseAgent`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
+| Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
@@ -203,6 +203,6 @@ Decode and preview perform no network access, install no dependency, load no plu
 
 ## 12. Compatibility API
 
-Status: `Planned` / `Deprecated`.
+Status: `Implemented` (`LegacyAgentAdapter`) / `Deprecated` (1.x abstraction).
 
-`LegacyAgentAdapter` wraps 1.x `BaseAgent.arun()` as a next-generation agent node. The adapter converts arguments and results only; it does not pretend that legacy agents support streaming, tools, or checkpoints.
+`LegacyAgentAdapter` wraps 1.x `BaseAgent.arun()` as a workflow node. It performs explicit text argument/result conversion only and does not pretend that legacy agents support streaming, tools, token usage, or checkpoints; non-text input requires a caller-supplied `prompt_mapper`.

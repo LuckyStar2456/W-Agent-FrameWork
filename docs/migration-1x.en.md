@@ -2,7 +2,7 @@
 
 English | [简体中文](./migration-1x.md)
 
-Status: `Planned`. This document defines minimal compatibility during next-generation implementation. Compatibility adapters do not exist yet.
+Status: `Experimental`. `LegacyAgentAdapter` is implemented; bridges from EventBus, configuration, and legacy sandboxes into current protocols remain `Planned`.
 
 ## Strategy
 
@@ -22,7 +22,28 @@ class BaseAgent:
     async def arun(self, prompt: str) -> str: ...
 ```
 
-The planned `LegacyAgentAdapter` wraps an old agent as a node that accepts simple input and returns final text. It does not fabricate stream events, tool calls, checkpoints, or capability declarations.
+`LegacyAgentAdapter` wraps an old agent as an ordinary workflow node. Input and output are text by default; non-text input or structured output requires an explicit application mapper. It does not fabricate streaming events, tool calls, token usage, checkpoints, or capability declarations, and it cannot forcibly interrupt an in-flight legacy `arun()` that does not cooperate with cancellation.
+
+```python
+from w_agent import (
+    LegacyAgentAdapter,
+    LocalWorkflowEngine,
+    PythonWorkflowDefinition,
+    WorkflowContext,
+)
+
+adapter = LegacyAgentAdapter(old_agent)
+definition = PythonWorkflowDefinition(
+    "legacy-task",
+    adapter.workflow_node("legacy").handler,
+)
+result = await LocalWorkflowEngine().start(
+    definition,
+    WorkflowContext("workflow-1", input="hello"),
+)
+```
+
+`legacy_agent_workflow_node("legacy", old_agent)` is the convenience constructor. The adapter checks the workflow's cooperative cancellation token before and after the legacy call; timely cancellation inside the old agent remains the responsibility of that implementation.
 
 ## BeanFactory and component decorators
 
@@ -48,7 +69,7 @@ The next-generation CLI uses `wagent`; the existing `w-agent` command remains a 
 
 ## Migration completion criteria
 
-- Existing basic agent examples run through an adapter.
+- Existing basic agent examples run through an adapter. `Implemented`
 - Old container and configuration usages have documented replacements.
 - Deprecation warnings name the target API and removal release.
 - Chinese and English migration docs, tests, and release notes stay synchronized.

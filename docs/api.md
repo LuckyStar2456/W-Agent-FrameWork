@@ -10,7 +10,7 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
+| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
 | Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
@@ -203,6 +203,6 @@ CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 
 ## 12. 兼容接口
 
-状态：`Planned` / `Deprecated`。
+状态：`Implemented`（`LegacyAgentAdapter`）/ `Deprecated`（1.x 抽象）。
 
-`LegacyAgentAdapter` 将 1.x `BaseAgent.arun()` 包装为下一代 Agent 节点。兼容层只做参数和结果转换，不模拟不存在的流式、工具或 Checkpoint 能力。
+`LegacyAgentAdapter` 将 1.x `BaseAgent.arun()` 包装为 Workflow 节点。兼容层只做显式文本参数和结果转换，不模拟不存在的流式、工具、Token 或 Checkpoint 能力；非文本输入必须由调用方提供 `prompt_mapper`。
