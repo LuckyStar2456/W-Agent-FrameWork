@@ -109,6 +109,6 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 
 ## 开放装配边界
 
-`load_local_runtime_config()`、`assemble_local_provider()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。Provider 单独装配返回 `LocalProviderAssembly`，只解析凭据引用并构建对象，不注册、不访问网络；应用随后可选择任意探测或注册策略。完整 Runtime 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
+`load_local_runtime_config()`、`assemble_local_provider()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。Provider 单独装配返回 `LocalProviderAssembly`，只解析凭据引用并构建对象，不注册、不访问网络；应用随后可选择任意探测或注册策略。完整 Runtime 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager。两种装配都支持 `async with` 和幂等 `aclose()`；关闭后完整 Runtime 拒绝继续运行。CLI/TUI 自动在同一事件循环内完成使用与关闭。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
 
 应用将 `{name: ToolBinding}` 作为 `tool_bindings` 传给装配器；配置只能选择其中的子集。`LocalAgentRuntime.run()` 接收本次运行的权限和可选批准 ID，`resume()` 接收 Session/Run ID、权限与非空精确批准集合。配置、Session、Checkpoint 和工程装配编码都不能生成权限、批准或本地执行授权。

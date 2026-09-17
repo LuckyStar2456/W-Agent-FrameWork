@@ -310,6 +310,15 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
     )
 
     class Runtime:
+        def __init__(self):
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            self.closed = True
+
         async def run(self, prompt, **kwargs):
             assert prompt == "secret prompt"
             result = RunResult(
@@ -327,10 +336,11 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
             return SimpleNamespace(result=result)
 
     monkeypatch.setattr(cli_module, "load_local_runtime_config", lambda path: object())
+    runtime = Runtime()
     monkeypatch.setattr(
         cli_module,
         "assemble_local_runtime",
-        lambda config, state_root, tool_bindings: Runtime(),
+        lambda config, state_root, tool_bindings: runtime,
     )
     report = tmp_path / "report.json"
     result = runner.invoke(
@@ -357,3 +367,4 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
     assert "output" not in payload["cases"][0]
     assert "secret prompt" not in persisted
     assert "VISIBLE_OUTPUT" not in persisted
+    assert runtime.closed is True

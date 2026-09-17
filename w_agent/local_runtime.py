@@ -187,6 +187,37 @@ class LocalAgentRuntime:
     sessions: SessionManager
     models: ModelRegistry
     tools: ToolRegistry
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    async def __aenter__(self) -> "LocalAgentRuntime":
+        self._ensure_open()
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        """Close each assembled provider once when it exposes cleanup."""
+
+        if self._closed:
+            return
+        self._closed = True
+        seen: set[int] = set()
+        for _, provider in self.models.providers():
+            identity = id(provider)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            close = getattr(provider, "aclose", None)
+            if close is None:
+                continue
+            result = close()
+            if inspect.isawaitable(result):
+                await result
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("local agent runtime is closed")
 
     async def run(
         self,
@@ -198,6 +229,7 @@ class LocalAgentRuntime:
         approved_call_ids: frozenset[str] = frozenset(),
         cancellation: CancellationToken | None = None,
     ) -> LocalRuntimeRun:
+        self._ensure_open()
         if not prompt:
             raise ValueError("agent prompt must not be empty")
         if session_id is None:
@@ -229,6 +261,7 @@ class LocalAgentRuntime:
     ) -> LocalRuntimeRun:
         """Resume one persisted approval checkpoint with explicit authority."""
 
+        self._ensure_open()
         if not approved_call_ids:
             raise ValueError("resume requires at least one approved tool call ID")
         result = await self.sessions.resume_agent(

@@ -32,6 +32,7 @@ class FakeProvider:
         self.name = name
         self.model = model
         self.closed = False
+        self.close_calls = 0
 
     async def list_models(self) -> tuple[ModelDescriptor, ...]:
         return (
@@ -60,6 +61,7 @@ class FakeProvider:
 
     async def aclose(self) -> None:
         self.closed = True
+        self.close_calls += 1
 
 
 def _config(**agent_overrides):
@@ -186,6 +188,26 @@ async def test_local_provider_assembly_has_no_registration_or_network_side_effec
         pass
 
     assert assembly.provider.closed is True
+    assert assembly.provider.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_closes_provider_once_and_rejects_reuse(tmp_path):
+    runtime = assemble_local_runtime(
+        _config(),
+        tmp_path,
+        templates=_templates({}),
+        environ={"TEST_MODEL_KEY": "runtime-secret"},
+    )
+    provider = runtime.models.provider("test-provider")
+
+    await runtime.aclose()
+    await runtime.aclose()
+
+    assert provider.closed is True
+    assert provider.close_calls == 1
+    with pytest.raises(RuntimeError, match="closed"):
+        await runtime.run("must not run")
 
 
 def test_local_runtime_rejects_unknown_schema_and_invalid_budget():

@@ -123,6 +123,7 @@ A plugin cannot modify another plugin's namespace. Core fields change only throu
 - `asyncio.TaskGroup` owns child tasks of the same operation.
 - Cancellation propagates to model streams, tools, workflows, and sandboxes.
 - Shutdown rejects new work, waits for quiescence, then releases resources.
+- Assemblies that own providers/transports expose idempotent asynchronous cleanup; short-lived CLI/TUI paths run and close them in the same event loop.
 - Dependency removal and plugin updates wait for affected work to reach a safe point.
 - Background tasks cannot outlive their owner and continue mutating an unloaded service.
 

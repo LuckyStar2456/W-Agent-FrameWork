@@ -365,7 +365,8 @@ class WAgentTui(App[None]):
                 load_local_runtime_config(source),
                 self.workspace / ".wagent",
             )
-            run = await runtime.run(prompt, session_id=session_id)
+            async with runtime:
+                run = await runtime.run(prompt, session_id=session_id)
         except (LocalRuntimeConfigError, SessionError, ValueError) as error:
             target.update(f"Rejected: {error}")
             return

@@ -39,7 +39,7 @@ class BaseAgent:
 
 `BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint、Workflow 节点 Checkpoint，以及本地持久化 Session 生命周期/跨 Run 文本上下文已经实现；通用多模态与工具事件回放仍未接入。
 
-严格本地 JSON 配置可通过 `load_local_runtime_config()` 和 `assemble_local_runtime()` 装配内置 Provider 模板、单 Provider 路由、受限调用策略、所选 ToolBinding、ReAct Loop、RunStore 与 SessionStore。`assemble_local_provider()` 只构建带异步关闭生命周期的 Provider，不注册也不执行 I/O，由应用自行选择探测或注册策略。配置只接受 `api_key_env` 凭据引用，只能从宿主 Catalog 选择工具，不能自行导入、授权或批准。`LocalAgentRuntime.resume()` 与 `wagent run-resume` 可按精确 Call ID 恢复审批断点；CLI 导入开发者工具代码还要求独立的 `--confirm-tool-code`。详见[本地配置化 Runtime](./local-runtime.md)。
+严格本地 JSON 配置可通过 `load_local_runtime_config()` 和 `assemble_local_runtime()` 装配内置 Provider 模板、单 Provider 路由、受限调用策略、所选 ToolBinding、ReAct Loop、RunStore 与 SessionStore。`assemble_local_provider()` 只构建带异步关闭生命周期的 Provider，不注册也不执行 I/O，由应用自行选择探测或注册策略。`LocalProviderAssembly` 与 `LocalAgentRuntime` 都支持异步上下文和幂等关闭。配置只接受 `api_key_env` 凭据引用，只能从宿主 Catalog 选择工具，不能自行导入、授权或批准。`LocalAgentRuntime.resume()` 与 `wagent run-resume` 可按精确 Call ID 恢复审批断点；CLI 导入开发者工具代码还要求独立的 `--confirm-tool-code`。详见[本地配置化 Runtime](./local-runtime.md)。
 
 ## 2. 下一代导出策略
 

@@ -272,7 +272,8 @@ def run_command(
             tool_bindings=catalog,
         )
         run = asyncio.run(
-            runtime.run(
+            _run_configured_runtime(
+                runtime,
                 prompt,
                 session_id=session_id,
                 session_title=session_title,
@@ -340,7 +341,8 @@ def run_resume_command(
             tool_bindings=catalog,
         )
         run = asyncio.run(
-            runtime.resume(
+            _resume_configured_runtime(
+                runtime,
                 session_id,
                 run_id,
                 permissions=frozenset(grant_permission),
@@ -792,7 +794,42 @@ async def _run_local_evaluation(
         )
         return run.result
 
-    return await LocalEvaluationRunner().run(cases, target, scorers=scorers)
+    async with runtime:
+        return await LocalEvaluationRunner().run(cases, target, scorers=scorers)
+
+
+async def _run_configured_runtime(
+    runtime: Any,
+    prompt: str,
+    *,
+    session_id: str | None,
+    session_title: str | None,
+    permissions: frozenset[str],
+) -> Any:
+    async with runtime:
+        return await runtime.run(
+            prompt,
+            session_id=session_id,
+            session_title=session_title,
+            permissions=permissions,
+        )
+
+
+async def _resume_configured_runtime(
+    runtime: Any,
+    session_id: str,
+    run_id: str,
+    *,
+    permissions: frozenset[str],
+    approved_call_ids: frozenset[str],
+) -> Any:
+    async with runtime:
+        return await runtime.resume(
+            session_id,
+            run_id,
+            permissions=permissions,
+            approved_call_ids=approved_call_ids,
+        )
 
 
 async def _probe_configured_provider(
