@@ -54,6 +54,7 @@ W-Agent 遵循以下原则：
 - 统一 `ModelRegistry`、可替换 `ModelProvider` 和协作式取消令牌。
 - 可解释的 Python 加权路由与安全 YAML 路由规则。
 - L1 端点可达性嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存和周期调度器。
+- 严格配置化 Provider 的独立无副作用装配，以及 CLI/TUI 安全目录检查与显式授权主动生成探测。
 - 可替换传输的 OpenAI-compatible Chat Completions Provider，适用于声明兼容接口的本地或远程服务。
 - 可插拔的通用 HTTP 请求映射层与 JSON/SSE/NDJSON 传输。
 - Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
@@ -134,6 +135,7 @@ asyncio.run(main())
 wagent init
 wagent profile list
 wagent probe <endpoint>
+wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
 wagent doctor
 wagent tui
 wagent composition export

@@ -122,7 +122,7 @@ ModelRequest(
 
 路由顺序为：安全与用户策略过滤、能力匹配、健康过滤、评分和选择。Python 策略与 YAML 规则编译成相同的 `RoutingPolicy`。每次选择生成可观察的 `RouteDecision`，记录候选、过滤原因、得分和最终选择。调用属于独立的 `ModelExecutor` Consumer；它可以收集完整流或实时透传事件，按显式策略执行超时、重试与故障转移，且透传后禁止静默重放，不反向污染路由策略。
 
-当前接口探测实现 L1 URL/DNS/TCP/TLS/HTTP、L2 Provider 访问、L3 模型目录和显式授权的 L4/L5 生成/流协议检查，并提供缓存与通用周期调度器。`ModelRegistrationProbeService` 提供可选的“注册即安全探测”装配路径，并把新鲜结果映射到外部路由健康状态；底层注册表不执行 I/O。L6/L7 当前只报告声明并标记未主动验证，CLI/TUI 入口为 `Planned`。可能产生费用的主动探测必须传入 `allow_active=True`。
+当前接口探测实现 L1 URL/DNS/TCP/TLS/HTTP、L2 Provider 访问、L3 模型目录和显式授权的 L4/L5 生成/流协议检查，并提供缓存与通用周期调度器。`ModelRegistrationProbeService` 提供可选的“注册即安全探测”装配路径，并把新鲜结果映射到外部路由健康状态；底层注册表不执行 I/O。CLI/TUI 已提供无凭据 L1 与配置化 Provider 安全/主动入口；主动模式需要单次确认。L6/L7 当前只报告声明并标记未主动验证。Provider 单独装配不执行 I/O，而 `safe` 是否访问远程目录由具体 Provider 的目录协议决定。
 
 详细设计见[模型、路由与接口探测](./model-routing.md)。
 

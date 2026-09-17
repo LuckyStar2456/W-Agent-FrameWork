@@ -33,7 +33,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
 | Automatic safe probing and health bridging through the explicit registration service | `Implemented` | Phase 2B / 2.0.0a1 |
 | CLI/TUI safe endpoint-probe entry points | `Implemented` | Phase 2B / 2.0.0a1 |
-| CLI/TUI active provider-probe assembly | `Planned` | Phase 2B/6 |
+| CLI/TUI configured safe/active provider probes | `Experimental` | Phase 2B/6 / 2.0.0a1 |
 | Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Normalized provider input/output token metering | `Implemented` | Phase 2B / 2.0.0a1 |
@@ -96,7 +96,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2B implements collecting and event-pass-through executors with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records. Pass-through execution prohibits silent replay after any event becomes visible.
 - 2B normalizes provider-reported input, output, and cached-input tokens. `usage_reported` distinguishes a real zero-token report from missing provider metadata instead of presenting a zero value as complete metering.
 - 2B implements optional register-and-safe-probe through `ModelRegistrationProbeService` and `ProbeHealthBridge`; low-level `ModelRegistry.register()` keeps pure registration semantics.
-- 2B now includes credential-free L1 safe endpoint probes in the CLI/TUI. Later work adds OpenAI Responses/vLLM differences, configured active provider probes, and cross-stream recovery.
+- 2B now includes credential-free L1 endpoint probes plus CLI/TUI provider probes assembled from strict local configuration. Provider-only assembly performs no registration or I/O; whether `safe` accesses a remote catalog is provider-defined, while explicitly authorized `active` verifies minimal generation and stream termination. Later work adds OpenAI Responses/vLLM differences and cross-stream recovery.
 
 ### Phase 3: agents and tools
 

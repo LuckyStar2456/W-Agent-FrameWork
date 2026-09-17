@@ -54,6 +54,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - A unified `ModelRegistry`, replaceable `ModelProvider`, and cooperative cancellation token.
 - Explainable weighted Python routing and safe YAML routing rules.
 - L1 endpoint reachability sniffing, L2/L3 provider checks, explicitly authorized L4/L5 active probes, caching, and periodic scheduling.
+- Side-effect-free provider-only assembly from strict configuration plus CLI/TUI safe-catalog and explicitly authorized active-generation probes.
 - An OpenAI-compatible Chat Completions provider with a replaceable transport for local or remote services that declare compatibility.
 - A pluggable generic HTTP request-mapping layer with JSON/SSE/NDJSON transport.
 - Native Anthropic, Gemini, Ollama, and Qwen templates, plus DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI template registration.
@@ -134,6 +135,7 @@ The current source provides:
 wagent init
 wagent profile list
 wagent probe <endpoint>
+wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
 wagent doctor
 wagent tui
 wagent composition export

@@ -20,6 +20,7 @@ from w_agent import (
     UsageEvent,
     ToolCallContent,
     ToolSideEffect,
+    assemble_local_provider,
     assemble_local_runtime,
     local_runtime_config_from_mapping,
     python_tool,
@@ -30,6 +31,7 @@ class FakeProvider:
     def __init__(self, name: str, model: str) -> None:
         self.name = name
         self.model = model
+        self.closed = False
 
     async def list_models(self) -> tuple[ModelDescriptor, ...]:
         return (
@@ -55,6 +57,9 @@ class FakeProvider:
         yield BlockEnd(0, TextContent("hello"))
         yield UsageEvent(TokenUsage(3, 2))
         yield FinishEvent(FinishReason.STOP)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def _config(**agent_overrides):
@@ -126,7 +131,6 @@ def test_local_runtime_requires_env_reference_and_rejects_secret_fields(tmp_path
             templates=_templates({}),
             environ={},
         )
-
     with pytest.raises(LocalRuntimeConfigError, match="unsupported fields"):
         local_runtime_config_from_mapping(
             {
@@ -161,6 +165,27 @@ def test_local_runtime_requires_env_reference_and_rejects_secret_fields(tmp_path
             templates=_templates({}),
             provider_options={"api_key": "inline-secret"},
         )
+
+
+@pytest.mark.asyncio
+async def test_local_provider_assembly_has_no_registration_or_network_side_effects():
+    captured = {}
+
+    assembly = assemble_local_provider(
+        _config(),
+        templates=_templates(captured),
+        environ={"TEST_MODEL_KEY": "resolved-only-at-assembly"},
+    )
+
+    assert assembly.name == "test-provider"
+    assert isinstance(assembly.provider, FakeProvider)
+    assert captured["default_model"] == "test-model"
+    assert assembly.provider.closed is False
+
+    async with assembly:
+        pass
+
+    assert assembly.provider.closed is True
 
 
 def test_local_runtime_rejects_unknown_schema_and_invalid_budget():

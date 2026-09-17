@@ -21,17 +21,18 @@ wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
+wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens and mark whether usage is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens and mark whether usage is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` performs credential-free L1 probing; `provider-probe` assembles a provider from strict configuration and requires the additional `--confirm-active-probe` flag for active mode.
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
 
 ## TUI technology
 

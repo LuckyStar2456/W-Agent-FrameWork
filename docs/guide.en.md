@@ -123,7 +123,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and credential-free L1 CLI/TUI probe entry points are `Implemented`; configured active-provider probing, dedicated OpenAI Responses/vLLM differences, and cross-stream recovery are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and credential-free L1 plus configured provider CLI/TUI probe entry points are `Implemented`/`Experimental`; dedicated OpenAI Responses/vLLM differences and cross-stream recovery are `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 
@@ -182,7 +182,14 @@ The current CLI performs credential-free L1 probing without a request body:
 wagent probe https://example.com/v1
 ```
 
-Configured CLI `safe` provider/catalog checks, explicitly authorized `active` minimal generation, and active `capability` verifiers remain `Planned`. The current Python API reports L6/L7 declarations as not actively verified.
+Configured provider probes use the same strict configuration:
+
+```text
+wagent provider-probe --config .wagent/config.json --mode safe
+wagent provider-probe --config .wagent/config.json --mode active --confirm-active-probe
+```
+
+`safe` invokes the provider catalog contract without generating content. Some compatible providers use a static catalog, so a safe success does not necessarily prove the remote generation path. `active` sends a minimal request capped at 8 output tokens and verifies generation plus stream termination; it may incur cost and requires per-run confirmation. `capability` performs the same active check and then reports L6/L7 declarations while explicitly noting that no vendor-specific active verifier is installed.
 
 ## 9. Current tool-execution API
 

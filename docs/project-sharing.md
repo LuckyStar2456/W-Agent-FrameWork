@@ -2,7 +2,7 @@
 
 [English](./project-sharing.en.md) | 简体中文
 
-状态：Manifest、编码/解码、安全预览和本地版本库为 `Implemented`（`2.0.0a1`）；依赖安装、插件加载确认和 CLI/TUI 页面为 `Planned`。
+状态：Manifest、编码/解码、安全预览和本地版本库为 `Implemented`（`2.0.0a1`），CLI 与 TUI 离线预览为 `Experimental`；依赖安装和插件加载确认页面为 `Planned`。
 
 当前公共 API 为 `CompositionManifest`、`PluginRequirement`、`encode_composition()`、`decode_composition()`、`inspect_composition()` 和 `CompositionStore`。这些 API 只处理数据，不访问网络、不安装包、不导入或执行插件。
 

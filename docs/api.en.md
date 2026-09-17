@@ -12,7 +12,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 |---|---|
 | Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `RunCheckpointSummary`, `JsonlRunStore` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
-| Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_runtime` |
+| Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalProviderAssembly`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_provider`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -39,7 +39,7 @@ class BaseAgent:
 
 `BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints, workflow node checkpoints, and the local persistent session lifecycle/cross-run text context are implemented; general multimodal and tool-event replay is not yet connected.
 
-Strict local JSON can be assembled by `load_local_runtime_config()` and `assemble_local_runtime()` into a built-in provider template, single-provider route, bounded invocation policy, selected ToolBindings, ReAct loop, RunStore, and SessionStore. Configuration accepts only `api_key_env` credential references and can only select from a host catalog; it cannot import, authorize, or approve tools. `LocalAgentRuntime.resume()` and `wagent run-resume` resume approval checkpoints by exact call ID. CLI import of developer tool code additionally requires independent `--confirm-tool-code` authorization. See [locally configured runtime](./local-runtime.en.md).
+Strict local JSON can be assembled by `load_local_runtime_config()` and `assemble_local_runtime()` into a built-in provider template, single-provider route, bounded invocation policy, selected ToolBindings, ReAct loop, RunStore, and SessionStore. `assemble_local_provider()` only constructs a provider with asynchronous cleanup lifecycle; it performs no registration or I/O, leaving probe and registration policy to the application. Configuration accepts only `api_key_env` credential references and can only select from a host catalog; it cannot import, authorize, or approve tools. `LocalAgentRuntime.resume()` and `wagent run-resume` resume approval checkpoints by exact call ID. CLI import of developer tool code additionally requires independent `--confirm-tool-code` authorization. See [locally configured runtime](./local-runtime.en.md).
 
 ## 2. Next-generation export strategy
 
@@ -119,7 +119,7 @@ Status: `Implemented` as a Phase 2A foundation.
 - `ProbeMode.ACTIVE`: runs an L4/L5 minimal generation and stream-protocol check only with `allow_active=True`.
 - `ProbeMode.CAPABILITY`: currently reports L6/L7 declarations as `SKIPPED`; it never presents declarations as active verification.
 - `ProbeCache` and `PeriodicProbeService`: shared building blocks for manual and periodic probes.
-- `ModelRegistrationProbeService` and `ProbeHealthBridge`: explicit register-and-safe-probe wiring plus external routing-health projection; direct `ModelRegistry.register()` performs no I/O. Credential-free L1 CLI/TUI entry points are implemented; configured active provider probing remains `Planned`.
+- `ModelRegistrationProbeService` and `ProbeHealthBridge`: explicit register-and-safe-probe wiring plus external routing-health projection; direct `ModelRegistry.register()` performs no I/O. Credential-free L1 and configured safe/active provider CLI/TUI entry points are implemented; active mode requires explicit per-run authorization.
 
 ## 7. Agent protocol
 

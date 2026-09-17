@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,7 @@ from w_agent.models import (
     MessageRole,
     ModelExecutor,
     ModelMessage,
+    ModelProvider,
     ModelRegistry,
     ModelRouter,
     ProviderTemplateRegistry,
@@ -122,7 +124,9 @@ class LocalToolConfig:
     def __post_init__(self) -> None:
         values = tuple(self.enabled)
         if any(not isinstance(item, str) or not item.strip() for item in values):
-            raise LocalRuntimeConfigError("enabled tool names must be non-empty strings")
+            raise LocalRuntimeConfigError(
+                "enabled tool names must be non-empty strings"
+            )
         if len(set(values)) != len(values):
             raise LocalRuntimeConfigError("enabled tool names must be unique")
         object.__setattr__(self, "enabled", values)
@@ -149,6 +153,28 @@ class LocalRuntimeConfig:
 class LocalRuntimeRun:
     session: SessionRecord
     result: RunResult
+
+
+@dataclass(frozen=True, slots=True)
+class LocalProviderAssembly:
+    """One configured provider built without registering it or performing I/O."""
+
+    name: str
+    provider: ModelProvider
+
+    async def __aenter__(self) -> "LocalProviderAssembly":
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        close = getattr(self.provider, "aclose", None)
+        if close is None:
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
 
 
 @dataclass(slots=True)
@@ -228,7 +254,9 @@ def load_local_runtime_config(path: str | Path) -> LocalRuntimeConfig:
     except OSError as error:
         raise LocalRuntimeConfigError("local runtime config cannot be read") from error
     except json.JSONDecodeError as error:
-        raise LocalRuntimeConfigError("local runtime config is not valid JSON") from error
+        raise LocalRuntimeConfigError(
+            "local runtime config is not valid JSON"
+        ) from error
     if not isinstance(data, Mapping):
         raise LocalRuntimeConfigError("local runtime config must be an object")
     return local_runtime_config_from_mapping(data)
@@ -289,7 +317,9 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
     except (TypeError, ValueError) as error:
         if isinstance(error, LocalRuntimeConfigError):
             raise
-        raise LocalRuntimeConfigError("local runtime config has invalid values") from error
+        raise LocalRuntimeConfigError(
+            "local runtime config has invalid values"
+        ) from error
 
 
 def assemble_local_runtime(
@@ -303,46 +333,15 @@ def assemble_local_runtime(
 ) -> LocalAgentRuntime:
     """Assemble public model, routing, tool, agent, run, and session components."""
 
+    provider_assembly = assemble_local_provider(
+        config,
+        templates=templates,
+        environ=environ,
+        provider_options=provider_options,
+    )
     provider_config = config.provider
-    environment = os.environ if environ is None else environ
-    api_key = None
-    if provider_config.api_key_env is not None:
-        api_key = environment.get(provider_config.api_key_env)
-        if not api_key:
-            raise LocalRuntimeConfigError(
-                f"credential environment variable {provider_config.api_key_env!r} is missing"
-            )
-    provider_name = provider_config.name or provider_config.template
-    extra_options = dict(provider_options or {})
-    reserved_options = {
-        "name",
-        "default_model",
-        "timeout",
-        "api_key",
-        "base_url",
-        "discover_models",
-    }
-    conflict = reserved_options & set(extra_options)
-    if conflict:
-        raise LocalRuntimeConfigError(
-            "provider_options cannot override configured identity or credentials"
-        )
-    options: dict[str, Any] = {
-        "name": provider_name,
-        "default_model": provider_config.model,
-        "timeout": provider_config.timeout,
-        "api_key": api_key,
-    }
-    if provider_config.base_url is not None:
-        options["base_url"] = provider_config.base_url
-    if provider_config.template in _COMPATIBLE_TEMPLATES:
-        options["discover_models"] = False
-    options.update(extra_options)
-    registry = templates or builtin_provider_template_registry()
-    try:
-        provider = registry.build(provider_config.template, **options)
-    except (KeyError, TypeError, ValueError) as error:
-        raise LocalRuntimeConfigError("provider template assembly failed") from error
+    provider_name = provider_assembly.name
+    provider = provider_assembly.provider
 
     models = ModelRegistry()
     models.register(provider_name, provider)
@@ -400,6 +399,58 @@ def assemble_local_runtime(
     )
     sessions = SessionManager(JsonSessionStore(state / "sessions"))
     return LocalAgentRuntime(config, definition, loop, sessions, models, tools)
+
+
+def assemble_local_provider(
+    config: LocalRuntimeConfig,
+    *,
+    templates: ProviderTemplateRegistry | None = None,
+    environ: Mapping[str, str] | None = None,
+    provider_options: Mapping[str, Any] | None = None,
+) -> LocalProviderAssembly:
+    """Build only the configured provider without registration or network access."""
+
+    provider_config = config.provider
+    environment = os.environ if environ is None else environ
+    api_key = None
+    if provider_config.api_key_env is not None:
+        api_key = environment.get(provider_config.api_key_env)
+        if not api_key:
+            raise LocalRuntimeConfigError(
+                f"credential environment variable {provider_config.api_key_env!r} is missing"
+            )
+    provider_name = provider_config.name or provider_config.template
+    extra_options = dict(provider_options or {})
+    reserved_options = {
+        "name",
+        "default_model",
+        "timeout",
+        "api_key",
+        "base_url",
+        "discover_models",
+    }
+    conflict = reserved_options & set(extra_options)
+    if conflict:
+        raise LocalRuntimeConfigError(
+            "provider_options cannot override configured identity or credentials"
+        )
+    options: dict[str, Any] = {
+        "name": provider_name,
+        "default_model": provider_config.model,
+        "timeout": provider_config.timeout,
+        "api_key": api_key,
+    }
+    if provider_config.base_url is not None:
+        options["base_url"] = provider_config.base_url
+    if provider_config.template in _COMPATIBLE_TEMPLATES:
+        options["discover_models"] = False
+    options.update(extra_options)
+    registry = templates or builtin_provider_template_registry()
+    try:
+        provider = registry.build(provider_config.template, **options)
+    except (KeyError, TypeError, ValueError) as error:
+        raise LocalRuntimeConfigError("provider template assembly failed") from error
+    return LocalProviderAssembly(provider_name, provider)
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:

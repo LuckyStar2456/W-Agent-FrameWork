@@ -123,7 +123,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务，以及 CLI/TUI 无凭据 L1 探测入口为 `Implemented`；配置化主动 Provider 探测、OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务，以及 CLI/TUI 无凭据 L1 和配置化 Provider 探测入口为 `Implemented`/`Experimental`；OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 
@@ -182,7 +182,14 @@ assert execution.response is not None
 wagent probe https://example.com/v1
 ```
 
-配置化 CLI `safe` Provider/模型目录检查、需明确授权的 `active` 最小生成，以及 `capability` 主动验证器仍为 `Planned`。当前 Python API 的 L6/L7 只报告声明并标记未主动验证。
+配置化 Provider 探测使用同一严格配置：
+
+```text
+wagent provider-probe --config .wagent/config.json --mode safe
+wagent provider-probe --config .wagent/config.json --mode active --confirm-active-probe
+```
+
+`safe` 调用 Provider 的目录协议且不生成内容；某些兼容 Provider 使用静态目录，因此安全成功不一定证明远程链路可用。`active` 发送最多 8 Token 的最小请求，验证生成和流终止协议，可能计费且必须逐次确认。`capability` 当前在完成相同主动探测后只报告 L6/L7 声明，并明确标记没有厂商专用主动验证器。
 
 ## 9. 当前工具执行 API
 

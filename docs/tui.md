@@ -21,17 +21,18 @@ wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
+wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，并明确标记用量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，并明确标记用量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 执行不带凭据和请求体的 L1 探测；`provider-probe` 从严格配置装配 Provider，主动模式必须额外传入 `--confirm-active-probe`。
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
 
 ## TUI 技术
 

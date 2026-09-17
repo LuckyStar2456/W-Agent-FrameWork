@@ -12,7 +12,7 @@
 |---|---|
 | Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore` |
 | Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
-| 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_runtime` |
+| 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalProviderAssembly`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_provider`、`assemble_local_runtime` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -39,7 +39,7 @@ class BaseAgent:
 
 `BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint、Workflow 节点 Checkpoint，以及本地持久化 Session 生命周期/跨 Run 文本上下文已经实现；通用多模态与工具事件回放仍未接入。
 
-严格本地 JSON 配置可通过 `load_local_runtime_config()` 和 `assemble_local_runtime()` 装配内置 Provider 模板、单 Provider 路由、受限调用策略、所选 ToolBinding、ReAct Loop、RunStore 与 SessionStore。配置只接受 `api_key_env` 凭据引用，只能从宿主 Catalog 选择工具，不能自行导入、授权或批准。`LocalAgentRuntime.resume()` 与 `wagent run-resume` 可按精确 Call ID 恢复审批断点；CLI 导入开发者工具代码还要求独立的 `--confirm-tool-code`。详见[本地配置化 Runtime](./local-runtime.md)。
+严格本地 JSON 配置可通过 `load_local_runtime_config()` 和 `assemble_local_runtime()` 装配内置 Provider 模板、单 Provider 路由、受限调用策略、所选 ToolBinding、ReAct Loop、RunStore 与 SessionStore。`assemble_local_provider()` 只构建带异步关闭生命周期的 Provider，不注册也不执行 I/O，由应用自行选择探测或注册策略。配置只接受 `api_key_env` 凭据引用，只能从宿主 Catalog 选择工具，不能自行导入、授权或批准。`LocalAgentRuntime.resume()` 与 `wagent run-resume` 可按精确 Call ID 恢复审批断点；CLI 导入开发者工具代码还要求独立的 `--confirm-tool-code`。详见[本地配置化 Runtime](./local-runtime.md)。
 
 ## 2. 下一代导出策略
 
@@ -119,7 +119,7 @@ class RoutingPolicy(Protocol):
 - `ProbeMode.ACTIVE`：只有 `allow_active=True` 时才执行 L4/L5 最小生成与流协议检查。
 - `ProbeMode.CAPABILITY`：L6/L7 当前只报告 Provider 声明，明确标记 `SKIPPED`，不会伪装成主动验证。
 - `ProbeCache` 与 `PeriodicProbeService`：为手动和周期探测提供公共构件。
-- `ModelRegistrationProbeService` 与 `ProbeHealthBridge`：提供显式的注册安全探测和外部路由健康映射；直接 `ModelRegistry.register()` 不执行 I/O。无凭据 L1 CLI/TUI 入口已实现，配置化 Provider 主动探测仍为 `Planned`。
+- `ModelRegistrationProbeService` 与 `ProbeHealthBridge`：提供显式的注册安全探测和外部路由健康映射；直接 `ModelRegistry.register()` 不执行 I/O。无凭据 L1 与配置化 Provider 安全/主动 CLI/TUI 入口已实现；主动模式必须单次明确授权。
 
 ## 7. Agent 协议
 

@@ -113,6 +113,19 @@ async def test_provider_safe_probe_never_calls_generation():
 
 
 @pytest.mark.asyncio
+async def test_provider_probe_omits_unexpected_exception_messages():
+    class BrokenProvider(FakeProvider):
+        async def list_models(self):
+            raise RuntimeError("secret credential in exception")
+
+    result = await ModelProviderProbe().probe("broken", BrokenProvider())
+
+    assert result.successful is False
+    assert result.checks[0].message == "provider catalog raised RuntimeError"
+    assert "secret" not in result.checks[0].message
+
+
+@pytest.mark.asyncio
 async def test_active_probe_requires_explicit_opt_in_and_validates_stream():
     provider = FakeProvider()
     skipped = await ModelProviderProbe().probe("fake", provider, mode=ProbeMode.ACTIVE)

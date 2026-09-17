@@ -96,7 +96,7 @@ Vendor-specific request additions use `anthropic.body`, `gemini.body`, `ollama.b
 - API keys enter request headers only; they are absent from model descriptors, route decisions, and the template catalog.
 - Base URLs reject user information, query strings, fragments, and invalid ports. Users still decide whether to trust a private deployment URL.
 - Repository tests use fake transports and spend no remote quota. Real credentials and live compatibility are not validated in the repository suite.
-- Dedicated OpenAI Responses, vLLM differences, reasoning deltas, cross-stream recovery, and CLI/TUI configuration remain `Planned`. The separate `ModelExecutor` provides collecting and event-pass-through execution; `ModelRegistrationProbeService` provides optional register-and-safe-probe wiring.
+- Dedicated OpenAI Responses, vLLM differences, reasoning deltas, and cross-stream recovery remain `Planned`. Strict local configuration can already assemble built-in templates for CLI/TUI runs and probes. The separate `ModelExecutor` provides collecting and event-pass-through execution, while `ModelRegistrationProbeService` provides optional register-and-safe-probe wiring.
 - Vendor protocols change. Templates version with W-Agent; applications may pin, copy, or register their own versions.
 
 Protocol references: [Anthropic Messages](https://platform.claude.com/docs/en/api/overview), [Gemini API](https://ai.google.dev/api/generate-content), [Ollama Chat](https://docs.ollama.com/api/chat), [Qwen DashScope](https://docs.qwencloud.com/api-reference/chat/dashscope), [DeepSeek API](https://api-docs.deepseek.com/zh-cn/), [GLM quick start](https://zhipu-ef7018ed.mintlify.app/cn/guide/start/quick-start), and [Turbo AI Endpoint](https://docs.turbo-ai.com/features/endpoint/).

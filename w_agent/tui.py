@@ -30,12 +30,13 @@ from w_agent.compositions import (
     inspect_composition,
     manifest_to_dict,
 )
-from w_agent.models import EndpointProbe
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
+    assemble_local_provider,
     assemble_local_runtime,
     load_local_runtime_config,
 )
+from w_agent.models import EndpointProbe, ModelProviderProbe, ProbeMode
 from w_agent.sandbox import DockerSandboxProvider
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
 
@@ -52,7 +53,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #session-result, #run-result, #checkpoint-result { min-height: 8; }
+    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #checkpoint-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -76,6 +77,23 @@ class WAgentTui(App[None]):
                 )
                 yield Button("Run safe probe", id="probe-button", variant="primary")
                 yield Static("No probe run.", id="probe-result", classes="panel")
+                yield Label("Configured provider probe")
+                yield Input(value=".wagent/config.json", id="provider-probe-config")
+                yield Input(
+                    placeholder="Type ACTIVE to authorize minimal generation",
+                    id="provider-probe-confirm",
+                )
+                yield Button("Check provider catalog", id="provider-probe-safe")
+                yield Button(
+                    "Run active generation probe",
+                    id="provider-probe-active",
+                    variant="warning",
+                )
+                yield Static(
+                    "No configured provider probe run.",
+                    id="provider-probe-result",
+                    classes="panel",
+                )
             with TabPane("Profiles", id="profiles"):
                 yield Static(self._profile_text(), classes="panel")
             with TabPane("Plugins", id="plugins"):
@@ -122,7 +140,9 @@ class WAgentTui(App[None]):
                     id="run-confirm",
                 )
                 yield Button("Start configured run", id="run-button", variant="primary")
-                yield Static("No configured run started.", id="run-result", classes="panel")
+                yield Static(
+                    "No configured run started.", id="run-result", classes="panel"
+                )
             with TabPane("Checkpoints", id="checkpoints"):
                 yield Button("Refresh agent checkpoints", id="checkpoint-refresh")
                 yield Static(
@@ -131,10 +151,13 @@ class WAgentTui(App[None]):
                     classes="panel",
                 )
             with TabPane("Sandbox", id="sandbox"):
-                yield Static("Checking Docker/OCI…", id="sandbox-summary", classes="panel")
+                yield Static(
+                    "Checking Docker/OCI…", id="sandbox-summary", classes="panel"
+                )
             with TabPane("Evaluation", id="evaluation"):
                 yield Static(
-                    "Local benchmark suites and record/replay remain planned.",
+                    "Evaluation API/CLI and model record/replay are available. "
+                    "TUI evaluation execution remains planned.",
                     classes="panel",
                 )
         yield Footer()
@@ -165,6 +188,10 @@ class WAgentTui(App[None]):
             self._inspect_composition()
         elif event.button.id == "probe-button":
             await self._probe_endpoint()
+        elif event.button.id == "provider-probe-safe":
+            await self._probe_configured_provider(active=False)
+        elif event.button.id == "provider-probe-active":
+            await self._probe_configured_provider(active=True)
         elif event.button.id == "session-create":
             await self._create_session()
         elif event.button.id == "session-refresh":
@@ -208,6 +235,45 @@ class WAgentTui(App[None]):
         result = await EndpointProbe().probe(endpoint)
         lines = [
             f"Target: {result.target}",
+            f"Successful: {result.successful}",
+        ]
+        lines.extend(
+            f"L{int(check.level)} {check.name}: {check.status.value} — {check.message}"
+            for check in result.checks
+        )
+        target.update("\n".join(lines))
+
+    async def _probe_configured_provider(self, *, active: bool) -> None:
+        target = self.query_one("#provider-probe-result", Static)
+        confirmation = self.query_one("#provider-probe-confirm", Input)
+        if active and confirmation.value.strip() != "ACTIVE":
+            target.update("Rejected: type ACTIVE to authorize minimal generation")
+            return
+        confirmation.value = ""
+        source = Path(self.query_one("#provider-probe-config", Input).value)
+        if not source.is_absolute():
+            source = self.workspace / source
+        target.update("Probing configured provider…")
+        try:
+            config = load_local_runtime_config(source)
+            assembly = assemble_local_provider(config)
+            async with assembly:
+                result = await ModelProviderProbe().probe(
+                    assembly.name,
+                    assembly.provider,
+                    mode=ProbeMode.ACTIVE if active else ProbeMode.SAFE,
+                    allow_active=active,
+                    model=config.provider.model,
+                )
+        except (LocalRuntimeConfigError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Probe failed: {type(error).__name__}")
+            return
+        lines = [
+            f"Provider: {result.target}",
+            f"Mode: {result.mode.value}",
             f"Successful: {result.successful}",
         ]
         lines.extend(
@@ -329,6 +395,7 @@ class WAgentTui(App[None]):
             f"Suggested tools: {', '.join(item.recommended_tools)}"
             for item in templates
         )
+
 
 def run_tui(workspace: str | Path = ".") -> None:
     WAgentTui(workspace).run()

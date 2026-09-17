@@ -46,10 +46,17 @@ from w_agent.evaluation import (
 )
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
+    assemble_local_provider,
     assemble_local_runtime,
     load_local_runtime_config,
 )
-from w_agent.models import AttemptRecord, EndpointProbe
+from w_agent.models import (
+    AttemptRecord,
+    EndpointProbe,
+    ModelProviderProbe,
+    ProbeMode,
+    ProbeResult,
+)
 from w_agent.sessions import (
     JsonSessionStore,
     SessionError,
@@ -183,22 +190,41 @@ def probe(
     """Run the safe L1 probe without credentials or request bodies."""
 
     result = asyncio.run(EndpointProbe(timeout=timeout).probe(endpoint))
-    payload = {
-        "target": result.target,
-        "successful": result.successful,
-        "latency_ms": result.latency_ms,
-        "checks": [
-            {
-                "level": int(check.level),
-                "name": check.name,
-                "status": check.status.value,
-                "message": check.message,
-                "latency_ms": check.latency_ms,
-            }
-            for check in result.checks
-        ],
-    }
+    payload = _probe_result_payload(result)
     _emit(payload, json_output)
+    if not result.successful:
+        raise typer.Exit(2)
+
+
+@app.command("provider-probe")
+def provider_probe_command(
+    config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    mode: ProbeMode = typer.Option(ProbeMode.SAFE, "--mode", case_sensitive=False),
+    confirm_active_probe: bool = typer.Option(
+        False,
+        "--confirm-active-probe",
+        help="Authorize a potentially billable minimal generation request.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Probe the provider assembled from strict local configuration."""
+
+    if mode is not ProbeMode.SAFE and not confirm_active_probe:
+        _fail("active probe not authorized; pass --confirm-active-probe")
+    try:
+        config_value = load_local_runtime_config(config)
+        result = asyncio.run(
+            _probe_configured_provider(
+                config_value,
+                mode=mode,
+                allow_active=confirm_active_probe,
+            )
+        )
+    except (LocalRuntimeConfigError, ValueError) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"configured provider probe failed: {type(error).__name__}")
+    _emit(_probe_result_payload(result), json_output)
     if not result.successful:
         raise typer.Exit(2)
 
@@ -769,6 +795,23 @@ async def _run_local_evaluation(
     return await LocalEvaluationRunner().run(cases, target, scorers=scorers)
 
 
+async def _probe_configured_provider(
+    config: Any,
+    *,
+    mode: ProbeMode,
+    allow_active: bool,
+) -> ProbeResult:
+    assembly = assemble_local_provider(config)
+    async with assembly:
+        return await ModelProviderProbe().probe(
+            assembly.name,
+            assembly.provider,
+            mode=mode,
+            allow_active=allow_active,
+            model=config.provider.model,
+        )
+
+
 def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
         _emit(payload, True)
@@ -799,6 +842,32 @@ def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
             f"{case['tool_successes']}/{case['tool_failures']}",
         )
     console.print(table)
+
+
+def _probe_result_payload(result: ProbeResult) -> dict[str, Any]:
+    return {
+        "target": result.target,
+        "mode": result.mode.value,
+        "successful": result.successful,
+        "latency_ms": result.latency_ms,
+        "routes": [
+            {"provider": provider, "model": model} for provider, model in result.routes
+        ],
+        "checks": [
+            {
+                "level": int(check.level),
+                "name": check.name,
+                "status": check.status.value,
+                "message": check.message,
+                "latency_ms": check.latency_ms,
+                "failure_kind": (
+                    check.failure_kind.value if check.failure_kind is not None else None
+                ),
+                "capabilities": sorted(item.value for item in check.capabilities),
+            }
+            for check in result.checks
+        ],
+    }
 
 
 def _set_session_archived(

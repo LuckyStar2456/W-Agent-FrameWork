@@ -273,7 +273,7 @@ class ModelProviderProbe:
                         ProbeLevel.L2_AUTHENTICATION,
                         "provider-access",
                         ProbeStatus.FAIL,
-                        str(exc),
+                        f"provider catalog raised {type(exc).__name__}",
                         _elapsed_ms(catalog_started),
                         ModelFailureKind.PROVIDER,
                     ),
@@ -368,8 +368,7 @@ class ModelProviderProbe:
             completed_at=completed,
             expires_at=completed + self.ttl,
             routes=tuple(
-                (descriptor.provider, descriptor.model)
-                for descriptor in descriptors
+                (descriptor.provider, descriptor.model) for descriptor in descriptors
             ),
         )
 
@@ -406,7 +405,7 @@ class ModelProviderProbe:
                     ProbeLevel.L4_GENERATION,
                     "active-generation",
                     ProbeStatus.FAIL,
-                    str(exc),
+                    f"active generation raised {type(exc).__name__}",
                     _elapsed_ms(started),
                     ModelFailureKind.PROTOCOL,
                 ),

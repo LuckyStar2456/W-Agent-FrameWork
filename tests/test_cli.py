@@ -4,7 +4,16 @@ from types import SimpleNamespace
 from typer.testing import CliRunner
 
 import w_agent.cli as cli_module
-from w_agent import MessageRole, ModelMessage, RunResult, StopReason, TokenUsage
+from w_agent import (
+    LocalProviderAssembly,
+    MessageRole,
+    ModelCapability,
+    ModelDescriptor,
+    ModelMessage,
+    RunResult,
+    StopReason,
+    TokenUsage,
+)
 from w_agent.cli import app
 
 runner = CliRunner()
@@ -170,6 +179,66 @@ def test_cli_run_reports_invalid_config_without_model_call(tmp_path):
 
     assert result.exit_code == 2
     assert "provider must be an object" in result.stderr
+
+
+def test_cli_active_provider_probe_requires_separate_authorization():
+    result = runner.invoke(app, ["provider-probe", "--mode", "active"])
+
+    assert result.exit_code == 2
+    assert "--confirm-active-probe" in result.stderr
+
+
+def test_cli_safe_provider_probe_uses_configured_provider_without_generation(
+    monkeypatch,
+):
+    class Provider:
+        def __init__(self):
+            self.stream_calls = 0
+            self.closed = False
+
+        async def list_models(self):
+            return (
+                ModelDescriptor(
+                    "configured",
+                    "chat",
+                    frozenset(
+                        {
+                            ModelCapability.TEXT_INPUT,
+                            ModelCapability.TEXT_OUTPUT,
+                        }
+                    ),
+                ),
+            )
+
+        async def resolve(self, model):
+            return (await self.list_models())[0]
+
+        async def stream(self, request, *, cancellation=None):
+            self.stream_calls += 1
+            if False:
+                yield request
+
+        async def aclose(self):
+            self.closed = True
+
+    provider = Provider()
+    config = SimpleNamespace(provider=SimpleNamespace(model="chat"))
+    monkeypatch.setattr(cli_module, "load_local_runtime_config", lambda path: config)
+    monkeypatch.setattr(
+        cli_module,
+        "assemble_local_provider",
+        lambda value: LocalProviderAssembly("configured", provider),
+    )
+
+    result = runner.invoke(app, ["provider-probe", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "safe"
+    assert payload["successful"] is True
+    assert payload["routes"] == [{"model": "chat", "provider": "configured"}]
+    assert provider.stream_calls == 0
+    assert provider.closed is True
 
 
 def test_cli_run_requires_separate_authority_for_python_tool_entries():

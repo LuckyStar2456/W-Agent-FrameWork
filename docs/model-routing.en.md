@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, collecting/event-pass-through executors, and an explicit register-and-safe-probe service are `Implemented` in `2.0.0a1`; dedicated OpenAI Responses and vLLM handling, cross-stream recovery, and CLI/TUI entry points are `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` in `2.0.0a1`; dedicated OpenAI Responses/vLLM handling and cross-stream recovery are `Planned`.
 
 ## Implemented boundary
 
@@ -187,7 +187,7 @@ Callers may set `replay_safe=False` to force one attempt on the selected route e
 
 `ProbeResult` contains the mode, individual statuses, timestamps, latency, failure category, probe version, expiry, and discovered provider/model routes. `ProbeCache` never returns expired results. `PeriodicProbeService` can run any probe callback periodically, but it only emits results and never edits user configuration.
 
-The manual Python API and generic periodic scheduler are implemented. Compositions that need register-and-safe-probe use `ModelRegistrationProbeService.register()`: it always runs `ProbeMode.SAFE`, never calls generation, caches the result, and uses `ProbeHealthBridge` to update only routes found by that probe; expired observations map to `UNKNOWN`. Cancellation or an unexpected exception rolls back the new registration. Direct `ModelRegistry.register()` remains pure and performs no I/O. The `wagent probe` command and TUI surfaces remain `Planned`.
+The manual Python API and generic periodic scheduler are implemented. Compositions that need register-and-safe-probe use `ModelRegistrationProbeService.register()`: it always runs `ProbeMode.SAFE`, never calls generation, caches the result, and uses `ProbeHealthBridge` to update only routes found by that probe; expired observations map to `UNKNOWN`. Cancellation or an unexpected exception rolls back the new registration. Direct `ModelRegistry.register()` remains pure and performs no I/O. `wagent probe` and the TUI expose credential-free L1 checks. `wagent provider-probe` and the TUI Models screen assemble a provider from strict configuration for safe catalog checks or per-run-authorized L4/L5 active checks. Vendor-specific active L6/L7 verifiers remain `Planned`.
 
 ## Errors and safety boundary
 
@@ -198,6 +198,5 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 ## Remaining Phase 2B plan
 
 - Dedicated OpenAI Responses and vLLM differences, plus reasoning deltas and more vendor-specific features in existing templates.
-- CLI/TUI probe entry points.
 - Cross-stream recovery and pluggable feedback bridges to rate limiters.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

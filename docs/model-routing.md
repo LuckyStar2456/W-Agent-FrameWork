@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、首批厂商模板、收集式/逐事件透传执行器和显式注册安全探测服务为 `Implemented`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配、跨流断点恢复和 CLI/TUI 入口为 `Planned`。
+状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配与跨流断点恢复为 `Planned`。
 
 ## 已实现边界
 
@@ -187,7 +187,7 @@ final_response = execution.response
 
 `ProbeResult` 包含模式、分项状态、时间、延迟、失败类别、探测器版本、过期时间和实际发现的 Provider/模型路由。`ProbeCache` 不返回过期结果。`PeriodicProbeService` 可以周期运行任意探测回调，但只产生结果，不修改用户配置。
 
-手动 Python API 和通用周期调度已经实现。需要“注册即安全探测”的装配使用 `ModelRegistrationProbeService.register()`：它始终运行 `ProbeMode.SAFE`、不会调用生成接口，把结果写入缓存，并通过 `ProbeHealthBridge` 只更新本次发现的路由；过期结果映射为 `UNKNOWN`。取消或未处理异常会撤销刚完成的注册。直接调用 `ModelRegistry.register()` 仍是无 I/O 的纯注册操作。`wagent probe`/TUI 页面仍为 `Planned`。
+手动 Python API 和通用周期调度已经实现。需要“注册即安全探测”的装配使用 `ModelRegistrationProbeService.register()`：它始终运行 `ProbeMode.SAFE`、不会调用生成接口，把结果写入缓存，并通过 `ProbeHealthBridge` 只更新本次发现的路由；过期结果映射为 `UNKNOWN`。取消或未处理异常会撤销刚完成的注册。直接调用 `ModelRegistry.register()` 仍是无 I/O 的纯注册操作。`wagent probe` 与 TUI 提供无凭据 L1 检查；`wagent provider-probe` 与 TUI Models 页从严格配置装配 Provider，提供安全目录检查和需单次明确授权的 L4/L5 主动检查。L6/L7 厂商专用主动验证器仍为 `Planned`。
 
 ## 错误与安全边界
 
@@ -198,6 +198,5 @@ final_response = execution.response
 ## Phase 2B 后续计划
 
 - 专用 OpenAI Responses 与 vLLM 差异适配器；扩展现有模板的 Reasoning 增量和更多厂商特性。
-- CLI/TUI 探测入口。
 - 跨流断点恢复，以及与限流器的可插拔反馈桥接。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

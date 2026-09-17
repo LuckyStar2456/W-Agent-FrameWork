@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental` in `2.0.0a1`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
+Status: `Experimental` in `2.0.0a1`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
 
 ## Configuration
 
@@ -45,6 +45,16 @@ Example `.wagent/config.json`:
 `tools.enabled` only selects names from the `tool_bindings` catalog explicitly supplied by the host. JSON imports no code, registers no unknown tool, and grants no permission or approval. `agent.max_tool_calls` must be positive when tools are enabled. Catalog tools that are not selected never enter this run's `ToolRegistry` or model context.
 
 ## CLI
+
+To inspect the configured provider first, use:
+
+```powershell
+wagent provider-probe --config .wagent/config.json --mode safe --json
+wagent provider-probe --config .wagent/config.json --mode active `
+  --confirm-active-probe --json
+```
+
+`safe` generates no content, but a provider catalog may be either a remote request or a static declaration. Only `active` validates actual generation and stream termination with at most 8 output tokens, so it requires separate explicit authorization.
 
 ```powershell
 $env:DEEPSEEK_API_KEY = "..."
@@ -99,6 +109,6 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 
 ## Open assembly boundary
 
-`load_local_runtime_config()` and `assemble_local_runtime()` are convenience layers, not a second closed runtime. The returned `LocalAgentRuntime` exposes its definition, loop, ModelRegistry, ToolRegistry, and SessionManager. Applications can replace the template registry, provider transport, routing, tools, and stores.
+`load_local_runtime_config()`, `assemble_local_provider()`, and `assemble_local_runtime()` are convenience layers, not a second closed runtime. Provider-only assembly returns `LocalProviderAssembly`; it resolves credential references and constructs the object without registration or network access, after which the application chooses any probe or registration policy. The full runtime exposes its definition, loop, ModelRegistry, ToolRegistry, and SessionManager. Applications can replace the template registry, provider transport, routing, tools, and stores.
 
 Applications pass `{name: ToolBinding}` as `tool_bindings`; configuration selects only a subset. `LocalAgentRuntime.run()` accepts authority and optional approved IDs for that run, while `resume()` accepts session/run IDs, authority, and a non-empty exact approval set. Configuration, sessions, checkpoints, and composition codes cannot create permission, approval, or local-execution authority.

@@ -2,7 +2,7 @@
 
 English | [简体中文](./project-sharing.md)
 
-Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`; dependency installation, plugin-load confirmation, and CLI/TUI screens remain `Planned`.
+Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`, while CLI and TUI offline preview are `Experimental`. Dependency installation and plugin-load confirmation screens remain `Planned`.
 
 Current public APIs are `CompositionManifest`, `PluginRequirement`, `encode_composition()`, `decode_composition()`, `inspect_composition()`, and `CompositionStore`. They operate on data only and perform no network access, package installation, plugin import, or execution.
 

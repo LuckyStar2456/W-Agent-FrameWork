@@ -2,7 +2,7 @@
 
 [English](./local-runtime.en.md) | 简体中文
 
-状态：`Experimental`（`2.0.0a1`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、显式工具选择、持久化 Run/Session、Python API/CLI 审批恢复、Agent Checkpoint 脱敏列表，以及 CLI/TUI 文本运行入口已实现。TUI 工具加载/批准执行页面、Workflow Checkpoint 汇总与实时 RunEvent 查看仍为 `Planned`。
+状态：`Experimental`（`2.0.0a1`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI 审批恢复、Agent Checkpoint 脱敏列表，以及 CLI/TUI 文本运行入口已实现。TUI 工具加载/批准执行页面、Workflow Checkpoint 汇总与实时 RunEvent 查看仍为 `Planned`。
 
 ## 配置
 
@@ -45,6 +45,16 @@
 `tools.enabled` 只从宿主明确提供的 `tool_bindings` Catalog 中选择名称。JSON 不导入代码、不注册未知工具，也不授予权限或审批；启用工具时 `agent.max_tool_calls` 必须大于零。未选择的 Catalog 工具不会进入本次 `ToolRegistry` 或模型上下文。
 
 ## CLI
+
+先检查配置化 Provider 时可使用：
+
+```powershell
+wagent provider-probe --config .wagent/config.json --mode safe --json
+wagent provider-probe --config .wagent/config.json --mode active `
+  --confirm-active-probe --json
+```
+
+`safe` 不生成内容，但具体 Provider 的目录实现可能是远程请求或静态声明；`active` 才以最多 8 输出 Token 验证实际生成和流终止协议，因此需要独立明确授权。
 
 ```powershell
 $env:DEEPSEEK_API_KEY = "..."
@@ -99,6 +109,6 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 
 ## 开放装配边界
 
-`load_local_runtime_config()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。返回的 `LocalAgentRuntime` 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
+`load_local_runtime_config()`、`assemble_local_provider()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。Provider 单独装配返回 `LocalProviderAssembly`，只解析凭据引用并构建对象，不注册、不访问网络；应用随后可选择任意探测或注册策略。完整 Runtime 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
 
 应用将 `{name: ToolBinding}` 作为 `tool_bindings` 传给装配器；配置只能选择其中的子集。`LocalAgentRuntime.run()` 接收本次运行的权限和可选批准 ID，`resume()` 接收 Session/Run ID、权限与非空精确批准集合。配置、Session、Checkpoint 和工程装配编码都不能生成权限、批准或本地执行授权。
