@@ -201,3 +201,13 @@ def test_cli_run_resume_requires_model_and_exact_tool_call_authority():
     assert "--confirm-model-call" in missing_model.stderr
     assert missing_call.exit_code == 2
     assert "--approve-tool-call" in missing_call.stderr
+
+
+def test_cli_checkpoint_list_is_machine_readable_and_prompt_free(tmp_path):
+    result = runner.invoke(
+        app,
+        ["checkpoint", "list", "--state-root", str(tmp_path), "--json"],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == []

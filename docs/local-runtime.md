@@ -2,7 +2,7 @@
 
 [English](./local-runtime.en.md) | 简体中文
 
-状态：`Experimental`（`2.0.0a1`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、显式工具选择、持久化 Run/Session、Python API/CLI 审批恢复，以及 CLI/TUI 文本运行入口已实现。TUI 工具加载/审批页面、Checkpoint 浏览与实时 RunEvent 查看仍为 `Planned`。
+状态：`Experimental`（`2.0.0a1`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、显式工具选择、持久化 Run/Session、Python API/CLI 审批恢复、Agent Checkpoint 脱敏列表，以及 CLI/TUI 文本运行入口已实现。TUI 工具加载/批准执行页面、Workflow Checkpoint 汇总与实时 RunEvent 查看仍为 `Planned`。
 
 ## 配置
 
@@ -83,9 +83,11 @@ wagent run-resume <session-id> <run-id> `
 
 每次恢复都会重新要求模型调用授权、工具代码授权与精确 Call ID。工具入口可能在两次进程间发生变化，生产用法应由应用固定包版本并验证来源。
 
+不知道 Run/Call ID 时可先执行 `wagent checkpoint list --json`，也可用 `--session` 过滤。列表只含脱敏的 Agent、状态、工具名、Call ID、参数名与 Token 计量，不读取 Prompt、参数值、输出或凭据。
+
 ## TUI
 
-Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用；成功后显示输出和 Token 计量，并把 Session ID 留在输入框中用于下一轮。界面不会把确认保存为长期授权。TUI 当前不导入自有 Python 工具，也没有审批恢复表单；带 `tools.enabled` 的配置会安全失败，需使用 Python API/CLI。
+Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用；成功后显示输出和 Token 计量，并把 Session ID 留在输入框中用于下一轮。界面不会把确认保存为长期授权。Checkpoint 页面可刷新 Agent 审批摘要。TUI 当前不导入自有 Python 工具，也没有批准执行表单；带 `tools.enabled` 的配置会安全失败，需使用 Python API/CLI。
 
 ## 预算语义
 

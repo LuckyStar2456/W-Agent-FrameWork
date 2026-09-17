@@ -499,11 +499,19 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
         AgentDefinition("writer"),
         _context(session_id="session-1"),
     )
+    summaries = await first_store.list_checkpoints()
 
     assert initial.stop_reason == StopReason.NEEDS_APPROVAL
     assert initial.checkpoint_id == "run-1"
     assert len(first_provider.requests) == 1
     assert saved == []
+    assert len(summaries) == 1
+    assert summaries[0].run_id == "run-1"
+    assert summaries[0].session_id == "session-1"
+    assert summaries[0].pending_call_id == "write-1"
+    assert summaries[0].pending_tool_name == "save"
+    assert summaries[0].pending_argument_keys == ("text",)
+    assert "value" not in repr(summaries[0])
 
     second_store = JsonlRunStore(tmp_path)
     second_loop, second_provider = _loop(
@@ -541,6 +549,7 @@ async def test_react_approval_resumes_from_jsonl_without_repeating_model(tmp_pat
     assert resumed.attempts[0].usage == TokenUsage(10, 2)
     assert resumed.attempts[1].usage == TokenUsage(12, 3)
     assert await second_store.load_checkpoint("run-1") is None
+    assert await second_store.list_checkpoints() == ()
     assert (tmp_path / "runs" / "run-1" / "events.jsonl").is_file()
 
 

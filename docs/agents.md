@@ -67,7 +67,7 @@ definition = AgentDefinition(
 
 `stream()` 返回单次消费的 `ReactAgentExecution`，依次输出 `RUN_STARTED`、模型阶段、工具阶段和 `RUN_COMPLETED` 事件；结束后从 `execution.result` 读取最终结果。`run()` 是收集这些事件的便利方法。事件在向调用者暴露前先写入 `RunStore`。
 
-`InMemoryRunStore` 适用于测试和短期本地运行；`JsonlRunStore` 对每个 Run 使用追加式 `events.jsonl` 和原子替换的 `checkpoint.json`，在新进程/新 Loop 实例中可重新读取。事件序号必须连续，未知 Schema 版本或损坏日志会失败关闭。
+`InMemoryRunStore` 适用于测试和短期本地运行；`JsonlRunStore` 对每个 Run 使用追加式 `events.jsonl` 和原子替换的 `checkpoint.json`，在新进程/新 Loop 实例中可重新读取。`list_checkpoints()` 返回 `RunCheckpointSummary`，只含恢复定位、参数名和计量，不含 Prompt、参数值、输出或凭据。事件序号必须连续，未知 Schema 版本或损坏日志会失败关闭。
 
 Run 事件包含重建模型上下文所需的模型文本、工具参数和结果阶段信息，因此调用者必须把它们视为可能含敏感数据的本地运行内容。工具审计是另一条记录，只保存参数名等最小元数据。当前 Store 不负责加密，保存目录的访问控制由本地应用负责。
 

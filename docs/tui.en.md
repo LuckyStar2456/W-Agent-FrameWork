@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, and CLI tool selection/authority/approval resume are `Experimental` in `2.0.0a1`; TUI tool approval, checkpoint browsing, general plugin operations, and evaluation remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, and CLI tool selection/authority/approval resume are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, general plugin operations, and evaluation remain `Planned`.
 
 ## Principles
 
@@ -20,6 +20,7 @@ wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent checkpoint list [--session <id>]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent tui
@@ -29,7 +30,7 @@ These commands are implemented. The CLI prints human-readable text by default; t
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `run-resume` requires known session/run IDs and exact `--approve-tool-call` values. `config validate`, checkpoint listing, general plugin operations, and composition-install confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
 
 ## TUI technology
 
@@ -65,7 +66,7 @@ Creates, lists, archives, and unarchives local sessions through the same `JsonSe
 
 ### Checkpoints
 
-Lists resumable workflows with creation time, definition version, plugin snapshot, and last completed node. Incompatible versions block recovery with an explanation.
+The current screen refreshes prompt-free local agent approval checkpoints with run/session, status, tool name, call ID, argument names, and tokens, but no prompts, argument values, or output. Unified workflow-checkpoint listing, version comparison, and guided recovery remain `Planned`.
 
 ### Sandbox
 

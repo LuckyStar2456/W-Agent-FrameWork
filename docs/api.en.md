@@ -10,7 +10,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 
 | Group | API |
 |---|---|
-| Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
+| Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `RunCheckpointSummary`, `JsonlRunStore` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
 | Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
@@ -135,7 +135,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `TokenBudget` adds cumulative run input/output/total limits; `TOKEN_USAGE`, `RunResult.usage`, `RunResult.attempts`, and `usage_complete` expose metering, and checkpoints preserve totals plus the attempt ledger through approval resume. `SessionManager` plus memory/JSON stores now provide local lifecycle, cross-run text context, and approval-resume coordination. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `RunStore.list_checkpoints()` exposes `RunCheckpointSummary` without prompts, argument values, or outputs. `TokenBudget` adds cumulative run input/output/total limits; `TOKEN_USAGE`, `RunResult.usage`, `RunResult.attempts`, and `usage_complete` expose metering, and checkpoints preserve totals plus the attempt ledger through approval resume. `SessionManager` plus memory/JSON stores now provide local lifecycle, cross-run text context, and approval-resume coordination. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
 
 ## 8. Workflow protocol
 

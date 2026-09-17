@@ -34,6 +34,7 @@ from .types import (
     AgentDefinition,
     CheckpointStatus,
     RunCheckpoint,
+    RunCheckpointSummary,
     RunEvent,
     RunEventType,
     TokenBudget,
@@ -56,6 +57,8 @@ class RunStore(Protocol):
     async def save_checkpoint(self, checkpoint: RunCheckpoint) -> None: ...
 
     async def load_checkpoint(self, run_id: str) -> RunCheckpoint | None: ...
+
+    async def list_checkpoints(self) -> tuple[RunCheckpointSummary, ...]: ...
 
     async def claim_checkpoint(self, run_id: str) -> RunCheckpoint: ...
 
@@ -90,6 +93,16 @@ class InMemoryRunStore:
     async def load_checkpoint(self, run_id: str) -> RunCheckpoint | None:
         async with self._lock:
             return self._checkpoints.get(run_id)
+
+    async def list_checkpoints(self) -> tuple[RunCheckpointSummary, ...]:
+        async with self._lock:
+            return tuple(
+                summarize_checkpoint(checkpoint)
+                for checkpoint in sorted(
+                    self._checkpoints.values(),
+                    key=lambda item: item.run_id,
+                )
+            )
 
     async def claim_checkpoint(self, run_id: str) -> RunCheckpoint:
         async with self._lock:
@@ -132,6 +145,9 @@ class JsonlRunStore:
 
     async def load_checkpoint(self, run_id: str) -> RunCheckpoint | None:
         return await asyncio.to_thread(self._load_checkpoint_sync, run_id)
+
+    async def list_checkpoints(self) -> tuple[RunCheckpointSummary, ...]:
+        return await asyncio.to_thread(self._list_checkpoints_sync)
 
     async def claim_checkpoint(self, run_id: str) -> RunCheckpoint:
         return await asyncio.to_thread(self._claim_checkpoint_sync, run_id)
@@ -194,7 +210,31 @@ class JsonlRunStore:
             path = self._run_dir(run_id) / "checkpoint.json"
             if not path.exists():
                 return None
-            return _checkpoint_from_data(json.loads(path.read_text(encoding="utf-8")))
+            try:
+                return _checkpoint_from_data(
+                    json.loads(path.read_text(encoding="utf-8"))
+                )
+            except RunStoreError:
+                raise
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise RunStoreError(
+                    f"run {run_id!r} has a corrupt approval checkpoint"
+                ) from exc
+
+    def _list_checkpoints_sync(self) -> tuple[RunCheckpointSummary, ...]:
+        with self._lock:
+            summaries: list[RunCheckpointSummary] = []
+            for child in sorted(self.runs_root.iterdir(), key=lambda item: item.name):
+                if (
+                    not child.is_dir()
+                    or not re.fullmatch(r"[A-Za-z0-9_.-]+", child.name)
+                    or not (child / "checkpoint.json").is_file()
+                ):
+                    continue
+                checkpoint = self._load_checkpoint_sync(child.name)
+                if checkpoint is not None:
+                    summaries.append(summarize_checkpoint(checkpoint))
+            return tuple(summaries)
 
     def _claim_checkpoint_sync(self, run_id: str) -> RunCheckpoint:
         with self._lock:
@@ -234,6 +274,29 @@ def _write_json_atomic(path: Path, data: Mapping[str, Any]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+def summarize_checkpoint(checkpoint: RunCheckpoint) -> RunCheckpointSummary:
+    """Project a checkpoint without prompts, arguments, outputs, or credentials."""
+
+    pending = checkpoint.pending_tool_call
+    return RunCheckpointSummary(
+        run_id=checkpoint.run_id,
+        session_id=checkpoint.session_id,
+        status=checkpoint.status,
+        agent_name=checkpoint.definition.name,
+        pending_call_id=pending.id if pending is not None else None,
+        pending_tool_name=pending.name if pending is not None else None,
+        pending_argument_keys=(
+            tuple(sorted(pending.arguments)) if pending is not None else ()
+        ),
+        remaining_tool_calls=len(checkpoint.remaining_tool_calls),
+        steps=checkpoint.steps,
+        tool_calls=checkpoint.tool_calls,
+        usage=checkpoint.usage,
+        model_calls=checkpoint.model_calls,
+        reported_usage_calls=checkpoint.reported_usage_calls,
+    )
 
 
 def _event_to_data(event: RunEvent) -> dict[str, Any]:

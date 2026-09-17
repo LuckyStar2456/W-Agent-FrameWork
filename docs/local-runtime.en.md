@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental` in `2.0.0a1`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval screens, checkpoint browsing, and live RunEvent inspection remain `Planned`.
+Status: `Experimental` in `2.0.0a1`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
 
 ## Configuration
 
@@ -83,9 +83,11 @@ wagent run-resume <session-id> <run-id> `
 
 Every resume re-requests model-call authority, tool-code authority, and exact call IDs. Tool entries can change between processes; production hosts should pin package versions and verify their source.
 
+If the run or call ID is unknown, run `wagent checkpoint list --json`; `--session` filters the result. The prompt-free list includes agent, status, tool name, call ID, argument names, and token usage, but never prompts, argument values, outputs, or credentials.
+
 ## TUI
 
-The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output and token usage and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The TUI currently neither imports developer Python tools nor exposes approval resume; a configuration with `tools.enabled` fails closed and should be run through the Python API or CLI.
+The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output and token usage and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The Checkpoints screen can refresh prompt-free agent approval summaries. The TUI currently neither imports developer Python tools nor exposes approval execution; a configuration with `tools.enabled` fails closed and should be run through the Python API or CLI.
 
 ## Budget semantics
 

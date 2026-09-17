@@ -10,7 +10,7 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
+| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore` |
 | Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
 | 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_runtime` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
@@ -135,7 +135,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage`、`RunResult.attempts` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值与尝试账本。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`RunStore.list_checkpoints()` 提供不含 Prompt/参数值/输出的 `RunCheckpointSummary`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage`、`RunResult.attempts` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值与尝试账本。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
 
 ## 8. Workflow 协议
 

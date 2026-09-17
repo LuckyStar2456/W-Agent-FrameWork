@@ -141,7 +141,7 @@ wagent session create|list|show|archive|unarchive
 wagent run "hello" --confirm-model-call --json
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, and CLI catalog tool selection, separate code-load confirmation, authority grants, and exact-call-ID approval resume. TUI tool approval, general plugin operations, checkpoint browsing, live event inspection, and evaluation remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, prompt-free agent-checkpoint listing, and CLI catalog tool selection, separate code-load confirmation, authority grants, and exact-call-ID approval resume. TUI tool-approval execution, general plugin operations, workflow-checkpoint aggregation, live event inspection, and evaluation remain `Planned`.
 
 ## Portable project compositions
 

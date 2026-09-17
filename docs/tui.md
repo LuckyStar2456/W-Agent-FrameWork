@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口，以及 CLI 工具选择/权限/审批恢复为 `Experimental`（`2.0.0a1`）；TUI 工具审批、Checkpoint 浏览、通用插件操作与评测仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总、通用插件操作与评测仍为 `Planned`。
 
 ## 原则
 
@@ -20,6 +20,7 @@ wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
+wagent checkpoint list [--session <id>]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
 wagent tui
@@ -29,7 +30,7 @@ wagent tui
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`run-resume` 要求已知 Session/Run ID 和精确 `--approve-tool-call`。`config validate`、Checkpoint 列表、通用插件操作和装配安装确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
 
 ## TUI 技术
 
@@ -65,7 +66,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Checkpoints
 
-列出可恢复 Workflow，显示创建时间、定义版本、插件快照和最后完成节点。版本不兼容时阻止恢复并说明原因。
+当前可刷新本地 Agent 审批 Checkpoint 的脱敏摘要，显示 Run/Session、状态、工具名、Call ID、参数名和 Token，不显示 Prompt、参数值或输出。Workflow Checkpoint 的统一列表、版本比较与引导恢复仍为 `Planned`。
 
 ### Sandbox
 

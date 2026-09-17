@@ -15,6 +15,9 @@ async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path)
     async with app.run_test(size=(140, 50)) as pilot:
         assert "Workspace:" in str(app.query_one("#home-summary").content)
         assert len(app.query("TabPane")) == 10
+        assert "No agent checkpoints" in str(
+            app.query_one("#checkpoint-result").content
+        )
 
         app.query_one(TabbedContent).active = "composition"
         await pilot.pause()

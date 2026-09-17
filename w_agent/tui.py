@@ -18,7 +18,12 @@ from textual.widgets import (
 )
 
 from w_agent import __version__
-from w_agent.agents import CODING_AGENT_TEMPLATE, CUSTOMER_SUPPORT_AGENT_TEMPLATE
+from w_agent.agents import (
+    CODING_AGENT_TEMPLATE,
+    CUSTOMER_SUPPORT_AGENT_TEMPLATE,
+    JsonlRunStore,
+    RunStoreError,
+)
 from w_agent.compositions import (
     CompositionError,
     CompositionStore,
@@ -47,7 +52,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #session-result, #run-result { min-height: 8; }
+    #composition-result, #probe-result, #session-result, #run-result, #checkpoint-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -56,6 +61,7 @@ class WAgentTui(App[None]):
         self.sessions = SessionManager(
             JsonSessionStore(self.workspace / ".wagent" / "sessions")
         )
+        self.runs = JsonlRunStore(self.workspace / ".wagent")
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -118,9 +124,10 @@ class WAgentTui(App[None]):
                 yield Button("Start configured run", id="run-button", variant="primary")
                 yield Static("No configured run started.", id="run-result", classes="panel")
             with TabPane("Checkpoints", id="checkpoints"):
+                yield Button("Refresh agent checkpoints", id="checkpoint-refresh")
                 yield Static(
-                    "Agent and workflow checkpoint stores are local and fail closed. "
-                    "Cross-store listing and guided resume remain planned.",
+                    "Loading agent checkpoints…",
+                    id="checkpoint-result",
                     classes="panel",
                 )
             with TabPane("Sandbox", id="sandbox"):
@@ -145,6 +152,7 @@ class WAgentTui(App[None]):
         )
         self.query_one("#home-summary", Static).update(summary)
         await self._refresh_sessions()
+        await self._refresh_checkpoints()
         available = await DockerSandboxProvider().available()
         self.query_one("#sandbox-summary", Static).update(
             f"Docker/OCI available: {available}\n"
@@ -167,6 +175,8 @@ class WAgentTui(App[None]):
             await self._set_session_archived(False)
         elif event.button.id == "run-button":
             await self._run_configured_agent()
+        elif event.button.id == "checkpoint-refresh":
+            await self._refresh_checkpoints()
 
     def _inspect_composition(self) -> None:
         code = self.query_one("#composition-code", Input).value.strip()
@@ -248,6 +258,25 @@ class WAgentTui(App[None]):
         ]
         body = "\n".join(lines) if lines else "No local sessions."
         self.query_one("#session-result", Static).update(prefix + body)
+
+    async def _refresh_checkpoints(self) -> None:
+        target = self.query_one("#checkpoint-result", Static)
+        try:
+            checkpoints = await self.runs.list_checkpoints()
+        except (RunStoreError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        lines = [
+            (
+                f"{item.run_id} | session={item.session_id or '-'} | "
+                f"{item.status.value} | tool={item.pending_tool_name or '-'} | "
+                f"call={item.pending_call_id or '-'} | "
+                f"keys={','.join(item.pending_argument_keys)} | "
+                f"tokens={item.usage.total_tokens}"
+            )
+            for item in checkpoints
+        ]
+        target.update("\n".join(lines) if lines else "No agent checkpoints.")
 
     async def _run_configured_agent(self) -> None:
         target = self.query_one("#run-result", Static)

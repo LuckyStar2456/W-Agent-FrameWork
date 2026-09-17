@@ -193,6 +193,50 @@ class RunCheckpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class RunCheckpointSummary:
+    """Prompt-free discovery view for a persisted approval checkpoint."""
+
+    run_id: str
+    session_id: str | None
+    status: CheckpointStatus
+    agent_name: str
+    pending_call_id: str | None
+    pending_tool_name: str | None
+    pending_argument_keys: tuple[str, ...]
+    remaining_tool_calls: int
+    steps: int
+    tool_calls: int
+    usage: TokenUsage
+    model_calls: int
+    reported_usage_calls: int
+
+    def __post_init__(self) -> None:
+        if not self.run_id.strip() or not self.agent_name.strip():
+            raise ValueError("checkpoint summary identity must not be empty")
+        if (self.pending_call_id is None) != (self.pending_tool_name is None):
+            raise ValueError("checkpoint summary pending-call fields must be paired")
+        if min(
+            self.remaining_tool_calls,
+            self.steps,
+            self.tool_calls,
+            self.model_calls,
+            self.reported_usage_calls,
+        ) < 0:
+            raise ValueError("checkpoint summary counters must not be negative")
+        if self.reported_usage_calls > self.model_calls:
+            raise ValueError("reported usage calls cannot exceed model calls")
+        object.__setattr__(
+            self,
+            "pending_argument_keys",
+            tuple(self.pending_argument_keys),
+        )
+
+    @property
+    def usage_complete(self) -> bool:
+        return self.model_calls == self.reported_usage_calls
+
+
+@dataclass(frozen=True, slots=True)
 class RunResult:
     run_id: str
     stop_reason: StopReason

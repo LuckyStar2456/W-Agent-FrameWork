@@ -67,7 +67,7 @@ definition = AgentDefinition(
 
 `stream()` returns a single-use `ReactAgentExecution` that yields `RUN_STARTED`, model-phase, tool-phase, and `RUN_COMPLETED` events. Its final result is available as `execution.result`. `run()` is the convenience method that consumes these events. Each event is appended to `RunStore` before it becomes visible to the caller.
 
-`InMemoryRunStore` serves tests and short-lived local runs. `JsonlRunStore` uses an append-only `events.jsonl` plus atomically replaced `checkpoint.json` per run and can be reopened by a new process or loop instance. Event sequences must be contiguous; unknown schema versions and corrupt logs fail closed.
+`InMemoryRunStore` serves tests and short-lived local runs. `JsonlRunStore` uses an append-only `events.jsonl` plus atomically replaced `checkpoint.json` per run and can be reopened by a new process or loop instance. `list_checkpoints()` returns `RunCheckpointSummary` values containing recovery identity, argument names, and metering but no prompts, argument values, outputs, or credentials. Event sequences must be contiguous; unknown schema versions and corrupt logs fail closed.
 
 Run events contain model text, tool arguments, and result-stage information needed to reconstruct model context, so callers must treat them as potentially sensitive local run content. Tool audit is separate and stores only minimal metadata such as argument names. The current store does not encrypt content; filesystem access control belongs to the local application.
 

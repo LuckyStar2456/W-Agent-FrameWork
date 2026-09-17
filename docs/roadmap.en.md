@@ -63,6 +63,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Typer/Rich CLI, Textual TUI, and session lifecycle UI | `Experimental` | Phase 6 / 2.0.0a1 |
 | Locally configured text-agent run entry point | `Experimental` | Phase 6 / 2.0.0a1 |
 | Configured tool selection, explicit code loading, and CLI approval resume | `Experimental` | Phase 3/6 / 2.0.0a1 |
+| Prompt-free agent approval-checkpoint listing in API/CLI/TUI | `Implemented` | Phase 3/6 / 2.0.0a1 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
 | Minimal 1.x `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
@@ -134,7 +135,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
 - Implemented strict local JSON assembly into provider/routing/ReAct/run/session components for text runs. CLI/TUI require explicit authorization for every call, and credentials resolve only through environment-variable references.
 - Implemented host-catalog-bounded configured tool selection, per-command authority grants, separate Python tool-code load confirmation, and CLI approval resume by known session/run/call IDs. Configuration itself cannot import, authorize, or approve a tool.
-- TUI tool/approval screens, live RunEvent views, checkpoint listing/cross-store recovery, general plugin-install confirmation, and evaluation screens remain `Planned`.
+- Implemented prompt-free agent approval-checkpoint listing in the API, CLI, and TUI. Summaries exclude prompts, argument values, outputs, and credentials.
+- TUI tool-approval execution, live RunEvent views, workflow-checkpoint aggregation/cross-store recovery, general plugin-install confirmation, and evaluation screens remain `Planned`.
 - Mocks, record/replay, and customer-support and coding benchmark tasks.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 

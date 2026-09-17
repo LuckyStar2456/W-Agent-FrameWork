@@ -15,6 +15,8 @@ from rich.table import Table
 from w_agent.agents import (
     CODING_AGENT_TEMPLATE,
     CUSTOMER_SUPPORT_AGENT_TEMPLATE,
+    JsonlRunStore,
+    RunCheckpointSummary,
     RunStoreError,
 )
 from w_agent.compositions import (
@@ -49,11 +51,13 @@ composition_app = typer.Typer(help="Encode, inspect, and store compositions.")
 session_app = typer.Typer(help="Manage local persistent agent sessions.")
 config_app = typer.Typer(help="Compatibility configuration commands.")
 bean_app = typer.Typer(help="Compatibility IOC-container commands.")
+checkpoint_app = typer.Typer(help="Inspect local prompt-free checkpoint summaries.")
 app.add_typer(profile_app, name="profile")
 app.add_typer(composition_app, name="composition")
 app.add_typer(session_app, name="session")
 app.add_typer(config_app, name="config")
 app.add_typer(bean_app, name="bean")
+app.add_typer(checkpoint_app, name="checkpoint")
 console = Console()
 error_console = Console(stderr=True)
 
@@ -338,6 +342,45 @@ def profile_list(
             str(item["key"]),
             str(item["description"]),
             ", ".join(item["recommended_tools"]),
+        )
+    console.print(table)
+
+
+@checkpoint_app.command("list")
+def checkpoint_list(
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    session_id: str | None = typer.Option(None, "--session"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """List approval checkpoints without prompts or argument values."""
+
+    try:
+        checkpoints = asyncio.run(JsonlRunStore(state_root).list_checkpoints())
+    except (RunStoreError, ValueError) as error:
+        _fail(str(error))
+    if session_id is not None:
+        checkpoints = tuple(
+            item for item in checkpoints if item.session_id == session_id
+        )
+    payload = [_checkpoint_payload(item) for item in checkpoints]
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Agent approval checkpoints")
+    table.add_column("Run")
+    table.add_column("Session")
+    table.add_column("Status")
+    table.add_column("Tool")
+    table.add_column("Call ID")
+    table.add_column("Argument keys")
+    for item in payload:
+        table.add_row(
+            str(item["run_id"]),
+            str(item["session_id"] or "-"),
+            str(item["status"]),
+            str(item["pending_tool_name"] or "-"),
+            str(item["pending_call_id"] or "-"),
+            ", ".join(item["pending_argument_keys"]),
         )
     console.print(table)
 
@@ -696,6 +739,30 @@ def _local_run_payload(run: Any) -> dict[str, Any]:
             "cached_input_tokens": result.usage.cached_input_tokens,
             "total_tokens": result.usage.total_tokens,
             "complete": result.usage_complete,
+        },
+    }
+
+
+def _checkpoint_payload(checkpoint: RunCheckpointSummary) -> dict[str, Any]:
+    return {
+        "run_id": checkpoint.run_id,
+        "session_id": checkpoint.session_id,
+        "status": checkpoint.status.value,
+        "agent_name": checkpoint.agent_name,
+        "pending_call_id": checkpoint.pending_call_id,
+        "pending_tool_name": checkpoint.pending_tool_name,
+        "pending_argument_keys": list(checkpoint.pending_argument_keys),
+        "remaining_tool_calls": checkpoint.remaining_tool_calls,
+        "steps": checkpoint.steps,
+        "tool_calls": checkpoint.tool_calls,
+        "model_calls": checkpoint.model_calls,
+        "reported_usage_calls": checkpoint.reported_usage_calls,
+        "usage": {
+            "input_tokens": checkpoint.usage.input_tokens,
+            "output_tokens": checkpoint.usage.output_tokens,
+            "cached_input_tokens": checkpoint.usage.cached_input_tokens,
+            "total_tokens": checkpoint.usage.total_tokens,
+            "complete": checkpoint.usage_complete,
         },
     }
 
