@@ -292,17 +292,17 @@ Status: the launchable local Textual foundation is `Experimental`.
 wagent tui
 ```
 
-The TUI currently covers profiles, credential-free endpoint probing, offline composition inspection, local session lifecycle, configured text-agent runs, and prompt-free agent-checkpoint listing. Tool-approval execution, plugin operations, workflow checkpoints, live events, and the evaluation screen remain `Planned`. It uses public Python APIs and needs no hosted backend.
+The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection, local session lifecycle, configured text-agent runs, prompt-free agent-checkpoint listing, and local evaluation. Tool-approval execution, plugin operations, workflow checkpoints, and live events remain `Planned`. It uses public Python APIs and needs no hosted backend.
 
 ## 15. Current local evaluation
 
-Status: the API and CLI are `Experimental`.
+Status: the API, CLI, and TUI are `Experimental`.
 
 ```text
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-Datasets use strict JSON. The command executes a configured agent sequentially, uses disposable state by default, and exposes input/output tokens, metering completeness, latency, errors, and tool outcomes. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+Datasets use strict JSON. The CLI/TUI execute a configured agent sequentially, use disposable state by default, and expose input/output tokens, metering completeness, latency, errors, and tool outcomes. The TUI requires typing `EVALUATE` and never retains that authorization. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 16. Next steps
 

@@ -7,8 +7,13 @@ import w_agent.tui as tui_module
 from w_agent import (
     CompositionManifest,
     LocalProviderAssembly,
+    MessageRole,
     ModelCapability,
     ModelDescriptor,
+    ModelMessage,
+    RunResult,
+    StopReason,
+    TokenUsage,
     encode_composition,
 )
 from w_agent.tui import WAgentTui
@@ -173,3 +178,84 @@ async def test_tui_safe_configured_provider_probe_never_generates(
         assert "Successful: True" in rendered
         assert provider.stream_calls == 0
         assert provider.closed is True
+
+
+@pytest.mark.asyncio
+async def test_tui_evaluation_requires_explicit_confirmation(tmp_path):
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.query_one(TabbedContent).active = "evaluation"
+        await pilot.pause()
+        await pilot.click("#evaluation-button")
+        await pilot.pause()
+
+        rendered = str(app.query_one("#evaluation-result").content)
+        assert "type EVALUATE to authorize" in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypatch):
+    dataset = tmp_path / "cases.json"
+    dataset.write_text(
+        '{"cases":[{"name":"one","prompt":"SECRET_PROMPT",'
+        '"expected_output":"VISIBLE_OUTPUT"}]}',
+        encoding="utf-8",
+    )
+
+    class Runtime:
+        def __init__(self):
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            self.closed = True
+
+        async def run(self, prompt, **kwargs):
+            assert prompt == "SECRET_PROMPT"
+            return SimpleNamespace(
+                result=RunResult(
+                    "tui-eval",
+                    StopReason.COMPLETED,
+                    "VISIBLE_OUTPUT",
+                    (ModelMessage.text(MessageRole.ASSISTANT, "VISIBLE_OUTPUT"),),
+                    (),
+                    steps=1,
+                    tool_calls=0,
+                    usage=TokenUsage(4, 2),
+                    model_calls=1,
+                    reported_usage_calls=1,
+                )
+            )
+
+    runtime = Runtime()
+    monkeypatch.setattr(tui_module, "load_local_runtime_config", lambda path: object())
+    monkeypatch.setattr(
+        tui_module,
+        "assemble_local_runtime",
+        lambda config, state_root: runtime,
+    )
+    app = WAgentTui(tmp_path)
+    report = tmp_path / "report.json"
+
+    async with app.run_test(size=(140, 65)) as pilot:
+        app.query_one(TabbedContent).active = "evaluation"
+        await pilot.pause()
+        app.query_one("#evaluation-dataset").value = "cases.json"
+        app.query_one("#evaluation-report").value = "report.json"
+        app.query_one("#evaluation-confirm").value = "EVALUATE"
+        await pilot.click("#evaluation-button")
+        await pilot.pause()
+
+        rendered = str(app.query_one("#evaluation-result").content)
+        assert "Passed: 1/1" in rendered
+        assert "in=4, out=2" in rendered
+        assert "SECRET_PROMPT" not in rendered
+        assert "VISIBLE_OUTPUT" not in rendered
+        assert app.query_one("#evaluation-confirm").value == ""
+        assert runtime.closed is True
+        persisted = report.read_text(encoding="utf-8")
+        assert "SECRET_PROMPT" not in persisted
+        assert "VISIBLE_OUTPUT" not in persisted

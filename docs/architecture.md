@@ -186,7 +186,7 @@ ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 
 CLI 和 Textual TUI 都通过公开 Python API 使用框架，不形成私有控制面。首版覆盖初始化、配置校验、插件检查、模型探测、Profile 解析、运行、Checkpoint 恢复、沙箱授权和事件查看。
 
-当前 `Experimental` 本地评测层提供无网络脚本化模型、显式授权的 JSONL 模型录制/顺序回放、可替换 Scorer，以及 Token 完整性、延迟、错误和工具成功率统计。录制层是可替换 Model Provider 装饰器，评测目标只依赖公开 `RunResult`，因此都不是内核特权。CLI 已能从严格 JSON 用例集运行配置化 Agent，并使用一次性状态和隐私安全报告默认值。客服/编码内置基准集、价格/费用指标和 TUI 评测页面仍为 `Planned`；在线评测平台不属于项目目标。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+当前 `Experimental` 本地评测层提供无网络脚本化模型、显式授权的 JSONL 模型录制/顺序回放、可替换 Scorer，以及 Token 完整性、延迟、错误和工具成功率统计。录制层是可替换 Model Provider 装饰器，评测目标只依赖公开 `RunResult`，因此都不是内核特权。CLI/TUI 已能从严格 JSON 用例集运行配置化 Agent，并使用一次性状态和隐私安全报告默认值。客服/编码内置基准集与价格/费用指标仍为 `Planned`；在线评测平台不属于项目目标。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 13. 1.x 兼容
 

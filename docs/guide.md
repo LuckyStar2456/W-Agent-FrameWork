@@ -292,17 +292,17 @@ wagent composition save <composition-code> --alias stable
 wagent tui
 ```
 
-TUI 当前覆盖模板、无凭据端点探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行和 Agent Checkpoint 脱敏列表。工具批准执行、插件操作、Workflow Checkpoint、实时事件与评测页面仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务。
+TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行、Agent Checkpoint 脱敏列表和本地评测。工具批准执行、插件操作、Workflow Checkpoint 与实时事件仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务。
 
 ## 15. 当前本地评测
 
-状态：API 与 CLI 为 `Experimental`。
+状态：API、CLI 与 TUI 为 `Experimental`。
 
 ```text
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-用例集是严格 JSON。命令顺序运行配置化 Agent，默认使用一次性状态，并显示输入/输出 Token、计量完整性、延迟、错误和工具结果。报告默认排除 Prompt 与模型输出。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+用例集是严格 JSON。CLI/TUI 顺序运行配置化 Agent，默认使用一次性状态，并显示输入/输出 Token、计量完整性、延迟、错误和工具结果。TUI 需要输入 `EVALUATE`，不会保存授权。报告默认排除 Prompt 与模型输出。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 16. 下一步
 

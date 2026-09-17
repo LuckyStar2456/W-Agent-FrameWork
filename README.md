@@ -145,7 +145,7 @@ wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent Checkpoint 脱敏列表，以及 CLI 的 Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复和隐私安全的本地评测；TUI 工具批准执行、通用插件操作、Workflow Checkpoint 汇总、实时事件查看和评测页面仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent Checkpoint 脱敏列表，以及 CLI 的 Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复和 CLI/TUI 隐私安全本地评测；TUI 工具批准执行、通用插件操作、Workflow Checkpoint 汇总和实时事件查看仍为 `Planned`。
 
 ## 工程装配分享
 

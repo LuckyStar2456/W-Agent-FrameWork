@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from textual.app import App, ComposeResult
 from textual.widgets import (
@@ -30,6 +31,14 @@ from w_agent.compositions import (
     inspect_composition,
     manifest_to_dict,
 )
+from w_agent.evaluation import (
+    EvaluationCase,
+    EvaluationDatasetError,
+    ExactTextScorer,
+    JsonEvaluationReporter,
+    LocalEvaluationRunner,
+    load_evaluation_cases,
+)
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
     assemble_local_provider,
@@ -53,7 +62,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #checkpoint-result { min-height: 8; }
+    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #checkpoint-result, #evaluation-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -155,10 +164,27 @@ class WAgentTui(App[None]):
                     "Checking Docker/OCI…", id="sandbox-summary", classes="panel"
                 )
             with TabPane("Evaluation", id="evaluation"):
+                yield Label("Sequential local evaluation with disposable run state")
+                yield Input(
+                    placeholder="Evaluation dataset JSON",
+                    id="evaluation-dataset",
+                )
+                yield Input(value=".wagent/config.json", id="evaluation-config")
+                yield Input(
+                    placeholder="Optional privacy-safe report JSON path",
+                    id="evaluation-report",
+                )
+                yield Input(
+                    placeholder="Type EVALUATE to authorize model calls",
+                    id="evaluation-confirm",
+                )
+                yield Button(
+                    "Run evaluation",
+                    id="evaluation-button",
+                    variant="primary",
+                )
                 yield Static(
-                    "Evaluation API/CLI and model record/replay are available. "
-                    "TUI evaluation execution remains planned.",
-                    classes="panel",
+                    "No evaluation run.", id="evaluation-result", classes="panel"
                 )
         yield Footer()
 
@@ -204,6 +230,8 @@ class WAgentTui(App[None]):
             await self._run_configured_agent()
         elif event.button.id == "checkpoint-refresh":
             await self._refresh_checkpoints()
+        elif event.button.id == "evaluation-button":
+            await self._run_evaluation()
 
     def _inspect_composition(self) -> None:
         code = self.query_one("#composition-code", Input).value.strip()
@@ -387,6 +415,76 @@ class WAgentTui(App[None]):
         )
         self.query_one("#run-session", Input).value = run.session.session_id
         await self._refresh_sessions()
+
+    async def _run_evaluation(self) -> None:
+        target = self.query_one("#evaluation-result", Static)
+        confirmation = self.query_one("#evaluation-confirm", Input)
+        if confirmation.value.strip() != "EVALUATE":
+            target.update("Rejected: type EVALUATE to authorize model calls")
+            return
+        confirmation.value = ""
+        dataset = self._workspace_path(
+            self.query_one("#evaluation-dataset", Input).value
+        )
+        config_path = self._workspace_path(
+            self.query_one("#evaluation-config", Input).value
+        )
+        report_value = self.query_one("#evaluation-report", Input).value.strip()
+        report_path = self._workspace_path(report_value) if report_value else None
+        target.update("Running evaluation…")
+        try:
+            cases = load_evaluation_cases(dataset)
+            with TemporaryDirectory(prefix="wagent-tui-eval-") as state_root:
+                runtime = assemble_local_runtime(
+                    load_local_runtime_config(config_path),
+                    state_root,
+                )
+
+                async def run_case(case: EvaluationCase):
+                    run = await runtime.run(
+                        case.prompt,
+                        session_title=f"Evaluation: {case.name}",
+                    )
+                    return run.result
+
+                async with runtime:
+                    report = await LocalEvaluationRunner().run(
+                        cases,
+                        run_case,
+                        scorers=(ExactTextScorer(),),
+                    )
+            if report_path is not None:
+                await JsonEvaluationReporter().write(report, report_path)
+        except (
+            EvaluationDatasetError,
+            LocalRuntimeConfigError,
+            OSError,
+            ValueError,
+        ) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Evaluation failed: {type(error).__name__}")
+            return
+        usage = report.usage
+        lines = [
+            f"Passed: {report.passed}/{report.total} ({report.pass_rate:.1%})",
+            f"Tokens: in={usage.input_tokens}, out={usage.output_tokens}, "
+            f"total={usage.total_tokens}, complete={report.usage_complete}",
+            f"Latency: total={report.latency_ms:.2f} ms, "
+            f"average={report.average_latency_ms:.2f} ms",
+            f"Tools: success={report.tool_successes}, failed={report.tool_failures}",
+        ]
+        lines.extend(
+            f"{case.name}: {'PASS' if case.passed else 'FAIL'} | "
+            f"stop={case.stop_reason or '-'} | tokens={case.usage.total_tokens}"
+            for case in report.cases
+        )
+        target.update("\n".join(lines))
+
+    def _workspace_path(self, value: str) -> Path:
+        path = Path(value.strip())
+        return path if path.is_absolute() else self.workspace / path
 
     @staticmethod
     def _profile_text() -> str:

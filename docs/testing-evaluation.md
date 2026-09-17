@@ -2,7 +2,7 @@
 
 [English](./testing-evaluation.en.md) | 简体中文
 
-状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告和 CLI 评测入口为 `Experimental`（`2.0.0a1`）。客服/编码内置基准集、费用指标以及 TUI 评测页面仍为 `Planned`。
+状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a1`）。客服/编码内置基准集与费用指标仍为 `Planned`。
 
 ## 确定性模型测试
 
@@ -54,6 +54,8 @@ wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --r
 ```
 
 默认使用一次性运行状态，结束后删除可能包含 Prompt 的 Session/Run 文件。只有传入 `--state-root` 才持久化它们。`--report` 写入安全默认报告；`--include-outputs` 会同时让报告与 `--json` 输出包含潜在敏感模型输出。只要任一用例失败，命令在输出报告后以状态码 1 结束。工具代码加载与工具权限继续使用 `--confirm-tool-code`、`--tool-entry` 和 `--grant-permission` 独立授权；需要人工批准的工具调用当前记为未通过，不会由评测命令自动批准。
+
+TUI Evaluation 页读取同一用例集与 Runtime 配置，输入 `EVALUATE` 后才运行；确认立即清空，不会持久化。它始终使用一次性状态与 `exact-text` Scorer，可选写入默认脱敏报告，只展示汇总和逐用例状态。自定义 Scorer、输出持久化与开发者工具入口目前使用 Python API/CLI。
 
 ## 最小示例
 

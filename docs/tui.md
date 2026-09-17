@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复/本地评测为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总、通用插件操作与评测页面仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复和 CLI/TUI 本地评测为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总与通用插件操作仍为 `Planned`。
 
 ## 原则
 
@@ -33,6 +33,8 @@ wagent tui
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
 `run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
+
+TUI Evaluation 页要求输入 `EVALUATE` 才顺序运行严格 JSON 用例集；默认一次性状态，确认立即清空，只显示 Token/延迟/工具结果和通过状态，并可写默认脱敏报告。自定义 Scorer、输出持久化和开发者工具入口使用 Python API/CLI。
 
 ## TUI 技术
 

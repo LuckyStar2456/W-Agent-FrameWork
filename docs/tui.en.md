@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, and CLI tool selection/authority/approval resume/local evaluation are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, general plugin operations, and the evaluation screen remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, CLI tool selection/authority/approval resume, and CLI/TUI local evaluation are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, and general plugin operations remain `Planned`.
 
 ## Principles
 
@@ -33,6 +33,8 @@ These commands are implemented. The CLI prints human-readable text by default; t
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
 `run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
+
+The TUI Evaluation screen requires typing `EVALUATE` before sequentially running a strict JSON dataset. It uses disposable state, clears confirmation immediately, displays only token/latency/tool/pass metrics, and may write a default privacy-safe report. Custom scorers, output persistence, and developer tool entries use the Python API/CLI.
 
 ## TUI technology
 

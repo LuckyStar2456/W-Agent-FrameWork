@@ -2,7 +2,7 @@
 
 English | [简体中文](./testing-evaluation.md)
 
-Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, and the CLI evaluation entry point are `Experimental` in `2.0.0a1`. Built-in customer-support/coding benchmark suites, cost metrics, and the TUI evaluation screen remain `Planned`.
+Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, and CLI/TUI evaluation entry points are `Experimental` in `2.0.0a1`. Built-in customer-support/coding benchmark suites and cost metrics remain `Planned`.
 
 ## Deterministic model tests
 
@@ -54,6 +54,8 @@ wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --r
 ```
 
 Disposable run state is the default, so session/run files that may contain prompts are deleted at exit. Pass `--state-root` only when persistence is intended. `--report` writes the privacy-safe default report; `--include-outputs` makes both the report and `--json` data include potentially sensitive model outputs. If any case fails, the command emits the report and exits with status 1. Tool-code loading and tool permissions still require separate `--confirm-tool-code`, `--tool-entry`, and `--grant-permission` authorization. Tool calls that need human approval currently fail the evaluation case and are never auto-approved.
+
+The TUI Evaluation screen reads the same dataset and runtime configuration and runs only after the user types `EVALUATE`. That confirmation is immediately cleared and never persisted. The screen always uses disposable state and the `exact-text` scorer, may write a default privacy-safe report, and shows only aggregate and per-case status. Custom scorers, output persistence, and developer tool entries remain available through the Python API/CLI.
 
 ## Minimal example
 
