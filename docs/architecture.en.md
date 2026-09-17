@@ -110,10 +110,9 @@ ModelRequest(
 
 An adapter declares whether each extension is consumed, forwarded, or rejected. Unsupported standard fields fail by default and are never silently discarded. Runtime context is controlled-mutable: formal transitions update core fields, while plugins directly write only their own namespace.
 
-Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, `ModelRequest`, `ModelResponse`, `StreamEvent`, `ModelCapability`, `RouteRequest`, `RouteDecision`, and `RoutingPolicy`. Later `Planned` protocols include:
+Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, the model/routing contracts, plus `ToolDefinition`, `ToolBinding`, `ToolCall`, `ToolResult`, `ToolPolicy`, and `ToolExecutor`. Later `Planned` protocols include:
 
 - `RunContext`, `RunEvent`, `RunResult`, and `StopReason`.
-- `ToolDefinition`, `ToolCall`, `ToolResult`, and `ToolExecutor`.
 - `AgentDefinition`, `AgentLoop`, and `AgentHandle`.
 - `WorkflowDefinition`, `WorkflowEngine`, and `Checkpoint`.
 - `SandboxRequest`, `SandboxHandle`, and `SandboxProvider`.
@@ -144,13 +143,17 @@ First-release checkpoints recover only at node boundaries and explicit `checkpoi
 
 ## 9. Tools
 
+Status: the Python-function template, unified registration, policy, and execution foundation are `Implemented`; HTTP/MCP/command/remote adapters and sandbox binding remain `Planned` or `Reserved`.
+
 Tool definition, execution, policy, and results are separate:
 
 ```text
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-The first release provides Python-function and HTTP templates while reserving protocols for MCP, command-line, and remote executors. Calls carry stable IDs, arguments, scope, cancellation, and side-effect classification. Approval, audit, and sandbox checks are enforced in the execution path rather than only in prompts or visibility filters.
+The current Python-function template gives each call a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. HTTP/MCP/command and remote executors will join through the same public contracts.
+
+See [Tool registration, policy, and execution](./tools.en.md).
 
 ## 10. Sandbox
 

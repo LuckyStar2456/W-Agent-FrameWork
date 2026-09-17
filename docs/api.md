@@ -20,7 +20,7 @@
 | 观测 | `global_tracer`、`CompositeHealthIndicator`、`HealthIndicator`、`LLMHealthIndicator` |
 | 分布式 | `RedisDistributedLock`、`LockRenewalPool` |
 | 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox` |
-| 工具/扫描 | `LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
+| 工具/扫描 | `ToolRegistry`、`ToolExecutor`、`ToolCall`、`ToolResult`、`python_tool`、`LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
 | 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
 | 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
@@ -33,7 +33,7 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` 尚未接入新的模型协议，也仍没有统一工具、Session 或 Checkpoint 运行时。
+`BaseAgent` 尚未接入新的模型协议；统一工具执行基础已经独立提供，但 Session、Agent Loop 和 Checkpoint 运行时仍未接入。
 
 ## 2. 下一代导出策略
 
@@ -146,14 +146,19 @@ class WorkflowHandle(Protocol):
 
 ## 9. 工具协议
 
-状态：`Planned`。
+状态：`Implemented`（Phase 3 工具执行基础）。
 
 ```python
-class ToolExecutor(Protocol):
-    async def execute(self, call: ToolCall, context: RunContext) -> ToolResult: ...
+class ToolPolicy(Protocol):
+    async def evaluate(
+        self,
+        binding: ToolBinding,
+        call: ToolCall,
+        context: ToolExecutionContext,
+    ) -> ToolPolicyDecision: ...
 ```
 
-工具 Definition 不持有执行策略；权限、审批、缓存、超时、审计和沙箱通过执行 Pipeline 组合。
+`ToolRegistry` 在统一注册表中按版本和 Scope 注册 `ToolBinding`。`ToolExecutor.execute()` 依次解析、校验、执行策略、处理超时/取消并写入审计。默认 `PermissionPolicy` 检查本地授予的权限，`SideEffectApprovalPolicy` 对写入、破坏性和外部副作用要求调用 ID 逐次批准。工具 Definition 不持有执行策略，默认执行器不重试。`python_tool()` 是已实现的简单模板；HTTP/MCP/命令行适配与沙箱绑定仍为 `Planned`。详见[工具注册、策略与执行](./tools.md)。
 
 ## 10. 沙箱协议
 

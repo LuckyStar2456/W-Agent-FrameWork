@@ -110,10 +110,9 @@ ModelRequest(
 
 适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、`ModelRequest`、`ModelResponse`、`StreamEvent`、`ModelCapability`、`RouteRequest`、`RouteDecision` 和 `RoutingPolicy`。后续 `Planned` 协议包括：
+已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议，以及 `ToolDefinition`、`ToolBinding`、`ToolCall`、`ToolResult`、`ToolPolicy` 和 `ToolExecutor`。后续 `Planned` 协议包括：
 
 - `RunContext`、`RunEvent`、`RunResult`、`StopReason`。
-- `ToolDefinition`、`ToolCall`、`ToolResult`、`ToolExecutor`。
 - `AgentDefinition`、`AgentLoop`、`AgentHandle`。
 - `WorkflowDefinition`、`WorkflowEngine`、`Checkpoint`。
 - `SandboxRequest`、`SandboxHandle`、`SandboxProvider`。
@@ -150,13 +149,17 @@ Agent Loop 与 Workflow 共享 `RunContext`、事件、取消和结果协议，�
 
 ## 9. Tools
 
+状态：Python 函数工具模板、统一注册、策略与执行基础为 `Implemented`；HTTP/MCP/命令行/远程适配和沙箱绑定为 `Planned` 或 `Reserved`。
+
 工具定义、执行、权限和结果彼此分离：
 
 ```text
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-首版提供 Python 函数与 HTTP 工具模板，并为 MCP、命令行和远程执行器保留协议。工具调用包含稳定调用 ID、参数、作用域、取消信号和副作用级别。审批、审计和沙箱在执行路径中强制生效，不能只依赖提示词或工具可见性。
+当前已提供 Python 函数模板：工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。HTTP/MCP/命令行与远程执行器后续通过相同公开协议接入。
+
+详细设计见[工具注册、策略与执行](./tools.md)。
 
 ## 10. Sandbox
 

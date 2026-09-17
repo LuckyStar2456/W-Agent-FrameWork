@@ -59,6 +59,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Native Anthropic, Gemini, Ollama, and Qwen templates, plus DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI template registration.
 - A `ModelExecutor` for both fully collected and event-pass-through execution, with one call by default, explicitly enabled bounded retry/failover, and prompt-free attempt records.
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
+- Tool definition/binding/registry separation, a Python-function template, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 
 `BaseAgent` remains a minimal abstraction. Dedicated OpenAI Responses and vLLM differences, cross-stream resume/recovery, a standard ReAct loop, workflows, checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
 
@@ -152,6 +153,7 @@ A composition code carries a portable manifest, never secrets. It does not bundl
 - [Plugin system](./docs/plugin-system.en.md)
 - [Models, routing, and endpoint probing](./docs/model-routing.en.md)
 - [HTTP providers and vendor templates](./docs/provider-templates.en.md)
+- [Tool registration, policy, and execution](./docs/tools.en.md)
 - [Sandbox and local execution](./docs/sandbox.en.md)
 - [CLI and TUI](./docs/tui.en.md)
 - [1.x migration](./docs/migration-1x.en.md)

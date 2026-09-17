@@ -17,6 +17,7 @@
 - [插件系统](./plugin-system.md)
 - [模型、路由与接口探测](./model-routing.md)
 - [HTTP Provider 与厂商模板](./provider-templates.md)
+- [工具注册、策略与执行](./tools.md)
 - [沙箱与本地执行](./sandbox.md)
 - [CLI 与 TUI](./tui.md)
 - [工程装配分享](./project-sharing.md)

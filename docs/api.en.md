@@ -20,7 +20,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Observability | `global_tracer`, `CompositeHealthIndicator`, `HealthIndicator`, `LLMHealthIndicator` |
 | Distributed | `RedisDistributedLock`, `LockRenewalPool` |
 | Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox` |
-| Tools/scanning | `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
+| Tools/scanning | `ToolRegistry`, `ToolExecutor`, `ToolCall`, `ToolResult`, `python_tool`, `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
@@ -33,7 +33,7 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` is not yet integrated with the new model protocol and still has no unified tool, session, or checkpoint runtime.
+`BaseAgent` is not yet integrated with the new model protocol. The unified tool-execution foundation is available independently, while session, agent-loop, and checkpoint runtimes are not yet connected.
 
 ## 2. Next-generation export strategy
 
@@ -146,14 +146,19 @@ The first release guarantees recovery only at node boundaries and explicit `chec
 
 ## 9. Tool protocol
 
-Status: `Planned`.
+Status: `Implemented` as the Phase 3 tool-execution foundation.
 
 ```python
-class ToolExecutor(Protocol):
-    async def execute(self, call: ToolCall, context: RunContext) -> ToolResult: ...
+class ToolPolicy(Protocol):
+    async def evaluate(
+        self,
+        binding: ToolBinding,
+        call: ToolCall,
+        context: ToolExecutionContext,
+    ) -> ToolPolicyDecision: ...
 ```
 
-A tool definition does not own execution policy. Permission, approval, cache, timeout, audit, and sandbox behavior compose through the execution pipeline.
+`ToolRegistry` registers `ToolBinding` entries by version and scope in the unified registry. `ToolExecutor.execute()` resolves, validates, applies policy, handles timeout/cancellation, and records audit. The default `PermissionPolicy` checks locally granted authority; `SideEffectApprovalPolicy` requires per-call ID approval for write, destructive, and external effects. A definition owns no execution policy, and the default executor never retries. `python_tool()` is the implemented simple template; HTTP/MCP/command adapters and sandbox binding remain `Planned`. See [Tool registration, policy, and execution](./tools.en.md).
 
 ## 10. Sandbox protocol
 

@@ -4,7 +4,7 @@ English | [简体中文](./developer.md)
 
 ## 1. Development baseline
 
-The current repository version is `2.0.0a1`: the Phase 1 microkernel and Phase 2A model foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
+The current repository version is `2.0.0a1`: the Phase 1 microkernel, Phase 2 model foundation, and Phase 3 tool-execution foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
 
 Next-generation targets:
 
@@ -35,7 +35,7 @@ w_agent/
 ├── security/        # MCP authentication
 ├── skills/          # Skills and sandboxes
 ├── testing/         # Test helpers
-└── tools/           # LangChain adapter
+└── tools/           # Tool registry, policy, execution, Python template, and LangChain compatibility
 ```
 
 The later agent and workflow runtime will build on these modules; it cannot be delivered by continuing to add behavior to `BaseAgent.arun()`.
@@ -81,7 +81,7 @@ See [Plugin system](./plugin-system.en.md).
 | New reasoning path | `AgentLoop` |
 | Intercept a loop phase | Event/pipeline plugin |
 | New workflow execution | `WorkflowEngine` |
-| New tool source | `ToolProvider` / `ToolExecutor` |
+| New tool source | `ToolBinding` / `ToolRegistry` / `ToolExecutor` |
 | New isolation environment | `SandboxProvider` |
 | New storage | Session, checkpoint, or memory provider |
 | New interface | Public runtime APIs and event streams |

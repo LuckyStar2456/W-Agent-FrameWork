@@ -1,4 +1,4 @@
-from typing import Callable, Any, List, Dict, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List
 from w_agent.core.decorators import ToolComponent
 from w_agent.core.event_bus import EventBus, Event
 

@@ -188,13 +188,34 @@ wagent probe https://example.com/v1 --mode capability
 - `active`: sends a minimal text request and requires confirmation.
 - `capability`: the current Python API reports L6/L7 declarations as not actively verified; active verifiers are `Planned`.
 
-## 9. Planned sandbox selection
+## 9. Current tool-execution API
+
+Status: the Python-function template, scoped registration, argument validation, permission/per-call approval, timeout, cancellation, and audit are `Implemented`.
+
+```python
+from w_agent import ToolCall, ToolExecutor, ToolRegistry, python_tool
+
+
+def lookup(query: str) -> str:
+    return f"result for {query}"
+
+
+tools = ToolRegistry()
+tools.register_binding(python_tool(lookup))
+result = await ToolExecutor(tools).execute(
+    ToolCall("lookup-1", "lookup", {"query": "W-Agent"})
+)
+```
+
+The default policy automatically executes only calls that need no approval. Write, destructive, and external effects require the local application to approve the specific call ID. See [Tool registration, policy, and execution](./tools.en.md).
+
+## 10. Planned sandbox selection
 
 Status: `Planned`.
 
 Coding agents use Docker/OCI by default. A developer may explicitly enable `UnsafeLocalSandbox` for host execution, but the CLI and TUI must show the risk, and a composition code can never enable that authority on the user's behalf.
 
-## 10. Planned portable project composition
+## 11. Planned portable project composition
 
 Status: `Planned`.
 
@@ -205,7 +226,7 @@ wagent composition import <composition-code>
 
 Import first shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy. Missing dependencies may be installed and plugins loaded only after user confirmation. Codes contain no secrets.
 
-## 11. Planned TUI
+## 12. Planned TUI
 
 Status: `Planned`.
 
@@ -215,7 +236,7 @@ wagent tui
 
 The TUI will cover configuration validation, model probing, plugin management, profile selection, conversations, workflow state, checkpoint recovery, sandbox authorization, and event inspection. It uses public Python APIs and needs no hosted backend.
 
-## 12. Next steps
+## 13. Next steps
 
 - Architecture and extension points: [Architecture](./architecture.en.md)
 - Delivery order: [Roadmap](./roadmap.en.md)

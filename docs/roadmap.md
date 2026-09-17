@@ -37,7 +37,9 @@
 | 安全逐事件透传执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | 跨流断点恢复与续传 | `Planned` | Phase 2B |
 | ReAct Agent Loop 模板 | `Planned` | Phase 3 |
-| 工具定义、策略和执行器分离 | `Planned` | Phase 3 |
+| 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
+| Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
+| HTTP/MCP/命令行工具适配器 | `Planned` | Phase 3/5 |
 | Session 事件记录与回放 | `Planned` | Phase 3 |
 | DAG、状态图、Python Workflow | `Planned` | Phase 4 |
 | 节点级 Checkpoint、暂停和恢复 | `Planned` | Phase 4 |
@@ -79,9 +81,11 @@
 
 ### Phase 3：Agent 与工具
 
+- 状态：工具执行基础为 `Implemented`；Run/Session/ReAct 为 `Planned`。
 - Run、Session 和追加式事件记录。
 - 可替换 Agent Loop 与默认 ReAct 模板。
-- Python/HTTP 工具、执行策略、结果和审批扩展点。
+- 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
+- 后续实现 HTTP/MCP/命令行工具适配与沙箱绑定。
 
 ### Phase 4：Workflow
 

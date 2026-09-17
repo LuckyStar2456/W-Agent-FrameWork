@@ -59,6 +59,7 @@ W-Agent 遵循以下原则：
 - Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
 - 同时支持完整收集和逐事件透传的 `ModelExecutor`；默认单次调用，可显式启用有界重试/故障转移，并记录不含 Prompt 的尝试审计。
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
+- 工具 Definition/Binding/Registry 分层、Python 函数模板、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 
 当前 `BaseAgent` 仍是简单抽象；专用 OpenAI Responses 与 vLLM 差异适配、跨流断点恢复、标准 ReAct Loop、Workflow、Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
 
@@ -152,6 +153,7 @@ CLI 与 TUI 将只调用公开 Python API。TUI 计划覆盖模型配置与探�
 - [插件系统](./docs/plugin-system.md)
 - [模型、路由与接口探测](./docs/model-routing.md)
 - [HTTP Provider 与厂商模板](./docs/provider-templates.md)
+- [工具注册、策略与执行](./docs/tools.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)
 - [1.x 迁移](./docs/migration-1x.md)

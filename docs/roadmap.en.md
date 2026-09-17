@@ -37,7 +37,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Cross-stream recovery and resume | `Planned` | Phase 2B |
 | ReAct agent-loop template | `Planned` | Phase 3 |
-| Separate tool definition, policy, and execution | `Planned` | Phase 3 |
+| Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
+| Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
+| HTTP/MCP/command tool adapters | `Planned` | Phase 3/5 |
 | Session event recording and replay | `Planned` | Phase 3 |
 | DAG, state-graph, and Python workflows | `Planned` | Phase 4 |
 | Node-level checkpoint, pause, and resume | `Planned` | Phase 4 |
@@ -79,9 +81,11 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 3: agents and tools
 
+- Status: the tool-execution foundation is `Implemented`; Run/session/ReAct remain `Planned`.
 - Run, session, and append-only event recording.
 - Replaceable agent loop and default ReAct template.
-- Python/HTTP tools, execution policies, results, and approval extension points.
+- Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
+- Later HTTP/MCP/command adapters and sandbox binding.
 
 ### Phase 4: workflows
 

@@ -4,7 +4,7 @@
 
 ## 1. 开发基线
 
-当前仓库版本为 `2.0.0a1`，Phase 1 微内核和 Phase 2A 模型基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
+当前仓库版本为 `2.0.0a1`，Phase 1 微内核、Phase 2 模型基础和 Phase 3 工具执行基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
 
 下一代实现目标：
 
@@ -35,7 +35,7 @@ w_agent/
 ├── security/        # MCP 认证
 ├── skills/          # Skill 和沙箱
 ├── testing/         # 测试辅助
-└── tools/           # LangChain 适配
+└── tools/           # 工具注册、策略、执行、Python 模板与 LangChain 兼容
 ```
 
 后续 Agent 与 Workflow 运行时会在这些模块基础上逐步实现，不能通过简单扩展 `BaseAgent.arun()` 完成。
@@ -81,7 +81,7 @@ scope: application
 | 新推理链路 | `AgentLoop` |
 | Loop 阶段拦截 | Event/Pipeline 插件 |
 | 新 Workflow 执行方式 | `WorkflowEngine` |
-| 新工具来源 | `ToolProvider` / `ToolExecutor` |
+| 新工具来源 | `ToolBinding` / `ToolRegistry` / `ToolExecutor` |
 | 新隔离环境 | `SandboxProvider` |
 | 新存储 | Session、Checkpoint 或 Memory Provider |
 | 新界面 | 使用公开运行时 API 和事件流 |
