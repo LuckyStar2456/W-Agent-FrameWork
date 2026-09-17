@@ -32,6 +32,7 @@ w_agent/
 ├── models/          # Model protocols, registry, routing, and probing
 ├── observability/   # Logs, metrics, tracing, health
 ├── resilience/      # Timeouts and bulkheads
+├── sandbox/         # Next-generation contracts, registry, Docker, and explicit local backend
 ├── scanner/         # AST component scanning
 ├── security/        # MCP authentication
 ├── skills/          # Skills and sandboxes
@@ -127,8 +128,8 @@ A plugin cannot modify another plugin's namespace. Core fields change only throu
 
 ## 8. Security rules
 
-- Docker/OCI is the default execution backend for coding agents.
-- `UnsafeLocalSandbox` requires explicit authorization by the local user.
+- Docker/OCI is the default execution backend for coding agents, with no-network and bounded fail-closed defaults.
+- `UnsafeLocalSandboxProvider` requires a process-local `UnsafeLocalAuthorization` created explicitly by the user.
 - A composition import cannot carry or grant local-execution permission.
 - Sandboxes fail closed when unavailable.
 - Plugin installation, upgrade, and first execution require explicit actions.

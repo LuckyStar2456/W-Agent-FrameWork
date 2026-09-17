@@ -62,8 +62,9 @@ W-Agent 遵循以下原则：
 - 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 客户端绑定、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、JSONL RunEvent 记录和审批断点恢复。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
+- 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、Agent/Workflow 便捷适配器、并行或嵌套 Workflow、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、Agent/Workflow 便捷适配器、并行或嵌套 Workflow、客服/编码模板、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 

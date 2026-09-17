@@ -28,6 +28,7 @@ from .policies import (
 )
 from .python import python_tool
 from .registry import TOOL_CAPABILITY, ToolRegistry
+from .sandbox_adapter import SandboxCommandBuilder, sandbox_command_tool
 from .types import (
     ToolAuditRecord,
     ToolAuditSink,
@@ -62,6 +63,7 @@ __all__ = [
     "McpRemoteTool",
     "McpToolClient",
     "PermissionPolicy",
+    "SandboxCommandBuilder",
     "SideEffectApprovalPolicy",
     "TOOL_CAPABILITY",
     "ToolAuditRecord",
@@ -86,5 +88,6 @@ __all__ = [
     "http_tool",
     "mcp_tool",
     "python_tool",
+    "sandbox_command_tool",
     "validate_tool_arguments",
 ]

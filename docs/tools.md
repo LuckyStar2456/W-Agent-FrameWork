@@ -2,7 +2,7 @@
 
 [English](./tools.en.md) | 简体中文
 
-状态：Python、HTTP、无 Shell 命令模板、MCP 客户端绑定、作用域注册、参数校验、权限/审批策略、超时、取消和审计为 `Implemented`（Phase 3 / `2.0.0a1`）。官方 MCP 会话客户端、沙箱绑定和远程工具仍为 `Planned` 或 `Reserved`。
+状态：Python、HTTP、无 Shell 命令、Sandbox 命令模板、MCP 客户端绑定、作用域注册、参数校验、权限/审批策略、超时、取消和审计为 `Implemented`（Phase 3/5 / `2.0.0a1`）。官方 MCP 会话客户端和远程工具仍为 `Planned` 或 `Reserved`。
 
 ## 分层
 
@@ -105,7 +105,9 @@ binding = command_tool(
 )
 ```
 
-默认权限为 `process.execute`，副作用为 `EXTERNAL`。命令默认继承当前进程环境以支持本地开发；处理不可信插件时应设置 `inherit_environment=False` 并只注入必要值。这个适配器只保证无 Shell、边界和策略执行，**不是沙箱**；不可信代码仍应使用后续 Docker/OCI Sandbox。
+默认权限为 `process.execute`，副作用为 `EXTERNAL`。命令默认继承当前进程环境以支持本地开发；处理不可信插件时应设置 `inherit_environment=False` 并只注入必要值。这个适配器只保证无 Shell、边界和策略执行，**不是沙箱**；不可信代码应使用 `sandbox_command_tool()` 与 `DockerSandboxProvider`。
+
+`sandbox_command_tool()` 为每次工具调用打开一个 `SandboxProvider` Handle、执行 `SandboxCommand` 并在 `finally` 中关闭。它默认需要 `sandbox.execute` 权限并声明 `WRITE` 副作用。需要跨多个 Agent 步骤复用容器时，应由上层运行时直接持有 Handle，而不是使用单调用模板。
 
 ## MCP 工具
 
@@ -128,6 +130,6 @@ binding = command_tool(
 ## 仍未实现
 
 - 官方 MCP stdio/HTTP 会话客户端、工具发现和连接生命周期。
-- 沙箱绑定和 Docker/OCI 编码执行。
+- 跨工具调用的持久 Sandbox Session 与编码 Agent 工作区写回审核。
 - 持久化审计、工具缓存、录制回放与结果流。
 - TUI 审批页面及跨进程审批恢复。

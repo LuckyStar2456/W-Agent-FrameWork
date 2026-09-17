@@ -2,7 +2,7 @@
 
 English | [简体中文](./tools.md)
 
-Status: Python, HTTP, shell-free command templates, MCP client binding, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3 / `2.0.0a1`. First-party MCP session clients, sandbox binding, and remote tools remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command, sandbox-command templates, MCP client binding, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3/5 / `2.0.0a1`. First-party MCP session clients and remote tools remain `Planned` or `Reserved`.
 
 ## Layers
 
@@ -105,7 +105,9 @@ binding = command_tool(
 )
 ```
 
-The default permission is `process.execute` and the default effect is `EXTERNAL`. Commands inherit the current environment by default for local development. Set `inherit_environment=False` and inject only required values when handling untrusted plugins. This adapter provides shell-free argv, bounds, and policy enforcement; it is **not a sandbox**. Untrusted code still belongs in the planned Docker/OCI sandbox.
+The default permission is `process.execute` and the default effect is `EXTERNAL`. Commands inherit the current environment by default for local development. Set `inherit_environment=False` and inject only required values when handling untrusted plugins. This adapter provides shell-free argv, bounds, and policy enforcement; it is **not a sandbox**. Untrusted code belongs in `sandbox_command_tool()` with `DockerSandboxProvider`.
+
+`sandbox_command_tool()` opens a `SandboxProvider` handle for each tool call, executes `SandboxCommand`, and closes in `finally`. It requires `sandbox.execute` and declares a `WRITE` effect by default. An upper runtime should hold a handle directly when one container must span multiple agent steps instead of using the one-call template.
 
 ## MCP tools
 
@@ -128,6 +130,6 @@ Applications can replace the complete `ToolPolicy` or audit sink. Custom policie
 ## Not implemented yet
 
 - First-party MCP stdio/HTTP session clients, discovery, and connection lifecycle.
-- Sandbox binding and Docker/OCI coding execution.
+- Durable sandbox sessions across tool calls and coding-agent workspace writeback review.
 - Durable audit, tool caching, record/replay, and result streaming.
 - TUI approval surfaces and cross-process approval recovery.

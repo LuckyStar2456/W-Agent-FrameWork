@@ -19,7 +19,7 @@
 | AOP/弹性 | `Retry`、`CircuitBreaker`、`AspectJPointcut`、Advice、`ProxyFactory`、`ResilienceManager` |
 | 观测 | `global_tracer`、`CompositeHealthIndicator`、`HealthIndicator`、`LLMHealthIndicator` |
 | 分布式 | `RedisDistributedLock`、`LockRenewalPool` |
-| 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox` |
+| 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox`、`SandboxProvider`、`DockerSandboxProvider`、`UnsafeLocalSandboxProvider` |
 | 工具/扫描 | `ToolRegistry`、`ToolExecutor`、`ToolCall`、`ToolResult`、`python_tool`、`LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
 | 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
@@ -169,18 +169,23 @@ class ToolPolicy(Protocol):
     ) -> ToolPolicyDecision: ...
 ```
 
-`ToolRegistry` 在统一注册表中按版本和 Scope 注册 `ToolBinding`。`ToolExecutor.execute()` 依次解析、校验、执行策略、处理超时/取消并写入审计。默认 `PermissionPolicy` 检查本地授予的权限，`SideEffectApprovalPolicy` 对写入、破坏性和外部副作用要求调用 ID 逐次批准。工具 Definition 不持有执行策略，默认执行器不重试。`python_tool()`、`http_tool()`、`command_tool()` 和 `mcp_tool()` 已实现；MCP stdio/HTTP 会话客户端、发现和沙箱绑定仍为 `Planned`。详见[工具注册、策略与执行](./tools.md)。
+`ToolRegistry` 在统一注册表中按版本和 Scope 注册 `ToolBinding`。`ToolExecutor.execute()` 依次解析、校验、执行策略、处理超时/取消并写入审计。默认 `PermissionPolicy` 检查本地授予的权限，`SideEffectApprovalPolicy` 对写入、破坏性和外部副作用要求调用 ID 逐次批准。工具 Definition 不持有执行策略，默认执行器不重试。`python_tool()`、`http_tool()`、`command_tool()`、`mcp_tool()` 和 `sandbox_command_tool()` 已实现；MCP stdio/HTTP 会话客户端和发现仍为 `Planned`。详见[工具注册、策略与执行](./tools.md)。
 
 ## 10. 沙箱协议
 
-状态：`Planned`。
+状态：`Implemented`（统一本地协议、Docker/OCI 与显式授权本地开发模式）。
 
 ```python
 class SandboxProvider(Protocol):
-    async def create(self, request: SandboxRequest) -> SandboxHandle: ...
+    async def open(
+        self,
+        spec: SandboxSpec,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> SandboxHandle: ...
 ```
 
-首版计划提供 Docker/OCI 和显式授权的 `UnsafeLocalSandbox`。nsjail/Wasm 通过适配器接入同一能力定义，Remote Sandbox 为 `Reserved`。
+`SandboxHandle.execute()` 接收无 Shell 的 `SandboxCommand` 并返回 `SandboxResult`，`close()` 收敛容器或本地 Handle。`DockerSandboxProvider` 默认断网、只读根文件系统、drop capabilities、禁止提权、限制 CPU/内存/PID，并在关闭或不确定执行错误后删除容器。`UnsafeLocalSandboxProvider` 不是安全沙箱，只接受 `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)` 产生的运行时对象；它不会成为 Docker 失败后的回退。Provider 通过 `SandboxRegistry` 进入共享注册表。nsjail/Wasm 的新协议适配仍为 `Planned`，Remote Sandbox 为 `Reserved`。详见[沙箱与本地执行](./sandbox.md)。
 
 ## 11. 工程装配协议
 

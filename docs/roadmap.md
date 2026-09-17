@@ -13,7 +13,7 @@
 | AOP、重试、断路器、超时、舱壁 | `Implemented` | 通用弹性能力 |
 | 动态配置和事件总线 | `Implemented` | 尚不是下一代插件内核 |
 | 日志、指标、追踪、健康检查 | `Implemented` | 可选后端依赖 |
-| Wasm 与 nsjail 技能沙箱 | `Implemented` | 与计划中的 Docker 编码沙箱不同 |
+| Wasm 与 nsjail 技能沙箱 | `Implemented` | 1.x 接口；尚未适配新的 SandboxProvider |
 | LangChain 适配和 FastAPI 示例 | `Implemented` | 1.x 集成 |
 
 ## 首版计划
@@ -48,8 +48,9 @@
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
 | 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/Workflow 双向便捷适配器 | `Planned` | Phase 4 |
-| Docker/OCI 编码沙箱 | `Planned` | Phase 5 |
-| `UnsafeLocalSandbox` 显式授权模式 | `Planned` | Phase 5 |
+| Docker/OCI 编码沙箱 | `Implemented` | Phase 5 / 2.0.0a1 |
+| `UnsafeLocalSandbox` 显式授权模式 | `Implemented` | Phase 5 / 2.0.0a1 |
+| Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 客服/RAG 与编码 Agent 模板 | `Planned` | Phase 5 |
 | 工程装配编码与版本管理 | `Planned` | Phase 6 |
 | CLI 与 Textual TUI | `Planned` | Phase 6 |
@@ -102,10 +103,11 @@
 
 ### Phase 5：本地模板与沙箱
 
-- Docker/OCI Sandbox Provider。
-- 明确授权的 `UnsafeLocalSandbox`。
-- 客服/RAG 和编码 Agent 模板。
-- Windows Docker Desktop/WSL2 验证。
+- 状态：统一协议、Docker Provider、显式授权本地 Provider 和命令工具绑定为 `Implemented`；模板与更广环境验收为 `Planned`。
+- 已实现 Docker/OCI 生命周期 Handle、默认断网、资源限制、最小权限参数、固定镜像策略和清理。
+- 已实现仅能通过运行时授权对象创建的 `UnsafeLocalSandboxProvider`；安全后端失败不会自动降级。
+- 已实现 `sandbox_command_tool()`，通过现有权限、逐调用审批、取消和审计管线执行。
+- 后续实现客服/RAG 与编码 Agent 模板、网络 allowlist、nsjail/Wasm 新协议适配和 Windows Docker Desktop/WSL2 广泛验证。
 
 ### Phase 6：分享、界面与评测
 

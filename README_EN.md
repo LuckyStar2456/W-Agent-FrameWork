@@ -62,8 +62,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - Tool definition/binding/registry separation, Python/HTTP/shell-free command templates, MCP client binding, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, JSONL RunEvent recording, and approval-checkpoint resume.
 - A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
+- Unified `SandboxProvider`/`SandboxRegistry` contracts, a Docker/OCI lifecycle backend, an explicitly runtime-authorized `UnsafeLocalSandboxProvider`, and policy-protected `sandbox_command_tool()`.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, agent/workflow convenience adapters, parallel or nested workflows, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, agent/workflow convenience adapters, parallel or nested workflows, customer-support/coding profiles, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
 ## Next-generation module map
 

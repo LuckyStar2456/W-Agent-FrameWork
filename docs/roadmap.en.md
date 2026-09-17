@@ -13,7 +13,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | AOP, retry, circuit breaker, timeout, bulkhead | `Implemented` | General resilience capabilities |
 | Dynamic configuration and event bus | `Implemented` | Not the next-generation plugin kernel |
 | Logging, metrics, tracing, health | `Implemented` | Some backends are optional dependencies |
-| Wasm and nsjail skill sandboxes | `Implemented` | Different from the planned Docker coding sandbox |
+| Wasm and nsjail skill sandboxes | `Implemented` | 1.x interfaces; not yet adapted to the new SandboxProvider |
 | LangChain adapter and FastAPI example | `Implemented` | 1.x integrations |
 
 ## First-release plan
@@ -48,8 +48,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
 | Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/workflow convenience adapters | `Planned` | Phase 4 |
-| Docker/OCI coding sandbox | `Planned` | Phase 5 |
-| Explicit `UnsafeLocalSandbox` mode | `Planned` | Phase 5 |
+| Docker/OCI coding sandbox | `Implemented` | Phase 5 / 2.0.0a1 |
+| Explicit `UnsafeLocalSandbox` mode | `Implemented` | Phase 5 / 2.0.0a1 |
+| Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Planned` | Phase 5 |
 | Portable composition codes and versioning | `Planned` | Phase 6 |
 | CLI and Textual TUI | `Planned` | Phase 6 |
@@ -102,10 +103,11 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 5: local profiles and sandboxing
 
-- Docker/OCI sandbox provider.
-- Explicitly authorized `UnsafeLocalSandbox`.
-- Customer-support/RAG and coding-agent profiles.
-- Windows Docker Desktop and WSL2 validation.
+- Status: unified contracts, Docker provider, explicitly authorized local provider, and command-tool binding are `Implemented`; profiles and broader environment acceptance remain `Planned`.
+- Implemented Docker/OCI lifecycle handles, network-off defaults, resource limits, least-privilege arguments, fixed-image policy, and cleanup.
+- Implemented `UnsafeLocalSandboxProvider`, constructible only with a runtime authorization object; safe-backend failure never downgrades automatically.
+- Implemented `sandbox_command_tool()` through the existing permission, per-call approval, cancellation, and audit pipeline.
+- Later work adds customer-support/RAG and coding profiles, network allowlists, nsjail/Wasm adapters to the new contract, and broad Windows Docker Desktop/WSL2 validation.
 
 ### Phase 6: sharing, interfaces, and evaluation
 

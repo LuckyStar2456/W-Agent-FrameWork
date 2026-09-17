@@ -32,6 +32,7 @@ w_agent/
 ├── models/          # 模型协议、注册表、路由与探测
 ├── observability/   # 日志、指标、追踪、健康检查
 ├── resilience/      # 超时和舱壁
+├── sandbox/         # 新一代 Sandbox 协议、Registry、Docker 与显式本地后端
 ├── scanner/         # AST 组件扫描
 ├── security/        # MCP 认证
 ├── skills/          # Skill 和沙箱
@@ -127,8 +128,8 @@ extensions={
 
 ## 8. 安全规则
 
-- Docker/OCI 是编码 Agent 的默认执行后端。
-- `UnsafeLocalSandbox` 必须由本机用户明确开启。
+- Docker/OCI 是编码 Agent 的默认执行后端；默认断网、资源受限且失败关闭。
+- `UnsafeLocalSandboxProvider` 必须接收当前进程显式生成的 `UnsafeLocalAuthorization`。
 - 工程装配导入不能携带或授予本地执行许可。
 - 沙箱不可用时失败关闭。
 - 插件安装、升级和首次运行需要明确操作。

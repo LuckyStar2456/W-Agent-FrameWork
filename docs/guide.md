@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行、Python 探测 API、工具执行基础、单 Agent ReAct Loop，以及本地 DAG/状态图/Python Workflow。完整 Session、并行/嵌套 Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行、Python 探测 API、工具执行基础、单 Agent ReAct Loop、本地 DAG/状态图/Python Workflow，以及 Docker/显式授权本地 Sandbox Provider。完整 Session、并行/嵌套 Workflow、客服/编码模板、工程装配编码和 TUI 仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -101,7 +101,7 @@ await bus.emit(Event("job.completed", {"id": "job-1"}))
 
 状态：`Implemented`。
 
-Wasm 与 nsjail 后端在真实隔离不可用时失败关闭。Wasm SDK 当前不在 Windows 原生环境安装；Windows 用户可使用 WSL2。编码 Agent 计划使用的 Docker/OCI Sandbox 尚未实现。
+Wasm 与 nsjail 后端在真实隔离不可用时失败关闭。Wasm SDK 当前不在 Windows 原生环境安装；Windows 用户可使用 WSL2。下一代 `DockerSandboxProvider` 已实现，但需要本机 Docker CLI/Daemon 与可用镜像；旧 Wasm/nsjail 类尚未接入新 Provider 协议。
 
 不要把沙箱后端不可用后的普通子进程执行当作安全回退。
 
@@ -248,11 +248,26 @@ result = await LocalWorkflowEngine().start(
 
 生产式本地恢复使用 `JsonlWorkflowStore`。节点返回 `WorkflowNodeResult(pause=True)` 时会保存 Checkpoint；新进程使用相同名称、版本和类型的定义调用 `resume()`。恢复只发生在节点边界，节点执行中断后不会自动重复可能产生副作用的节点。详见[Workflow 与节点恢复](./workflows.md)。
 
-## 12. 计划中的沙箱选择
+## 12. 当前沙箱选择
 
-状态：`Planned`。
+状态：统一 Provider、Docker/OCI 和显式授权本地执行为 `Implemented`。
 
-编码 Agent 默认使用 Docker/OCI。开发者可以明确启用 `UnsafeLocalSandbox` 在宿主机执行，但 CLI/TUI 必须显示风险，而且装配编码不能替用户开启该授权。
+```python
+from pathlib import Path
+
+from w_agent import DockerSandboxProvider, SandboxCommand, SandboxSpec
+
+provider = DockerSandboxProvider()
+handle = await provider.open(
+    SandboxSpec(Path.cwd(), image="python:3.11-slim")
+)
+try:
+    result = await handle.execute(SandboxCommand(("python", "-V")))
+finally:
+    await handle.close()
+```
+
+Docker 默认断网并限制资源。需要宿主执行时，必须先调用 `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`，再构造 `UnsafeLocalSandboxProvider`，并显式把 Spec 设为 `SandboxNetwork.BRIDGE` 与读写工作区；Docker 失败不会自动回退到本地模式。详见[沙箱与本地执行](./sandbox.md)。
 
 ## 13. 计划中的工程装配分享
 

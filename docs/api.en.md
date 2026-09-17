@@ -19,7 +19,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | AOP/resilience | `Retry`, `CircuitBreaker`, `AspectJPointcut`, advice types, `ProxyFactory`, `ResilienceManager` |
 | Observability | `global_tracer`, `CompositeHealthIndicator`, `HealthIndicator`, `LLMHealthIndicator` |
 | Distributed | `RedisDistributedLock`, `LockRenewalPool` |
-| Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox` |
+| Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox`, `SandboxProvider`, `DockerSandboxProvider`, `UnsafeLocalSandboxProvider` |
 | Tools/scanning | `ToolRegistry`, `ToolExecutor`, `ToolCall`, `ToolResult`, `python_tool`, `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
@@ -169,18 +169,23 @@ class ToolPolicy(Protocol):
     ) -> ToolPolicyDecision: ...
 ```
 
-`ToolRegistry` registers `ToolBinding` entries by version and scope in the unified registry. `ToolExecutor.execute()` resolves, validates, applies policy, handles timeout/cancellation, and records audit. The default `PermissionPolicy` checks locally granted authority; `SideEffectApprovalPolicy` requires per-call ID approval for write, destructive, and external effects. A definition owns no execution policy, and the default executor never retries. `python_tool()`, `http_tool()`, `command_tool()`, and `mcp_tool()` are implemented; MCP stdio/HTTP session clients, discovery, and sandbox binding remain `Planned`. See [Tool registration, policy, and execution](./tools.en.md).
+`ToolRegistry` registers `ToolBinding` entries by version and scope in the unified registry. `ToolExecutor.execute()` resolves, validates, applies policy, handles timeout/cancellation, and records audit. The default `PermissionPolicy` checks locally granted authority; `SideEffectApprovalPolicy` requires per-call ID approval for write, destructive, and external effects. A definition owns no execution policy, and the default executor never retries. `python_tool()`, `http_tool()`, `command_tool()`, `mcp_tool()`, and `sandbox_command_tool()` are implemented; MCP stdio/HTTP session clients and discovery remain `Planned`. See [Tool registration, policy, and execution](./tools.en.md).
 
 ## 10. Sandbox protocol
 
-Status: `Planned`.
+Status: `Implemented` for the unified local contract, Docker/OCI, and explicitly authorized local development mode.
 
 ```python
 class SandboxProvider(Protocol):
-    async def create(self, request: SandboxRequest) -> SandboxHandle: ...
+    async def open(
+        self,
+        spec: SandboxSpec,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> SandboxHandle: ...
 ```
 
-The first release plans Docker/OCI and explicitly authorized `UnsafeLocalSandbox`. nsjail and Wasm join the same capability through adapters. A remote sandbox remains `Reserved`.
+`SandboxHandle.execute()` takes a shell-free `SandboxCommand` and returns `SandboxResult`; `close()` converges the container or local handle. `DockerSandboxProvider` defaults to no network, a read-only root filesystem, dropped capabilities, no privilege escalation, CPU/memory/PID limits, and container removal on close or uncertain execution failure. `UnsafeLocalSandboxProvider` is not a security sandbox and accepts only a runtime object created through `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`; Docker failure never selects it as fallback. Providers join the shared registry through `SandboxRegistry`. New-contract adapters for nsjail/Wasm remain `Planned`; remote sandbox is `Reserved`. See [Sandbox and local execution](./sandbox.en.md).
 
 ## 11. Composition protocol
 

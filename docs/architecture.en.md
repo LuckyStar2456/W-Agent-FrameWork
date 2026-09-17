@@ -113,7 +113,6 @@ An adapter declares whether each extension is consumed, forwarded, or rejected. 
 Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, model/routing and tool contracts, agent run/loop contracts, and workflow definition/engine/checkpoint contracts. Later `Planned` protocols include:
 
 - Durable `Session`, `AgentHandle`, and resume handles.
-- `SandboxRequest`, `SandboxHandle`, and `SandboxProvider`.
 
 ## 6. Models, routing, and probing
 
@@ -145,7 +144,7 @@ Recovery is guaranteed only at node boundaries. A node checkpoint is claimed as 
 
 ## 9. Tools
 
-Status: Python, HTTP, shell-free command templates, MCP client binding, and the unified registration/policy/execution foundation are `Implemented`; first-party MCP session clients, remote adapters, and sandbox binding remain `Planned` or `Reserved`.
+Status: Python, HTTP, shell-free command, sandbox-command templates, MCP client binding, and the unified registration/policy/execution foundation are `Implemented`; first-party MCP session clients and remote adapters remain `Planned` or `Reserved`.
 
 Tool definition, execution, policy, and results are separate:
 
@@ -153,15 +152,17 @@ Tool definition, execution, policy, and results are separate:
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-Current templates cover Python functions, fixed-endpoint HTTP, shell-free local commands, and binding any MCP client into the common runtime. Each call has a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. The command template is not a sandbox; first-party MCP stdio/HTTP session clients, discovery, sandbox binding, and remote executors remain later work.
+Current templates cover Python functions, fixed-endpoint HTTP, shell-free local commands, sandbox commands, and binding any MCP client into the common runtime. Each call has a stable ID, arguments, and scope. A binding declares permissions and side effects; execution context carries cancellation and approvals granted by the local application. Argument validation, permission, per-call approval, timeout, cancellation, and prompt-free audit are enforced in the execution path rather than only in prompts or visibility filters. Calls are never retried by default. The direct command template is not a sandbox and requires `process.execute` plus per-call approval by default; `sandbox_command_tool()` uses the public sandbox provider. First-party MCP stdio/HTTP session clients, discovery, and remote executors remain later work.
 
 See [Tool registration, policy, and execution](./tools.en.md).
 
 ## 10. Sandbox
 
-Docker/OCI is the default first-release coding environment. nsjail and Wasm retain their appropriate use cases, while a remote-sandbox protocol is reserved. Windows uses Docker Desktop or WSL2 for isolated backends.
+Status: the unified contract/registry, Docker/OCI backend, and explicitly authorized local backend are `Implemented`; nsjail/Wasm adapters to the new contract are `Planned`, and remote sandbox is `Reserved`.
 
-`UnsafeLocalSandbox` is an explicitly named development mode. Users must enable it directly; the CLI and TUI display host-execution risk, and an imported project composition can never grant that authorization. Safe backends fail closed when unavailable.
+`DockerSandboxProvider` creates lifecycle-owned container handles. It defaults to no network, a read-only root filesystem, dropped capabilities, no privilege escalation, CPU/memory/PID limits, one explicit workspace mount, and container removal on close or uncertain execution. Images require a digest or non-`latest` tag by default. Network currently supports `none` and `bridge`; granular allowlists are not implemented.
+
+`UnsafeLocalSandboxProvider` is a named dangerous development mode, not a security sandbox. It accepts only an explicit runtime object from `UnsafeLocalAuthorization.grant()` and cannot receive authorization by deserializing configuration, plugins, or composition codes. Safe-backend failure never switches to local mode. Local mode requires explicit `SandboxNetwork.BRIDGE` and read-write workspace settings and rejects no-network/read-only claims it cannot honor. It provides no container resource isolation, only shell-free argv, working directory, timeout, cancellation, and output bounds.
 
 See [Sandbox and local execution](./sandbox.en.md).
 

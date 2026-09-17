@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, a single-agent ReAct loop, and local DAG/state-graph/Python workflows. Full sessions, parallel/nested workflows, Docker sandboxing, composition codes, and the TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, a single-agent ReAct loop, local DAG/state-graph/Python workflows, and Docker/explicitly authorized local sandbox providers. Full sessions, parallel/nested workflows, customer-support/coding profiles, composition codes, and the TUI remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -101,7 +101,7 @@ The 1.x event bus is not the planned typed run-event and pipeline API. A compati
 
 Status: `Implemented`.
 
-Wasm and nsjail backends fail closed when real isolation is unavailable. The Wasm SDK is not installed on native Windows; Windows users can use WSL2. The planned Docker/OCI sandbox for coding agents is not implemented.
+Wasm and nsjail backends fail closed when real isolation is unavailable. The Wasm SDK is not installed on native Windows; Windows users can use WSL2. The next-generation `DockerSandboxProvider` is implemented but requires a local Docker CLI/daemon and usable image. Legacy Wasm/nsjail classes are not yet connected to the new provider contract.
 
 Never treat ordinary subprocess execution as a safe fallback for an unavailable sandbox backend.
 
@@ -248,11 +248,26 @@ result = await LocalWorkflowEngine().start(
 
 Use `JsonlWorkflowStore` for durable local recovery. A node returning `WorkflowNodeResult(pause=True)` saves a checkpoint; a new process resumes with a definition of the same name, version, and kind. Recovery occurs only at node boundaries, and an interrupted node that may have produced effects is never repeated automatically. See [Workflows and node-boundary recovery](./workflows.en.md).
 
-## 12. Planned sandbox selection
+## 12. Current sandbox selection
 
-Status: `Planned`.
+Status: the unified provider, Docker/OCI, and explicitly authorized local execution are `Implemented`.
 
-Coding agents use Docker/OCI by default. A developer may explicitly enable `UnsafeLocalSandbox` for host execution, but the CLI and TUI must show the risk, and a composition code can never enable that authority on the user's behalf.
+```python
+from pathlib import Path
+
+from w_agent import DockerSandboxProvider, SandboxCommand, SandboxSpec
+
+provider = DockerSandboxProvider()
+handle = await provider.open(
+    SandboxSpec(Path.cwd(), image="python:3.11-slim")
+)
+try:
+    result = await handle.execute(SandboxCommand(("python", "-V")))
+finally:
+    await handle.close()
+```
+
+Docker defaults to no network and bounded resources. Host execution first requires `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`, constructing `UnsafeLocalSandboxProvider`, and explicitly selecting `SandboxNetwork.BRIDGE` plus read-write workspace access. Docker failure never falls back to local mode. See [Sandbox and local execution](./sandbox.en.md).
 
 ## 13. Planned portable project composition
 

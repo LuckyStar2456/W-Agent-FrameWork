@@ -113,7 +113,6 @@ ModelRequest(
 已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议、工具协议，Agent Run/Loop 协议，以及 Workflow Definition/Engine/Checkpoint 协议。后续 `Planned` 协议包括：
 
 - 持久化 `Session`、`AgentHandle` 和恢复句柄。
-- `SandboxRequest`、`SandboxHandle`、`SandboxProvider`。
 
 ## 6. 模型、路由与探测
 
@@ -151,7 +150,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 
 ## 9. Tools
 
-状态：Python、HTTP、无 Shell 命令工具模板和 MCP 客户端绑定，以及统一注册、策略与执行基础为 `Implemented`；官方 MCP 会话客户端、远程适配和沙箱绑定为 `Planned` 或 `Reserved`。
+状态：Python、HTTP、无 Shell 命令、Sandbox 命令工具模板和 MCP 客户端绑定，以及统一注册、策略与执行基础为 `Implemented`；官方 MCP 会话客户端和远程适配为 `Planned` 或 `Reserved`。
 
 工具定义、执行、权限和结果彼此分离：
 
@@ -159,15 +158,17 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令模板，以及把任意 MCP Client 接入公共运行时的绑定适配器。工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。命令模板不是沙箱；官方 MCP stdio/HTTP 会话客户端、发现、沙箱绑定与远程执行器仍待实现。
+当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令、Sandbox 命令模板，以及把任意 MCP Client 接入公共运行时的绑定适配器。工具调用包含稳定调用 ID、参数和作用域；Binding 声明权限与副作用，执行 Context 携带取消和由本地应用授予的批准。参数校验、权限、逐调用审批、超时、取消和 Prompt-free 审计在执行路径中强制生效，不能只依赖提示词或工具可见性。默认不重试工具调用。直接命令模板不是沙箱，默认需要 `process.execute` 和逐调用批准；`sandbox_command_tool()` 则使用公开 Sandbox Provider。官方 MCP stdio/HTTP 会话客户端、发现与远程执行器仍待实现。
 
 详细设计见[工具注册、策略与执行](./tools.md)。
 
 ## 10. Sandbox
 
-首版默认编码环境采用 Docker/OCI。nsjail 和 Wasm 延续各自适用场景，Remote Sandbox 保留协议。Windows 通过 Docker Desktop 或 WSL2 使用隔离后端。
+状态：统一协议/注册表、Docker/OCI 后端和显式授权本地后端为 `Implemented`；nsjail/Wasm 新协议适配为 `Planned`，Remote Sandbox 为 `Reserved`。
 
-`UnsafeLocalSandbox` 是明确命名的开发模式。它只能由用户主动启用，CLI/TUI 必须展示宿主机执行风险，授权不得由导入的工程装配编码自动开启。安全后端不可用时，默认失败关闭。
+`DockerSandboxProvider` 创建生命周期归属明确的容器 Handle，默认关闭网络、使用只读根文件系统、drop capabilities、禁止提权并限制 CPU、内存和 PID；只挂载明确工作区，关闭或执行状态不确定时删除容器。镜像默认要求摘要或非 `latest` 标签。网络当前支持 `none` 与 `bridge`，细粒度 allowlist 尚未实现。
+
+`UnsafeLocalSandboxProvider` 是明确命名的危险开发模式，不是安全沙箱。它只能接收 `UnsafeLocalAuthorization.grant()` 在当前进程生成的显式授权对象，授权不会由配置、插件或装配编码反序列化产生。安全后端不可用时不会自动切换到本地模式。本地模式要求显式选择 `SandboxNetwork.BRIDGE` 和读写工作区，拒绝无法兑现的断网/只读声明；它不执行容器资源隔离，只提供无 Shell argv、工作目录、超时、取消和输出上限。
 
 详细设计见[沙箱与本地执行](./sandbox.md)。
 
