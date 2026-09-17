@@ -24,6 +24,7 @@
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
 | 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
 | 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
+| Workflow | `WorkflowEngineProtocol`、`LocalWorkflowEngine`、三种 Definition、`WorkflowStore`、`JsonlWorkflowStore` 等 |
 
 当前准确的 Agent 协议只有：
 
@@ -33,16 +34,16 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具运行时独立提供，持久化 Session 和 Checkpoint 尚未接入。
+`BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint 与 Workflow 节点 Checkpoint 已实现，完整持久化 Session 尚未接入。
 
 ## 2. 下一代导出策略
 
-状态：`Implemented` / `Planned`。微内核、模型、工具与 `AgentLoop` 基础已经直接导出；示例中的 `Application` 与 `WorkflowEngine` 仍为计划 API。
+状态：`Implemented` / `Planned`。微内核、模型、工具、`AgentLoop` 与 `WorkflowEngineProtocol` 已经直接导出；`Application` 聚合门面仍为计划 API。
 
 下一代 API 直接从 `w_agent` 导出，不创建 `w_agent.v2`：
 
 ```python
-from w_agent import Application, AgentLoop, ModelProvider, WorkflowEngine
+from w_agent import AgentLoop, LocalWorkflowEngine, ModelProvider
 ```
 
 在迁移完成前，顶层导出必须避免新旧同名对象产生模糊行为。旧对象通过兼容模块或适配器保留。
@@ -134,20 +135,25 @@ class AgentLoop(Protocol):
 
 ## 8. Workflow 协议
 
-状态：`Planned`。
+状态：`Implemented`（Phase 4 本地顺序执行与节点边界恢复）。
 
 ```python
-class WorkflowEngine(Protocol):
-    async def start(self, definition: WorkflowDefinition, context: RunContext) -> WorkflowHandle: ...
+class WorkflowEngineProtocol(Protocol):
+    async def start(
+        self, definition: WorkflowDefinition, context: WorkflowContext
+    ) -> WorkflowResult: ...
 
 
-class WorkflowHandle(Protocol):
-    async def pause(self) -> Checkpoint: ...
-    async def resume(self) -> RunResult: ...
-    async def cancel(self) -> None: ...
+    async def resume(
+        self,
+        definition: WorkflowDefinition,
+        run_id: str,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> WorkflowResult: ...
 ```
 
-首版只承诺节点边界和显式 `checkpoint()` 的恢复。
+`DagWorkflowDefinition`、`StateGraphDefinition` 和 `PythonWorkflowDefinition` 使用相同引擎，并可通过共享微内核上的 `WorkflowRegistry` 按版本和 Scope 注册。节点返回 `WorkflowNodeResult` 以更新状态、选择下一节点或请求暂停。`LocalWorkflowEngine` 支持边界取消，并通过可替换 `WorkflowStore` 写入事件和检查点；内置内存与 JSONL 实现。恢复只承诺已完成节点边界，不恢复任意 Python 指令栈。不确定节点执行保留 `RESUMING` 并拒绝自动重放。并行 DAG、Agent 双向便捷适配和嵌套 Workflow 尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
 
 ## 9. 工具协议
 

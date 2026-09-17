@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, and a single-agent ReAct loop. Durable sessions, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, a single-agent ReAct loop, and local DAG/state-graph/Python workflows. Full sessions, parallel/nested workflows, Docker sandboxing, composition codes, and the TUI remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -222,13 +222,37 @@ result = await loop.run(AgentDefinition("assistant"), run_context)
 
 The loop exposes tool definitions from the current scope to the model, executes calls, and sends normalized results into the next model turn. `max_steps` and `max_tool_calls` bound a run. A call requiring approval returns `StopReason.NEEDS_APPROVAL`, the pending call, and a checkpoint without executing it. With `JsonlRunStore`, a new process can call `resume()` from that boundary without repeating the earlier model request; uncertain side-effect state rejects automatic replay. See [Agent runtime and ReAct loop](./agents.en.md).
 
-## 11. Planned sandbox selection
+## 11. Current local workflows
+
+Status: DAG, state-graph, and Python entry points plus node-boundary recovery are `Implemented`.
+
+```python
+from w_agent import (
+    DagWorkflowDefinition,
+    LocalWorkflowEngine,
+    WorkflowContext,
+    WorkflowNode,
+)
+
+workflow = DagWorkflowDefinition(
+    "hello",
+    (WorkflowNode("format", lambda context: f"hello {context.input}"),),
+)
+result = await LocalWorkflowEngine().start(
+    workflow,
+    WorkflowContext("workflow-1", input="W-Agent"),
+)
+```
+
+Use `JsonlWorkflowStore` for durable local recovery. A node returning `WorkflowNodeResult(pause=True)` saves a checkpoint; a new process resumes with a definition of the same name, version, and kind. Recovery occurs only at node boundaries, and an interrupted node that may have produced effects is never repeated automatically. See [Workflows and node-boundary recovery](./workflows.en.md).
+
+## 12. Planned sandbox selection
 
 Status: `Planned`.
 
 Coding agents use Docker/OCI by default. A developer may explicitly enable `UnsafeLocalSandbox` for host execution, but the CLI and TUI must show the risk, and a composition code can never enable that authority on the user's behalf.
 
-## 12. Planned portable project composition
+## 13. Planned portable project composition
 
 Status: `Planned`.
 
@@ -239,7 +263,7 @@ wagent composition import <composition-code>
 
 Import first shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy. Missing dependencies may be installed and plugins loaded only after user confirmation. Codes contain no secrets.
 
-## 13. Planned TUI
+## 14. Planned TUI
 
 Status: `Planned`.
 
@@ -249,9 +273,10 @@ wagent tui
 
 The TUI will cover configuration validation, model probing, plugin management, profile selection, conversations, workflow state, checkpoint recovery, sandbox authorization, and event inspection. It uses public Python APIs and needs no hosted backend.
 
-## 14. Next steps
+## 15. Next steps
 
 - Architecture and extension points: [Architecture](./architecture.en.md)
 - Delivery order: [Roadmap](./roadmap.en.md)
 - Plugin authors: [Developer guide](./developer.en.md)
+- Workflow development: [Workflows and node-boundary recovery](./workflows.en.md)
 - Migrating from 1.x: [Migration guide](./migration-1x.en.md)

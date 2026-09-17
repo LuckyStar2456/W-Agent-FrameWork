@@ -110,10 +110,9 @@ ModelRequest(
 
 适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议、工具协议，以及 `AgentDefinition`、`AgentLoop`、`RunContext`、`RunEvent` 和 `RunResult`。后续 `Planned` 协议包括：
+已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议、工具协议，Agent Run/Loop 协议，以及 Workflow Definition/Engine/Checkpoint 协议。后续 `Planned` 协议包括：
 
 - 持久化 `Session`、`AgentHandle` 和恢复句柄。
-- `WorkflowDefinition`、`WorkflowEngine`、`Checkpoint`。
 - `SandboxRequest`、`SandboxHandle`、`SandboxProvider`。
 
 ## 6. 模型、路由与探测
@@ -144,9 +143,11 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 
 ## 8. Workflow
 
-Agent Loop 与 Workflow 共享 `RunContext`、事件、取消和结果协议，但保持独立实现。Workflow 支持三种前端：静态 DAG、有状态图和 Python 控制流；它们编译或适配到统一 Workflow Engine 协议。
+状态：顺序本地执行、三种前端、节点事件和节点边界恢复为 `Implemented`；Agent 双向适配、并行 DAG 与嵌套调度为 `Planned` 或 `Reserved`。
 
-首版 Checkpoint 仅保证节点边界和显式 `checkpoint()` 位置恢复，不承诺恢复任意 Python 指令位置。首版支持暂停、恢复、取消和节点完成后的状态持久化。嵌套 Workflow、多 Agent 编排和分布式调度为 `Reserved`。
+Agent Loop 与 Workflow 使用相似但独立的 Context、事件、取消和结果协议，避免把推理循环强行合并进编排器。`WorkflowRegistry` 通过共享微内核注册表按版本和 Scope 管理定义；`LocalWorkflowEngine` 接受静态 DAG、有状态图和 Python 处理器三种 `WorkflowDefinition`，通过同一个 `WorkflowEngineProtocol` 运行。`WorkflowStore` 可整体替换；内置 `InMemoryWorkflowStore` 与 `JsonlWorkflowStore`。
+
+Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`，节点完成后才写回 `READY` 或 `PAUSED`；进程若在节点执行中断，恢复会失败关闭，避免静默重复外部副作用。Python 入口在恢复时重新调用处理器，并携带持久化状态与 `resume_count`，不恢复任意 Python 指令位置或调用栈。当前 DAG 确定性顺序执行；并行 DAG、嵌套 Workflow、多 Agent 编排和分布式调度尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
 
 ## 9. Tools
 

@@ -43,8 +43,9 @@
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP/MCP/命令行工具适配器 | `Planned` | Phase 3/5 |
 | 完整 Session 生命周期与通用回放 | `Planned` | Phase 3 |
-| DAG、状态图、Python Workflow | `Planned` | Phase 4 |
-| 节点级 Checkpoint、暂停和恢复 | `Planned` | Phase 4 |
+| DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
+| 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
+| Agent/Workflow 双向便捷适配器 | `Planned` | Phase 4 |
 | Docker/OCI 编码沙箱 | `Planned` | Phase 5 |
 | `UnsafeLocalSandbox` 显式授权模式 | `Planned` | Phase 5 |
 | 客服/RAG 与编码 Agent 模板 | `Planned` | Phase 5 |
@@ -91,9 +92,11 @@
 
 ### Phase 4：Workflow
 
-- DAG、状态图和 Python API。
-- 节点级 Checkpoint、暂停、恢复、取消。
-- Agent 调用 Workflow 和 Workflow 节点调用 Agent。
+- 状态：本地顺序执行引擎与节点边界恢复为 `Implemented`；双向便捷适配和并行执行为 `Planned`。
+- 已实现 DAG、状态图和 Python API，共用 `WorkflowEngineProtocol`、事件和结果协议。
+- 已实现内存/JSONL 节点 Checkpoint、显式暂停、重启恢复和边界取消。
+- 节点执行状态不确定时保留 `RESUMING` 并拒绝自动重放；不恢复任意 Python 指令栈。
+- 后续提供 Agent 调用 Workflow、Workflow 节点调用 Agent 的便捷适配器，以及可选并行 DAG 调度。
 
 ### Phase 5：本地模板与沙箱
 

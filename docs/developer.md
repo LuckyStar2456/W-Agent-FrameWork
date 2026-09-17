@@ -4,7 +4,7 @@
 
 ## 1. 开发基线
 
-当前仓库版本为 `2.0.0a1`，Phase 1 微内核、Phase 2 模型基础和 Phase 3 工具执行基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
+当前仓库版本为 `2.0.0a1`，Phase 1 微内核、Phase 2 模型基础、Phase 3 Agent/工具基础和 Phase 4 本地 Workflow 基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
 
 下一代实现目标：
 
@@ -36,10 +36,11 @@ w_agent/
 ├── security/        # MCP 认证
 ├── skills/          # Skill 和沙箱
 ├── testing/         # 测试辅助
-└── tools/           # 工具注册、策略、执行、Python 模板与 LangChain 兼容
+├── tools/           # 工具注册、策略、执行、Python 模板与 LangChain 兼容
+└── workflows/       # DAG、状态图、Python Workflow、Store 与本地引擎
 ```
 
-新的 ReAct Runtime 已独立于 `BaseAgent.arun()` 实现；后续持久化 Session 与 Workflow 继续建立在公开协议上。
+新的 ReAct Runtime 与本地 Workflow Engine 已独立于 `BaseAgent.arun()` 实现；后续持久化 Session 和组合适配继续建立在公开协议上。
 
 ## 3. 插件设计规则
 

@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, the Phase 1 microkernel and Phase 2A model foundation are implemented, and the remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
+The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, while the microkernel, model, tool, single-agent, and local-workflow foundations are implemented. Remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
 ## Status labels
 
@@ -61,8 +61,9 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
 - Tool definition/binding/registry separation, a Python-function template, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, JSONL RunEvent recording, and approval-checkpoint resume.
+- A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
 
-`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, general workflow checkpoints, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, full session lifecycle, agent/workflow convenience adapters, parallel or nested workflows, a Docker coding sandbox, portable composition codes, and a TUI remain `Planned` and must not be treated as existing features. Vendor templates have fake-transport tests, not live validation for every remote model.
 
 ## Next-generation module map
 
@@ -156,6 +157,7 @@ A composition code carries a portable manifest, never secrets. It does not bundl
 - [HTTP providers and vendor templates](./docs/provider-templates.en.md)
 - [Tool registration, policy, and execution](./docs/tools.en.md)
 - [Agent runtime and ReAct loop](./docs/agents.en.md)
+- [Workflows and node-boundary recovery](./docs/workflows.en.md)
 - [Sandbox and local execution](./docs/sandbox.en.md)
 - [CLI and TUI](./docs/tui.en.md)
 - [1.x migration](./docs/migration-1x.en.md)

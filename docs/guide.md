@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行、Python 探测 API、工具执行基础和单 Agent ReAct Loop。持久化 Session、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行、Python 探测 API、工具执行基础、单 Agent ReAct Loop，以及本地 DAG/状态图/Python Workflow。完整 Session、并行/嵌套 Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -222,13 +222,37 @@ result = await loop.run(AgentDefinition("assistant"), run_context)
 
 Loop 自动把当前 Scope 的工具 Definition 交给模型，执行工具并把标准结果回送下一轮模型。`max_steps` 和 `max_tool_calls` 限制运行；需要审批的工具返回 `StopReason.NEEDS_APPROVAL`、待处理调用和 Checkpoint，不会自动执行。配置 `JsonlRunStore` 后可在新进程中通过 `resume()` 从审批点继续，不重复之前的模型调用；不确定的副作用状态拒绝自动重放。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
-## 11. 计划中的沙箱选择
+## 11. 当前本地 Workflow
+
+状态：DAG、状态图、Python 入口和节点边界恢复为 `Implemented`。
+
+```python
+from w_agent import (
+    DagWorkflowDefinition,
+    LocalWorkflowEngine,
+    WorkflowContext,
+    WorkflowNode,
+)
+
+workflow = DagWorkflowDefinition(
+    "hello",
+    (WorkflowNode("format", lambda context: f"hello {context.input}"),),
+)
+result = await LocalWorkflowEngine().start(
+    workflow,
+    WorkflowContext("workflow-1", input="W-Agent"),
+)
+```
+
+生产式本地恢复使用 `JsonlWorkflowStore`。节点返回 `WorkflowNodeResult(pause=True)` 时会保存 Checkpoint；新进程使用相同名称、版本和类型的定义调用 `resume()`。恢复只发生在节点边界，节点执行中断后不会自动重复可能产生副作用的节点。详见[Workflow 与节点恢复](./workflows.md)。
+
+## 12. 计划中的沙箱选择
 
 状态：`Planned`。
 
 编码 Agent 默认使用 Docker/OCI。开发者可以明确启用 `UnsafeLocalSandbox` 在宿主机执行，但 CLI/TUI 必须显示风险，而且装配编码不能替用户开启该授权。
 
-## 12. 计划中的工程装配分享
+## 13. 计划中的工程装配分享
 
 状态：`Planned`。
 
@@ -239,7 +263,7 @@ wagent composition import <composition-code>
 
 导入先显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略。只有用户确认后才能安装缺失依赖或加载插件。编码不包含密钥。
 
-## 13. 计划中的 TUI
+## 14. 计划中的 TUI
 
 状态：`Planned`。
 
@@ -249,9 +273,10 @@ wagent tui
 
 TUI 将支持配置校验、模型探测、插件管理、Profile 选择、对话、Workflow 状态、Checkpoint 恢复、沙箱授权和事件查看。它使用公开 Python API，不依赖后台托管服务。
 
-## 14. 下一步
+## 15. 下一步
 
 - 架构与扩展点：[架构设计](./architecture.md)
 - 实现顺序：[路线图](./roadmap.md)
 - 插件作者：[开发者指南](./developer.md)
+- Workflow 开发：[Workflow 与节点恢复](./workflows.md)
 - 从 1.x 迁移：[迁移指南](./migration-1x.md)

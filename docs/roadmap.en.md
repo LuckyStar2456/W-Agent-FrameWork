@@ -43,8 +43,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP/MCP/command tool adapters | `Planned` | Phase 3/5 |
 | Full session lifecycle and general replay | `Planned` | Phase 3 |
-| DAG, state-graph, and Python workflows | `Planned` | Phase 4 |
-| Node-level checkpoint, pause, and resume | `Planned` | Phase 4 |
+| DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
+| Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
+| Agent/workflow convenience adapters | `Planned` | Phase 4 |
 | Docker/OCI coding sandbox | `Planned` | Phase 5 |
 | Explicit `UnsafeLocalSandbox` mode | `Planned` | Phase 5 |
 | Customer-support/RAG and coding profiles | `Planned` | Phase 5 |
@@ -91,9 +92,11 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 4: workflows
 
-- DAG, state-graph, and Python APIs.
-- Node-level checkpoints, pause, resume, and cancellation.
-- Agents invoke workflows; workflow nodes invoke agents.
+- Status: the local sequential engine and node-boundary recovery are `Implemented`; bidirectional convenience adapters and parallel execution are `Planned`.
+- Implemented DAG, state-graph, and Python APIs sharing `WorkflowEngineProtocol`, events, and results.
+- Implemented in-memory/JSONL node checkpoints, explicit pause, restart resume, and boundary cancellation.
+- Uncertain node execution remains `RESUMING` and rejects automatic replay; arbitrary Python instruction stacks are not restored.
+- Later work adds convenience adapters for agent-to-workflow and workflow-node-to-agent calls plus optional parallel DAG scheduling.
 
 ### Phase 5: local profiles and sandboxing
 

@@ -4,7 +4,7 @@ English | [简体中文](./developer.md)
 
 ## 1. Development baseline
 
-The current repository version is `2.0.0a1`: the Phase 1 microkernel, Phase 2 model foundation, and Phase 3 tool-execution foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
+The current repository version is `2.0.0a1`: the Phase 1 microkernel, Phase 2 model foundation, Phase 3 agent/tool foundation, and Phase 4 local-workflow foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
 
 Next-generation targets:
 
@@ -36,10 +36,11 @@ w_agent/
 ├── security/        # MCP authentication
 ├── skills/          # Skills and sandboxes
 ├── testing/         # Test helpers
-└── tools/           # Tool registry, policy, execution, Python template, and LangChain compatibility
+├── tools/           # Tool registry, policy, execution, Python template, and LangChain compatibility
+└── workflows/       # DAG, state graph, Python workflow, stores, and local engine
 ```
 
-The new ReAct runtime is implemented independently of `BaseAgent.arun()`. Durable sessions and workflows continue to build on public contracts.
+The new ReAct runtime and local workflow engine are implemented independently of `BaseAgent.arun()`. Durable sessions and composition adapters continue to build on public contracts.
 
 ## 3. Plugin design rules
 

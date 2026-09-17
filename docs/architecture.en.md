@@ -110,10 +110,9 @@ ModelRequest(
 
 An adapter declares whether each extension is consumed, forwarded, or rejected. Unsupported standard fields fail by default and are never silently discarded. Runtime context is controlled-mutable: formal transitions update core fields, while plugins directly write only their own namespace.
 
-Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, model/routing and tool contracts, plus `AgentDefinition`, `AgentLoop`, `RunContext`, `RunEvent`, and `RunResult`. Later `Planned` protocols include:
+Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, model/routing and tool contracts, agent run/loop contracts, and workflow definition/engine/checkpoint contracts. Later `Planned` protocols include:
 
 - Durable `Session`, `AgentHandle`, and resume handles.
-- `WorkflowDefinition`, `WorkflowEngine`, and `Checkpoint`.
 - `SandboxRequest`, `SandboxHandle`, and `SandboxProvider`.
 
 ## 6. Models, routing, and probing
@@ -138,9 +137,11 @@ The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `T
 
 ## 8. Workflow
 
-Agent loops and workflows share run context, events, cancellation, and result protocols while retaining separate implementations. Workflows accept static DAG, state-graph, and Python-control-flow frontends through one workflow-engine protocol.
+Status: sequential local execution, all three frontends, node events, and node-boundary recovery are `Implemented`; bidirectional agent adapters, parallel DAG execution, and nesting are `Planned` or `Reserved`.
 
-First-release checkpoints recover only at node boundaries and explicit `checkpoint()` calls; arbitrary Python instruction positions are not resumable. Pause, resume, cancellation, and node-completion persistence are planned. Nested workflows, multi-agent orchestration, and distributed scheduling are `Reserved`.
+Agent loops and workflows use similar but separate context, event, cancellation, and result contracts so orchestration does not absorb the reasoning loop. `WorkflowRegistry` manages definitions by version and scope through the shared microkernel registry. `LocalWorkflowEngine` accepts static DAG, state-graph, and Python-handler `WorkflowDefinition` forms through one `WorkflowEngineProtocol`. `WorkflowStore` is replaceable; built-ins include `InMemoryWorkflowStore` and `JsonlWorkflowStore`.
+
+Recovery is guaranteed only at node boundaries. A node checkpoint is claimed as `RESUMING` before execution and returns to `READY` or `PAUSED` only after completion. A process interruption inside a node therefore fails closed instead of silently replaying possible external side effects. The Python entry point calls the handler again with persisted state and `resume_count`; it does not restore arbitrary Python instruction positions or call stacks. DAG execution is currently deterministic and sequential. Parallel DAGs, nested workflows, multi-agent orchestration, and distributed scheduling are not implemented. See [Workflows and node-boundary recovery](./workflows.en.md).
 
 ## 9. Tools
 

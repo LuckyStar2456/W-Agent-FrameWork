@@ -24,6 +24,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
 | Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
+| Workflow | `WorkflowEngineProtocol`, `LocalWorkflowEngine`, all three definitions, `WorkflowStore`, `JsonlWorkflowStore`, and related types |
 
 The only accurate current agent protocol is:
 
@@ -33,16 +34,16 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool runtime is available independently, while durable sessions and checkpoints are not yet connected.
+`BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints and workflow node checkpoints are implemented; full durable sessions are not yet connected.
 
 ## 2. Next-generation export strategy
 
-Status: `Implemented` / `Planned`. Microkernel, model, tool, and `AgentLoop` foundations are exported directly; `Application` and `WorkflowEngine` in the example remain planned.
+Status: `Implemented` / `Planned`. Microkernel, model, tool, `AgentLoop`, and `WorkflowEngineProtocol` foundations are exported directly; the aggregate `Application` facade remains planned.
 
 Next-generation APIs are exported directly from `w_agent`; there is no `w_agent.v2` namespace:
 
 ```python
-from w_agent import Application, AgentLoop, ModelProvider, WorkflowEngine
+from w_agent import AgentLoop, LocalWorkflowEngine, ModelProvider
 ```
 
 Until migration is complete, top-level exports avoid ambiguous behavior between old and new objects with the same name. Old objects remain through a compatibility module or adapter.
@@ -134,20 +135,25 @@ class AgentLoop(Protocol):
 
 ## 8. Workflow protocol
 
-Status: `Planned`.
+Status: `Implemented` for Phase 4 local sequential execution and node-boundary recovery.
 
 ```python
-class WorkflowEngine(Protocol):
-    async def start(self, definition: WorkflowDefinition, context: RunContext) -> WorkflowHandle: ...
+class WorkflowEngineProtocol(Protocol):
+    async def start(
+        self, definition: WorkflowDefinition, context: WorkflowContext
+    ) -> WorkflowResult: ...
 
 
-class WorkflowHandle(Protocol):
-    async def pause(self) -> Checkpoint: ...
-    async def resume(self) -> RunResult: ...
-    async def cancel(self) -> None: ...
+    async def resume(
+        self,
+        definition: WorkflowDefinition,
+        run_id: str,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> WorkflowResult: ...
 ```
 
-The first release guarantees recovery only at node boundaries and explicit `checkpoint()` calls.
+`DagWorkflowDefinition`, `StateGraphDefinition`, and `PythonWorkflowDefinition` use the same engine and can be registered by version and scope through `WorkflowRegistry` on the shared microkernel. Nodes return `WorkflowNodeResult` to update state, select a next node, or request a pause. `LocalWorkflowEngine` supports boundary cancellation and writes events/checkpoints through a replaceable `WorkflowStore`; in-memory and JSONL implementations are included. Recovery guarantees completed node boundaries only and never restores an arbitrary Python instruction stack. An uncertain node remains `RESUMING` and rejects automatic replay. Parallel DAGs, bidirectional agent convenience adapters, and nested workflows are not implemented. See [Workflows and node-boundary recovery](./workflows.en.md).
 
 ## 9. Tool protocol
 

@@ -19,6 +19,7 @@ This documentation describes stable 1.5.2, the current `2.0.0a1` source, and the
 - [HTTP providers and vendor templates](./provider-templates.en.md)
 - [Tool registration, policy, and execution](./tools.en.md)
 - [Agent runtime and ReAct loop](./agents.en.md)
+- [Workflows and node-boundary recovery](./workflows.en.md)
 - [Sandbox and local execution](./sandbox.en.md)
 - [CLI and TUI](./tui.en.md)
 - [Portable project compositions](./project-sharing.en.md)

@@ -4,7 +4,7 @@
 
 W-Agent 是一个面向本地开发者的 Python 开源 Agent 开发框架。它的目标不是提供托管平台或固定 Harness，而是提供稳定、可扩展的协议与可自由装配的模块，让开发者能够替换模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面实现。
 
-当前稳定发布版本是 `1.5.2`；仓库主线已进入 `2.0.0a1` 开发阶段。1.x 工程底座继续保留，Phase 1 微内核和 Phase 2A 模型基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
+当前稳定发布版本是 `1.5.2`；仓库主线已进入 `2.0.0a1` 开发阶段。1.x 工程底座继续保留，微内核、模型、工具、单 Agent 与本地 Workflow 基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
 
 ## 状态标记
 
@@ -61,8 +61,9 @@ W-Agent 遵循以下原则：
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
 - 工具 Definition/Binding/Registry 分层、Python 函数模板、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、JSONL RunEvent 记录和审批断点恢复。
+- 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、通用 Workflow Checkpoint、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象，新的 ReAct Runtime 独立提供；专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、完整 Session 生命周期、Agent/Workflow 便捷适配器、并行或嵌套 Workflow、Docker 编码沙箱、工程装配编码和 TUI 仍为 `Planned`，不能当作现成功能使用。厂商模板经过模拟传输测试，但不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -156,6 +157,7 @@ CLI 与 TUI 将只调用公开 Python API。TUI 计划覆盖模型配置与探�
 - [HTTP Provider 与厂商模板](./docs/provider-templates.md)
 - [工具注册、策略与执行](./docs/tools.md)
 - [Agent Runtime 与 ReAct Loop](./docs/agents.md)
+- [Workflow 与节点恢复](./docs/workflows.md)
 - [沙箱与本地执行](./docs/sandbox.md)
 - [CLI 与 TUI](./docs/tui.md)
 - [1.x 迁移](./docs/migration-1x.md)
