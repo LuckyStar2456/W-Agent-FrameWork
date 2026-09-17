@@ -21,6 +21,7 @@ Status: `Implemented`.
 ```text
 w_agent/
 ├── aop/             # Pointcuts, advice, and proxies
+├── agents/          # Run contracts and replaceable ReAct loop
 ├── config/          # Dynamic configuration
 ├── container/       # IOC and bean lifecycle
 ├── core/            # 1.x Agent, decorators, events, and Doctor
@@ -38,7 +39,7 @@ w_agent/
 └── tools/           # Tool registry, policy, execution, Python template, and LangChain compatibility
 ```
 
-The later agent and workflow runtime will build on these modules; it cannot be delivered by continuing to add behavior to `BaseAgent.arun()`.
+The new ReAct runtime is implemented independently of `BaseAgent.arun()`. Durable sessions and workflows continue to build on public contracts.
 
 ## 3. Plugin design rules
 

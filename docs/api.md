@@ -10,7 +10,7 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent` |
+| Agent | `BaseAgent`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -33,11 +33,11 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` 尚未接入新的模型协议；统一工具执行基础已经独立提供，但 Session、Agent Loop 和 Checkpoint 运行时仍未接入。
+`BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具运行时独立提供，持久化 Session 和 Checkpoint 尚未接入。
 
 ## 2. 下一代导出策略
 
-状态：`Implemented` / `Planned`。微内核和模型基础已经直接导出；示例中的 `Application`、`AgentLoop` 与 `WorkflowEngine` 仍为计划 API。
+状态：`Implemented` / `Planned`。微内核、模型、工具与 `AgentLoop` 基础已经直接导出；示例中的 `Application` 与 `WorkflowEngine` 仍为计划 API。
 
 下一代 API 直接从 `w_agent` 导出，不创建 `w_agent.v2`：
 
@@ -117,15 +117,20 @@ class RoutingPolicy(Protocol):
 
 ## 7. Agent 协议
 
-状态：`Planned`。
+状态：`Implemented`（Run 协议与单 Agent ReAct 基础）。
 
 ```python
 class AgentLoop(Protocol):
-    async def run(self, context: RunContext) -> RunResult: ...
-    def stream(self, context: RunContext) -> AsyncIterator[RunEvent]: ...
+    async def run(
+        self, definition: AgentDefinition, context: RunContext
+    ) -> RunResult: ...
+
+    def stream(
+        self, definition: AgentDefinition, context: RunContext
+    ) -> AgentExecution: ...
 ```
 
-默认 ReAct 是普通 Provider，可以被同协议的其他 Loop 替换。同步 `invoke()` 只作为边界包装器。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，公开单次消费的进程内 RunEvent 流，并在需要审批时返回 `pending_tool_call`。当前没有持久化 Session、恢复句柄或 Agent 逐 Token 事件。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 8. Workflow 协议
 

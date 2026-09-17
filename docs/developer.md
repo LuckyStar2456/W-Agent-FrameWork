@@ -21,6 +21,7 @@
 ```text
 w_agent/
 ├── aop/             # 切点、通知和代理
+├── agents/          # Run 协议与可替换 ReAct Loop
 ├── config/          # 动态配置
 ├── container/       # IOC 与 Bean 生命周期
 ├── core/            # 1.x Agent、装饰器、事件与 Doctor
@@ -38,7 +39,7 @@ w_agent/
 └── tools/           # 工具注册、策略、执行、Python 模板与 LangChain 兼容
 ```
 
-后续 Agent 与 Workflow 运行时会在这些模块基础上逐步实现，不能通过简单扩展 `BaseAgent.arun()` 完成。
+新的 ReAct Runtime 已独立于 `BaseAgent.arun()` 实现；后续持久化 Session 与 Workflow 继续建立在公开协议上。
 
 ## 3. 插件设计规则
 

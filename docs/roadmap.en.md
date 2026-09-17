@@ -36,7 +36,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Cross-stream recovery and resume | `Planned` | Phase 2B |
-| ReAct agent-loop template | `Planned` | Phase 3 |
+| Single-agent ReAct/tool-loop template | `Implemented` | Phase 3 / 2.0.0a1 |
+| In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
 | HTTP/MCP/command tool adapters | `Planned` | Phase 3/5 |
@@ -81,9 +82,9 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 3: agents and tools
 
-- Status: the tool-execution foundation is `Implemented`; Run/session/ReAct remain `Planned`.
-- Run, session, and append-only event recording.
-- Replaceable agent loop and default ReAct template.
+- Status: the tool foundation, run contracts, and single-agent ReAct are `Implemented`; durable sessions/resume remain `Planned`.
+- Implemented replaceable agent loops, a default ReAct template, an in-process RunEvent stream, and step/tool budgets.
+- Later durable sessions, append-only event recording, post-approval resume, and agent token events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
 - Later HTTP/MCP/command adapters and sandbox binding.
 

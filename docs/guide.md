@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行和 Python 探测 API。ReAct、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型基础、通用 HTTP Provider、首批厂商模板、收集/透传执行、Python 探测 API、工具执行基础和单 Agent ReAct Loop。持久化 Session、Workflow、Docker 沙箱、工程装配编码和 TUI 仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -209,13 +209,26 @@ result = await ToolExecutor(tools).execute(
 
 默认策略只自动执行无须批准的调用。写入、破坏性与外部副作用必须由本地应用为具体调用 ID 提供批准。详见[工具注册、策略与执行](./tools.md)。
 
-## 10. 计划中的沙箱选择
+## 10. 当前单 Agent ReAct Loop
+
+状态：公开 Run/Loop 协议、有界 ReAct/tool loop 和进程内事件流为 `Implemented`。
+
+```python
+from w_agent import AgentDefinition, ReactAgentLoop, RunContext
+
+loop = ReactAgentLoop(model_executor, tools, tool_executor)
+result = await loop.run(AgentDefinition("assistant"), run_context)
+```
+
+Loop 自动把当前 Scope 的工具 Definition 交给模型，执行工具并把标准结果回送下一轮模型。`max_steps` 和 `max_tool_calls` 限制运行；需要审批的工具返回 `StopReason.NEEDS_APPROVAL` 和待处理调用，不会自动执行。当前事件不持久化，也不能从审批点原地恢复。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+
+## 11. 计划中的沙箱选择
 
 状态：`Planned`。
 
 编码 Agent 默认使用 Docker/OCI。开发者可以明确启用 `UnsafeLocalSandbox` 在宿主机执行，但 CLI/TUI 必须显示风险，而且装配编码不能替用户开启该授权。
 
-## 11. 计划中的工程装配分享
+## 12. 计划中的工程装配分享
 
 状态：`Planned`。
 
@@ -226,7 +239,7 @@ wagent composition import <composition-code>
 
 导入先显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略。只有用户确认后才能安装缺失依赖或加载插件。编码不包含密钥。
 
-## 12. 计划中的 TUI
+## 13. 计划中的 TUI
 
 状态：`Planned`。
 
@@ -236,7 +249,7 @@ wagent tui
 
 TUI 将支持配置校验、模型探测、插件管理、Profile 选择、对话、Workflow 状态、Checkpoint 恢复、沙箱授权和事件查看。它使用公开 Python API，不依赖后台托管服务。
 
-## 13. 下一步
+## 14. 下一步
 
 - 架构与扩展点：[架构设计](./architecture.md)
 - 实现顺序：[路线图](./roadmap.md)

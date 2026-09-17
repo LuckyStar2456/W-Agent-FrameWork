@@ -136,6 +136,16 @@ class ToolResult:
         return self.outcome != ToolOutcome.SUCCEEDED
 
 
+class ToolExecutorProtocol(Protocol):
+    """Replaceable executor consumed by agent loops and workflows."""
+
+    async def execute(
+        self,
+        call: ToolCall,
+        context: ToolExecutionContext | None = None,
+    ) -> ToolResult: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ToolAuditRecord:
     """Prompt-free audit entry that excludes argument values and output."""

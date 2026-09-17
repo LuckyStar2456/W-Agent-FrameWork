@@ -94,7 +94,7 @@ Events provide loose-coupled notification, while pipelines provide composable in
 - `serial`: ordered execution with optional early termination.
 - `pipeline`: listeners explicitly delegate, wrap, or stop execution.
 
-The current `EventDispatcher` implements in-process extension events, with listener registrations owned by plugin lifecycle. Phase 3 adds the separate durable RunEvent stream.
+The current `EventDispatcher` implements in-process extension events, with listener registrations owned by plugin lifecycle. Phase 3 now adds a separate in-process RunEvent stream; durable event storage and its separation from realtime delivery remain `Planned`.
 
 ## 5. Stable and extensible protocols
 
@@ -110,10 +110,9 @@ ModelRequest(
 
 An adapter declares whether each extension is consumed, forwarded, or rejected. Unsupported standard fields fail by default and are never silently discarded. Runtime context is controlled-mutable: formal transitions update core fields, while plugins directly write only their own namespace.
 
-Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, the model/routing contracts, plus `ToolDefinition`, `ToolBinding`, `ToolCall`, `ToolResult`, `ToolPolicy`, and `ToolExecutor`. Later `Planned` protocols include:
+Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, model/routing and tool contracts, plus `AgentDefinition`, `AgentLoop`, `RunContext`, `RunEvent`, and `RunResult`. Later `Planned` protocols include:
 
-- `RunContext`, `RunEvent`, `RunResult`, and `StopReason`.
-- `AgentDefinition`, `AgentLoop`, and `AgentHandle`.
+- Durable `Session`, `AgentHandle`, and resume handles.
 - `WorkflowDefinition`, `WorkflowEngine`, and `Checkpoint`.
 - `SandboxRequest`, `SandboxHandle`, and `SandboxProvider`.
 
@@ -131,9 +130,11 @@ See [Models, routing, and endpoint probing](./model-routing.en.md).
 
 ## 7. Agent runtime
 
+Status: public run/loop contracts, a bounded single-agent ReAct template, and an in-process event stream are `Implemented`; durable sessions, event storage, and approval resume remain `Planned`.
+
 The runtime defines run lifecycle, context, events, cancellation, budgets, and results without prescribing one reasoning policy. The first release provides a usable ReAct template. Users can replace the entire loop, insert pipelines between phases, add step types, choose the next step dynamically, or invoke a workflow from an agent.
 
-Model-visible content must be reconstructable from durable events. Default events cover runs, model requests, stream output, tool calls, state changes, and stop reasons. Custom loops may add event types, but those events remain serializable.
+The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step/tool-call budgets, and stop safely for approval. Current RunEvents are in-process and model calls are collected. Later durable events must reconstruct all model-visible content and add token output plus true resume semantics. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 8. Workflow
 

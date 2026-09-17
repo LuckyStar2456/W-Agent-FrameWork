@@ -6,6 +6,18 @@ __license__ = "MIT"
 
 # 导出核心模块
 from w_agent.core.agent import BaseAgent
+from w_agent.agents import (
+    AgentDefinition,
+    AgentExecution,
+    AgentLoop,
+    ReactAgentExecution,
+    ReactAgentLoop,
+    RunContext,
+    RunEvent,
+    RunEventType,
+    RunResult,
+    StopReason,
+)
 from w_agent.container.bean_factory import BeanFactory, BeanDefinition, Scope
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.core.decorators import (
@@ -66,6 +78,7 @@ from w_agent.tools import (
     ToolCall,
     ToolExecutionContext,
     ToolExecutor,
+    ToolExecutorProtocol,
     ToolFailure,
     ToolOutcome,
     ToolPolicyAction,
@@ -210,6 +223,16 @@ from w_agent.models import (
 
 __all__ = [
     "BaseAgent",
+    "AgentDefinition",
+    "AgentExecution",
+    "AgentLoop",
+    "ReactAgentExecution",
+    "ReactAgentLoop",
+    "RunContext",
+    "RunEvent",
+    "RunEventType",
+    "RunResult",
+    "StopReason",
     "BeanFactory",
     "BeanDefinition",
     "Scope",
@@ -266,6 +289,7 @@ __all__ = [
     "ToolCall",
     "ToolExecutionContext",
     "ToolExecutor",
+    "ToolExecutorProtocol",
     "ToolFailure",
     "ToolOutcome",
     "ToolPolicyAction",

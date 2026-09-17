@@ -10,7 +10,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 
 | Group | API |
 |---|---|
-| Agent | `BaseAgent` |
+| Agent | `BaseAgent`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -33,11 +33,11 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` is not yet integrated with the new model protocol. The unified tool-execution foundation is available independently, while session, agent-loop, and checkpoint runtimes are not yet connected.
+`BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool runtime is available independently, while durable sessions and checkpoints are not yet connected.
 
 ## 2. Next-generation export strategy
 
-Status: `Implemented` / `Planned`. Microkernel and model-foundation APIs are exported directly; `Application`, `AgentLoop`, and `WorkflowEngine` in the example remain planned.
+Status: `Implemented` / `Planned`. Microkernel, model, tool, and `AgentLoop` foundations are exported directly; `Application` and `WorkflowEngine` in the example remain planned.
 
 Next-generation APIs are exported directly from `w_agent`; there is no `w_agent.v2` namespace:
 
@@ -117,15 +117,20 @@ Status: `Implemented` as a Phase 2A foundation.
 
 ## 7. Agent protocol
 
-Status: `Planned`.
+Status: `Implemented` for the run contracts and single-agent ReAct foundation.
 
 ```python
 class AgentLoop(Protocol):
-    async def run(self, context: RunContext) -> RunResult: ...
-    def stream(self, context: RunContext) -> AsyncIterator[RunEvent]: ...
+    async def run(
+        self, definition: AgentDefinition, context: RunContext
+    ) -> RunResult: ...
+
+    def stream(
+        self, definition: AgentDefinition, context: RunContext
+    ) -> AgentExecution: ...
 ```
 
-The default ReAct loop is an ordinary provider that another loop can replace through the same protocol. Synchronous `invoke()` is only a boundary wrapper.
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same loop protocol. It runs a bounded model/tool cycle, exposes a single-use in-process RunEvent stream, and returns `pending_tool_call` when approval is required. Durable sessions, resume handles, and agent token events are not implemented yet. See [Agent runtime and ReAct loop](./agents.en.md).
 
 ## 8. Workflow protocol
 

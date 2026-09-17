@@ -94,7 +94,7 @@ W-Agent 不内置 Tenant。`ScopePath` 允许插件增加自定义作用域维�
 - `serial`：顺序执行，可提前结束。
 - `pipeline`：监听器显式调用下一层，可包裹或中止执行。
 
-当前 `EventDispatcher` 实现进程内扩展事件，事件处理器注册由插件生命周期管理。持久化 RunEvent 与实时事件的分离在 Phase 3 实现。
+当前 `EventDispatcher` 实现进程内扩展事件，事件处理器注册由插件生命周期管理。Phase 3 已增加独立的进程内 RunEvent；持久化事件存储及其与实时事件的分离仍为 `Planned`。
 
 ## 5. 稳定且可扩展的协议
 
@@ -110,10 +110,9 @@ ModelRequest(
 
 适配器必须声明扩展字段是消费、透传还是拒绝。标准字段无法支持时默认报错，禁止静默丢弃。运行上下文采用受控可变设计：核心字段通过正式状态转换 API 修改，插件只能直接写入自己的命名空间。
 
-已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议，以及 `ToolDefinition`、`ToolBinding`、`ToolCall`、`ToolResult`、`ToolPolicy` 和 `ToolExecutor`。后续 `Planned` 协议包括：
+已经实现的协议包括 `PluginSpec`、`PluginHandle`、`Registry`、`RegistryView`、`ScopePath`、`Contribution`、`Registration`、`EventDispatcher`、模型/路由协议、工具协议，以及 `AgentDefinition`、`AgentLoop`、`RunContext`、`RunEvent` 和 `RunResult`。后续 `Planned` 协议包括：
 
-- `RunContext`、`RunEvent`、`RunResult`、`StopReason`。
-- `AgentDefinition`、`AgentLoop`、`AgentHandle`。
+- 持久化 `Session`、`AgentHandle` 和恢复句柄。
 - `WorkflowDefinition`、`WorkflowEngine`、`Checkpoint`。
 - `SandboxRequest`、`SandboxHandle`、`SandboxProvider`。
 
@@ -131,6 +130,8 @@ ModelRequest(
 
 ## 7. Agent Runtime
 
+状态：公开 Run/Loop 协议、有界单 Agent ReAct 模板和进程内事件流为 `Implemented`；持久化 Session、事件存储和审批恢复为 `Planned`。
+
 Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和结果，不规定唯一推理策略。首版提供一个可用 ReAct 模板，用户可以：
 
 - 替换整个 `AgentLoop`。
@@ -139,7 +140,7 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 - 动态选择下一步。
 - 从 Agent 调用 Workflow。
 
-模型可见内容必须能从持久化事件重建。默认事件包括 Run、模型请求、流式输出、工具调用、状态变更和结束原因。自定义 Loop 可以增加事件类型，但必须保持可序列化。
+当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤/工具调用预算并在工具需要审批时安全停止。当前 RunEvent 是进程内事件，模型调用采用收集模式；后续持久化事件必须能够重建模型可见内容，并补充逐 Token 输出和真实恢复语义。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 ## 8. Workflow
 

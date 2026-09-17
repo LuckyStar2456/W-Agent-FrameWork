@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, and Python probe APIs. The ReAct loop, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
+The current stable PyPI release is 1.5.2; repository version `2.0.0a1` implements the plugin microkernel, model foundation, generic HTTP provider, initial vendor templates, collecting/pass-through execution, Python probe APIs, the tool-execution foundation, and a single-agent ReAct loop. Durable sessions, workflows, Docker sandbox, composition codes, and TUI remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -209,13 +209,26 @@ result = await ToolExecutor(tools).execute(
 
 The default policy automatically executes only calls that need no approval. Write, destructive, and external effects require the local application to approve the specific call ID. See [Tool registration, policy, and execution](./tools.en.md).
 
-## 10. Planned sandbox selection
+## 10. Current single-agent ReAct loop
+
+Status: public run/loop contracts, a bounded ReAct/tool loop, and an in-process event stream are `Implemented`.
+
+```python
+from w_agent import AgentDefinition, ReactAgentLoop, RunContext
+
+loop = ReactAgentLoop(model_executor, tools, tool_executor)
+result = await loop.run(AgentDefinition("assistant"), run_context)
+```
+
+The loop exposes tool definitions from the current scope to the model, executes calls, and sends normalized results into the next model turn. `max_steps` and `max_tool_calls` bound a run. A call requiring approval returns `StopReason.NEEDS_APPROVAL` plus the pending call and is not executed. Events are not durable yet, and execution cannot resume in place from the approval boundary. See [Agent runtime and ReAct loop](./agents.en.md).
+
+## 11. Planned sandbox selection
 
 Status: `Planned`.
 
 Coding agents use Docker/OCI by default. A developer may explicitly enable `UnsafeLocalSandbox` for host execution, but the CLI and TUI must show the risk, and a composition code can never enable that authority on the user's behalf.
 
-## 11. Planned portable project composition
+## 12. Planned portable project composition
 
 Status: `Planned`.
 
@@ -226,7 +239,7 @@ wagent composition import <composition-code>
 
 Import first shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy. Missing dependencies may be installed and plugins loaded only after user confirmation. Codes contain no secrets.
 
-## 12. Planned TUI
+## 13. Planned TUI
 
 Status: `Planned`.
 
@@ -236,7 +249,7 @@ wagent tui
 
 The TUI will cover configuration validation, model probing, plugin management, profile selection, conversations, workflow state, checkpoint recovery, sandbox authorization, and event inspection. It uses public Python APIs and needs no hosted backend.
 
-## 13. Next steps
+## 14. Next steps
 
 - Architecture and extension points: [Architecture](./architecture.en.md)
 - Delivery order: [Roadmap](./roadmap.en.md)
