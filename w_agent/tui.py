@@ -27,6 +27,7 @@ from w_agent.compositions import (
 )
 from w_agent.models import EndpointProbe
 from w_agent.sandbox import DockerSandboxProvider
+from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
 
 
 class WAgentTui(App[None]):
@@ -41,12 +42,15 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result { min-height: 8; }
+    #composition-result, #probe-result, #session-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
         super().__init__()
         self.workspace = Path(workspace).resolve()
+        self.sessions = SessionManager(
+            JsonSessionStore(self.workspace / ".wagent" / "sessions")
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -82,6 +86,18 @@ class WAgentTui(App[None]):
                     id="composition-result",
                     classes="panel",
                 )
+            with TabPane("Sessions", id="sessions"):
+                yield Label("Local persistent session lifecycle")
+                yield Input(placeholder="Session title", id="session-title")
+                yield Input(
+                    placeholder="Session ID for archive/unarchive",
+                    id="session-id",
+                )
+                yield Button("Create", id="session-create", variant="primary")
+                yield Button("Refresh", id="session-refresh")
+                yield Button("Archive", id="session-archive", variant="warning")
+                yield Button("Unarchive", id="session-unarchive")
+                yield Static("Loading sessions…", id="session-result", classes="panel")
             with TabPane("Run", id="run"):
                 yield Static(
                     "Assemble a ModelExecutor, ToolRegistry, and AgentLoop through "
@@ -107,13 +123,16 @@ class WAgentTui(App[None]):
     async def on_mount(self) -> None:
         store = CompositionStore(self.workspace / ".wagent" / "compositions")
         entries = store.entries()
+        sessions = await self.sessions.list(include_archived=True)
         summary = (
             f"Workspace: {self.workspace}\n"
             f"Python framework version: {__version__}\n"
             f"Stored compositions: {len(entries)}\n"
+            f"Stored sessions: {len(sessions)}\n"
             "No hosted service or background daemon is required."
         )
         self.query_one("#home-summary", Static).update(summary)
+        await self._refresh_sessions()
         available = await DockerSandboxProvider().available()
         self.query_one("#sandbox-summary", Static).update(
             f"Docker/OCI available: {available}\n"
@@ -126,6 +145,14 @@ class WAgentTui(App[None]):
             self._inspect_composition()
         elif event.button.id == "probe-button":
             await self._probe_endpoint()
+        elif event.button.id == "session-create":
+            await self._create_session()
+        elif event.button.id == "session-refresh":
+            await self._refresh_sessions()
+        elif event.button.id == "session-archive":
+            await self._set_session_archived(True)
+        elif event.button.id == "session-unarchive":
+            await self._set_session_archived(False)
 
     def _inspect_composition(self) -> None:
         code = self.query_one("#composition-code", Input).value.strip()
@@ -164,6 +191,48 @@ class WAgentTui(App[None]):
             for check in result.checks
         )
         target.update("\n".join(lines))
+
+    async def _create_session(self) -> None:
+        title = self.query_one("#session-title", Input).value.strip()
+        target = self.query_one("#session-result", Static)
+        if not title:
+            target.update("Rejected: session title is required")
+            return
+        try:
+            created = await self.sessions.create(title)
+        except (SessionError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        self.query_one("#session-title", Input).value = ""
+        self.query_one("#session-id", Input).value = created.session_id
+        await self._refresh_sessions(prefix=f"Created {created.session_id}\n")
+
+    async def _set_session_archived(self, archived: bool) -> None:
+        session_id = self.query_one("#session-id", Input).value.strip()
+        target = self.query_one("#session-result", Static)
+        if not session_id:
+            target.update("Rejected: session ID is required")
+            return
+        try:
+            updated = await self.sessions.archive(session_id, archived=archived)
+        except (SessionError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        action = "Archived" if archived else "Unarchived"
+        await self._refresh_sessions(prefix=f"{action} {updated.session_id}\n")
+
+    async def _refresh_sessions(self, *, prefix: str = "") -> None:
+        sessions = await self.sessions.list(include_archived=True)
+        lines = [
+            (
+                f"{item.session_id} | {item.status.value} | {item.title} | "
+                f"runs={len(item.runs)} | "
+                f"tokens={sum(run.usage.total_tokens for run in item.runs)}"
+            )
+            for item in sessions
+        ]
+        body = "\n".join(lines) if lines else "No local sessions."
+        self.query_one("#session-result", Static).update(prefix + body)
 
     @staticmethod
     def _profile_text() -> str:

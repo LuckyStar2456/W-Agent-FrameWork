@@ -25,6 +25,7 @@ from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.core.doctor import Doctor
 from w_agent.models import EndpointProbe
+from w_agent.sessions import JsonSessionStore, SessionError, SessionManager, SessionRecord
 
 app = typer.Typer(
     name="wagent",
@@ -35,10 +36,12 @@ app = typer.Typer(
 )
 profile_app = typer.Typer(help="Inspect built-in editable agent templates.")
 composition_app = typer.Typer(help="Encode, inspect, and store compositions.")
+session_app = typer.Typer(help="Manage local persistent agent sessions.")
 config_app = typer.Typer(help="Compatibility configuration commands.")
 bean_app = typer.Typer(help="Compatibility IOC-container commands.")
 app.add_typer(profile_app, name="profile")
 app.add_typer(composition_app, name="composition")
+app.add_typer(session_app, name="session")
 app.add_typer(config_app, name="config")
 app.add_typer(bean_app, name="bean")
 console = Console()
@@ -86,6 +89,7 @@ def init(
     for child in (
         state,
         state / "compositions",
+        state / "sessions",
         state / "runs",
         state / "workflows",
     ):
@@ -313,6 +317,92 @@ def composition_list(
     _emit(entries, json_output)
 
 
+@session_app.command("create")
+def session_create(
+    title: str = typer.Argument(..., help="Human-readable local session title."),
+    session_id: str | None = typer.Option(None, "--id", help="Optional stable ID."),
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Create a local session without starting a model run."""
+
+    manager = SessionManager(JsonSessionStore(root))
+    try:
+        session = asyncio.run(manager.create(title, session_id=session_id))
+    except (SessionError, ValueError) as error:
+        _fail(str(error))
+    _emit(_session_payload(session, include_details=False), json_output)
+
+
+@session_app.command("list")
+def session_list(
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    include_archived: bool = typer.Option(False, "--include-archived"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """List local sessions, newest first."""
+
+    manager = SessionManager(JsonSessionStore(root))
+    sessions = asyncio.run(manager.list(include_archived=include_archived))
+    payload = [_session_payload(item, include_details=False) for item in sessions]
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Local sessions")
+    table.add_column("ID")
+    table.add_column("Title")
+    table.add_column("Status")
+    table.add_column("Runs", justify="right")
+    table.add_column("Tokens", justify="right")
+    for item in payload:
+        table.add_row(
+            str(item["session_id"]),
+            str(item["title"]),
+            str(item["status"]),
+            str(item["run_count"]),
+            str(item["total_tokens"]),
+        )
+    console.print(table)
+
+
+@session_app.command("show")
+def session_show(
+    session_id: str = typer.Argument(...),
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Show messages, run summaries, and visible token usage."""
+
+    manager = SessionManager(JsonSessionStore(root))
+    try:
+        session = asyncio.run(manager.get(session_id))
+    except (SessionError, ValueError) as error:
+        _fail(str(error))
+    _emit(_session_payload(session, include_details=True), json_output)
+
+
+@session_app.command("archive")
+def session_archive(
+    session_id: str = typer.Argument(...),
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Archive a session, making it read-only for agent runs."""
+
+    _set_session_archived(session_id, root, archived=True, json_output=json_output)
+
+
+@session_app.command("unarchive")
+def session_unarchive(
+    session_id: str = typer.Argument(...),
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Return an archived session to active use."""
+
+    _set_session_archived(session_id, root, archived=False, json_output=json_output)
+
+
 @app.command()
 def tui() -> None:
     """Launch the optional local Textual interface."""
@@ -335,6 +425,73 @@ def _emit(value: Any, json_output: bool) -> None:
             console.print(item, markup=False)
     else:
         console.print(value, markup=False)
+
+
+def _set_session_archived(
+    session_id: str,
+    root: Path,
+    *,
+    archived: bool,
+    json_output: bool,
+) -> None:
+    manager = SessionManager(JsonSessionStore(root))
+    try:
+        session = asyncio.run(manager.archive(session_id, archived=archived))
+    except (SessionError, ValueError) as error:
+        _fail(str(error))
+    _emit(_session_payload(session, include_details=False), json_output)
+
+
+def _session_payload(
+    session: SessionRecord,
+    *,
+    include_details: bool,
+) -> dict[str, Any]:
+    input_tokens = sum(item.usage.input_tokens for item in session.runs)
+    output_tokens = sum(item.usage.output_tokens for item in session.runs)
+    payload: dict[str, Any] = {
+        "session_id": session.session_id,
+        "title": session.title,
+        "status": session.status.value,
+        "run_count": len(session.runs),
+        "message_count": len(session.messages),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "usage_complete": all(item.usage_complete for item in session.runs),
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+    }
+    if include_details:
+        payload["messages"] = [
+            {
+                "role": item.role.value,
+                "text": item.text,
+                "run_id": item.run_id,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in session.messages
+        ]
+        payload["runs"] = [
+            {
+                "run_id": item.run_id,
+                "agent_name": item.agent_name,
+                "stop_reason": item.stop_reason,
+                "output": item.output,
+                "usage": {
+                    "input_tokens": item.usage.input_tokens,
+                    "output_tokens": item.usage.output_tokens,
+                    "cached_input_tokens": item.usage.cached_input_tokens,
+                },
+                "usage_complete": item.usage_complete,
+                "steps": item.steps,
+                "tool_calls": item.tool_calls,
+                "created_at": item.created_at.isoformat(),
+                "updated_at": item.updated_at.isoformat(),
+            }
+            for item in session.runs
+        ]
+    return payload
 
 
 def _fail(message: str) -> None:

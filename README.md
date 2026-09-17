@@ -136,9 +136,10 @@ wagent doctor
 wagent tui
 wagent composition export
 wagent composition inspect|save|list
+wagent session create|list|show|archive|unarchive
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测和装配管理/离线预览；配置化交互运行、插件操作、Checkpoint 管理、事件查看和评测仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全端点探测、装配管理/离线预览，以及本地 Session 创建/查看/归档/恢复与 Token 汇总；配置化交互运行、插件操作、Checkpoint 管理、事件查看和评测仍为 `Planned`。
 
 ## 工程装配分享
 

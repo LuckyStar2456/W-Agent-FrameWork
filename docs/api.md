@@ -11,6 +11,7 @@
 | 分组 | API |
 |---|---|
 | Agent | `BaseAgent`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`JsonlRunStore` |
+| Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -34,7 +35,7 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint 与 Workflow 节点 Checkpoint 已实现，完整持久化 Session 尚未接入。
+`BaseAgent` 尚未接入新的模型协议；新的 ReAct/工具和 Workflow 运行时独立提供。ReAct 审批 Checkpoint、Workflow 节点 Checkpoint，以及本地持久化 Session 生命周期/跨 Run 文本上下文已经实现；通用多模态与工具事件回放仍未接入。
 
 ## 2. 下一代导出策略
 
@@ -114,7 +115,7 @@ class RoutingPolicy(Protocol):
 - `ProbeMode.ACTIVE`：只有 `allow_active=True` 时才执行 L4/L5 最小生成与流协议检查。
 - `ProbeMode.CAPABILITY`：L6/L7 当前只报告 Provider 声明，明确标记 `SKIPPED`，不会伪装成主动验证。
 - `ProbeCache` 与 `PeriodicProbeService`：为手动和周期探测提供公共构件。
-- `ModelRegistrationProbeService` 与 `ProbeHealthBridge`：提供显式的注册安全探测和外部路由健康映射；直接 `ModelRegistry.register()` 不执行 I/O。CLI/TUI 入口仍为 `Planned`。
+- `ModelRegistrationProbeService` 与 `ProbeHealthBridge`：提供显式的注册安全探测和外部路由健康映射；直接 `ModelRegistry.register()` 不执行 I/O。无凭据 L1 CLI/TUI 入口已实现，配置化 Provider 主动探测仍为 `Planned`。
 
 ## 7. Agent 协议
 

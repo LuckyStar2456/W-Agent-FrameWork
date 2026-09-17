@@ -11,6 +11,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Group | API |
 |---|---|
 | Agent | `BaseAgent`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `JsonlRunStore` |
+| Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -34,7 +35,7 @@ class BaseAgent:
         raise NotImplementedError
 ```
 
-`BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints and workflow node checkpoints are implemented; full durable sessions are not yet connected.
+`BaseAgent` is not yet integrated with the new model protocol. The new ReAct/tool and workflow runtimes are available independently. ReAct approval checkpoints, workflow node checkpoints, and the local persistent session lifecycle/cross-run text context are implemented; general multimodal and tool-event replay is not yet connected.
 
 ## 2. Next-generation export strategy
 
@@ -114,7 +115,7 @@ Status: `Implemented` as a Phase 2A foundation.
 - `ProbeMode.ACTIVE`: runs an L4/L5 minimal generation and stream-protocol check only with `allow_active=True`.
 - `ProbeMode.CAPABILITY`: currently reports L6/L7 declarations as `SKIPPED`; it never presents declarations as active verification.
 - `ProbeCache` and `PeriodicProbeService`: shared building blocks for manual and periodic probes.
-- `ModelRegistrationProbeService` and `ProbeHealthBridge`: explicit register-and-safe-probe wiring plus external routing-health projection; direct `ModelRegistry.register()` performs no I/O. CLI/TUI entry points remain `Planned`.
+- `ModelRegistrationProbeService` and `ProbeHealthBridge`: explicit register-and-safe-probe wiring plus external routing-health projection; direct `ModelRegistry.register()` performs no I/O. Credential-free L1 CLI/TUI entry points are implemented; configured active provider probing remains `Planned`.
 
 ## 7. Agent protocol
 

@@ -32,6 +32,18 @@ result = await sessions.run_agent(
 )
 ```
 
+## CLI 与 TUI
+
+```text
+wagent session create "Support case" --id case-1 --json
+wagent session list --include-archived --json
+wagent session show case-1 --json
+wagent session archive case-1
+wagent session unarchive case-1
+```
+
+CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、输入/输出/缓存 Token 和 `usage_complete`，不会启动模型或产生费用。TUI 当前提供创建、刷新、归档和恢复；配置化 Agent 启动仍为 `Planned`。
+
 下一次 `run_agent()` 默认把此前投影的文本消息放在本次消息之前。设置 `include_history=False` 可关闭自动上下文拼接，但本次输入与结果仍会记入 Session。
 
 ## 审批恢复

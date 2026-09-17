@@ -19,10 +19,11 @@ wagent profile list
 wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
+wagent session create|list|show|archive|unarchive
 wagent tui
 ```
 
-以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查和列表提供结构化 JSON。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表和 Session 生命周期提供结构化 JSON。`session show` 同时展示每个 Run 的输入、输出与缓存输入 Token，并明确标记用量是否完整。失败返回稳定非零退出码。`probe` 当前只执行不带凭据和请求体的 L1 安全探测；可能计费的主动 Provider 探测仍需后续配置装配和明确授权。
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
@@ -30,7 +31,7 @@ wagent tui
 
 ## TUI 技术
 
-TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 CLI 使用 Typer/Rich。TUI 采用进程内模式启动框架，不要求常驻守护进程；远程连接能力为 `Reserved`。当前界面提供九个首版分区、真实的离线装配检查、安全端点探测、模板信息和 Docker 可用性检查；尚未实现的分区会明确显示 Planned，而不伪装可操作。
+TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 CLI 使用 Typer/Rich。TUI 采用进程内模式启动框架，不要求常驻守护进程；远程连接能力为 `Reserved`。当前界面提供十个首版分区、真实的 Session 创建/列表/归档/恢复、离线装配检查、安全端点探测、模板信息和 Docker 可用性检查；尚未实现的分区会明确显示 Planned，而不伪装可操作。
 
 下一代 CLI 的规范命令为 `wagent`；现有 `w-agent` 在兼容期作为别名保留。
 
@@ -55,6 +56,10 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 ### Run
 
 启动客服、编码或自定义 Agent，流式显示消息、模型选择、工具调用、Workflow 节点、预算和事件。界面通过 RunEvent 投影，不读取 Loop 私有状态。
+
+### Sessions
+
+使用与 Python API 相同的 `JsonSessionStore` 创建、列出、归档和恢复本地 Session。列表显示每个 Session 的 Run 数与累计 Token；配置化 Agent 启动仍属于 Run 页面后续工作。
 
 ### Checkpoints
 

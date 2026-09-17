@@ -19,10 +19,11 @@ wagent profile list
 wagent probe <endpoint>
 wagent doctor
 wagent composition export|inspect|save|list
+wagent session create|list|show|archive|unarchive
 wagent tui
 ```
 
-These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition-inspect, and list commands offer structured JSON. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, and session-lifecycle commands offer structured JSON. `session show` exposes input, output, and cached-input tokens for every run and marks whether usage is complete. Failures return stable nonzero exit codes. `probe` currently performs credential-free L1 safe probing only; potentially billable active provider probes still require later configured assembly and explicit authorization.
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
@@ -30,7 +31,7 @@ The compatibility window retains the `w-agent` command name and basic `config` a
 
 ## TUI technology
 
-The TUI uses Textual through the optional `wagent-framework[tui]` dependency. The base CLI uses Typer/Rich. The TUI starts the framework in process and requires no resident daemon; remote connections are `Reserved`. The current UI has all nine first-release sections plus real offline composition inspection, safe endpoint probing, template information, and Docker availability checks. Sections without runtime operations state that they are planned instead of presenting placeholders as functional controls.
+The TUI uses Textual through the optional `wagent-framework[tui]` dependency. The base CLI uses Typer/Rich. The TUI starts the framework in process and requires no resident daemon; remote connections are `Reserved`. The current UI has ten sections plus real session create/list/archive/unarchive controls, offline composition inspection, safe endpoint probing, template information, and Docker availability checks. Sections without runtime operations state that they are planned instead of presenting placeholders as functional controls.
 
 The canonical next-generation command is `wagent`; the existing `w-agent` command remains a compatibility alias during migration.
 
@@ -55,6 +56,10 @@ Displays a resolved profile, compares named versions, exports a code, and previe
 ### Run
 
 Starts customer-support, coding, or custom agents and streams messages, model selection, tool calls, workflow nodes, budgets, and events. The UI projects RunEvent values and never reads private loop state.
+
+### Sessions
+
+Creates, lists, archives, and unarchives local sessions through the same `JsonSessionStore` used by the Python API. The list shows run count and cumulative tokens; starting a configured agent remains later work for the Run screen.
 
 ### Checkpoints
 

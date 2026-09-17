@@ -58,7 +58,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
 | Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
-| Typer/Rich CLI and Textual TUI foundation | `Experimental` | Phase 6 / 2.0.0a1 |
+| Typer/Rich CLI, Textual TUI, and session lifecycle UI | `Experimental` | Phase 6 / 2.0.0a1 |
 | Local mocks, record/replay, and evaluation metrics | `Planned` | Phase 6 |
 | Minimal 1.x compatibility adapter | `Planned` | Maintained through every phase |
 
@@ -125,7 +125,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 - Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
 - Preview performs no network access, installation, import, or plugin execution. Dependency resolution plus installation/load confirmations remain `Planned`.
-- An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, and offline TUI composition inspection.
+- An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
 - Configured interactive agent runs, RunEvent views, cross-store checkpoint listing/recovery, plugin-load confirmation, and evaluation screens remain `Planned`.
 - Mocks, record/replay, and customer-support and coding benchmark tasks.
 

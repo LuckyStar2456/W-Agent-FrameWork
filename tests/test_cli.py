@@ -30,6 +30,7 @@ def test_cli_init_is_idempotent_and_never_overwrites_config(tmp_path):
     assert second.exit_code == 0
     assert json.loads(second.stdout)["created"] == []
     assert config.read_text(encoding="utf-8") == '{"keep":true}\n'
+    assert (tmp_path / ".wagent" / "sessions").is_dir()
 
 
 def test_cli_composition_export_inspect_save_and_list(tmp_path):
@@ -82,3 +83,59 @@ def test_cli_keeps_basic_legacy_command_names():
     assert config.exit_code == 0
     assert json.loads(config.stdout) == {}
     assert beans.exit_code == 0
+
+
+def test_cli_session_lifecycle_and_machine_readable_usage(tmp_path):
+    root = tmp_path / "sessions"
+    created = runner.invoke(
+        app,
+        [
+            "session",
+            "create",
+            "Support case",
+            "--id",
+            "case-1",
+            "--root",
+            str(root),
+            "--json",
+        ],
+    )
+    listed = runner.invoke(
+        app,
+        ["session", "list", "--root", str(root), "--json"],
+    )
+    shown = runner.invoke(
+        app,
+        ["session", "show", "case-1", "--root", str(root), "--json"],
+    )
+    archived = runner.invoke(
+        app,
+        ["session", "archive", "case-1", "--root", str(root), "--json"],
+    )
+    hidden = runner.invoke(
+        app,
+        ["session", "list", "--root", str(root), "--json"],
+    )
+    restored = runner.invoke(
+        app,
+        ["session", "unarchive", "case-1", "--root", str(root), "--json"],
+    )
+
+    assert created.exit_code == listed.exit_code == shown.exit_code == 0
+    assert archived.exit_code == hidden.exit_code == restored.exit_code == 0
+    assert json.loads(created.stdout)["session_id"] == "case-1"
+    assert json.loads(listed.stdout)[0]["total_tokens"] == 0
+    assert json.loads(shown.stdout)["runs"] == []
+    assert json.loads(archived.stdout)["status"] == "archived"
+    assert json.loads(hidden.stdout) == []
+    assert json.loads(restored.stdout)["status"] == "active"
+
+
+def test_cli_session_missing_id_has_stable_failure(tmp_path):
+    result = runner.invoke(
+        app,
+        ["session", "show", "missing", "--root", str(tmp_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "session does not exist" in result.stderr

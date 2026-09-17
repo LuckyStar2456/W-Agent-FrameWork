@@ -136,9 +136,10 @@ wagent doctor
 wagent tui
 wagent composition export
 wagent composition inspect|save|list
+wagent session create|list|show|archive|unarchive
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, and composition management/offline preview. Configured interactive runs, plugin operations, checkpoint management, event inspection, and evaluation remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe endpoint probing, composition management/offline preview, and local session create/show/archive/unarchive with visible token totals. Configured interactive runs, plugin operations, checkpoint management, event inspection, and evaluation remain `Planned`.
 
 ## Portable project compositions
 

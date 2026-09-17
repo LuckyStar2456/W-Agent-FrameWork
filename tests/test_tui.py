@@ -14,7 +14,7 @@ async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path)
 
     async with app.run_test(size=(140, 50)) as pilot:
         assert "Workspace:" in str(app.query_one("#home-summary").content)
-        assert len(app.query("TabPane")) == 9
+        assert len(app.query("TabPane")) == 10
 
         app.query_one(TabbedContent).active = "composition"
         await pilot.pause()
@@ -24,6 +24,35 @@ async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path)
 
         rendered = str(app.query_one("#composition-result").content)
         assert '"name": "demo"' in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_creates_archives_and_unarchives_local_session(tmp_path):
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 55)) as pilot:
+        app.query_one(TabbedContent).active = "sessions"
+        await pilot.pause()
+        app.query_one("#session-title").value = "Coding task"
+        await pilot.click("#session-create")
+        await pilot.pause()
+
+        created = str(app.query_one("#session-result").content)
+        session_id = app.query_one("#session-id").value
+        assert "Coding task" in created
+        assert session_id.startswith("session-")
+
+        await pilot.click("#session-archive")
+        await pilot.pause()
+        assert "| archived | Coding task" in str(
+            app.query_one("#session-result").content
+        )
+
+        await pilot.click("#session-unarchive")
+        await pilot.pause()
+        assert "| active | Coding task" in str(
+            app.query_one("#session-result").content
+        )
 
 
 @pytest.mark.asyncio

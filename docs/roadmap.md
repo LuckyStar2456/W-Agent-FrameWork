@@ -58,7 +58,7 @@
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 客服/RAG 与编码 Agent 模板 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
-| Typer/Rich CLI 与 Textual TUI 基础 | `Experimental` | Phase 6 / 2.0.0a1 |
+| Typer/Rich CLI、Textual TUI 与 Session 生命周期界面 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 本地 Mock、录制回放和评测指标 | `Planned` | Phase 6 |
 | 1.x 最小兼容适配器 | `Planned` | 每阶段同步维护 |
 
@@ -125,7 +125,7 @@
 
 - 已实现命名和版本化的 `CompositionManifest`、确定性编码/解码、大小限制、完整性校验、安全预览与冲突安全的本地版本/别名库。
 - 装配预览阶段不访问网络、不安装、不导入也不执行插件；依赖解析、安装确认与加载确认仍为 `Planned`。
-- 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表，以及 TUI 离线装配检查。
+- 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复和可见 Token 汇总，以及 TUI 离线装配检查。
 - 配置化 Agent 交互运行、RunEvent 查看、跨 Store Checkpoint 列表/恢复、插件加载确认与评测页面仍为 `Planned`。
 - Mock、录制回放、客服与编码基准任务。
 
