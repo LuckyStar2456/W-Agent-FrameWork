@@ -2,7 +2,7 @@
 
 [English](./local-runtime.en.md) | 简体中文
 
-状态：`Experimental`（当前 `2.0.0a3`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI/TUI 审批恢复、Agent Checkpoint 脱敏列表、应用事件回调，以及 CLI/TUI 文本运行入口已实现。Workflow Checkpoint 汇总仍为 `Planned`。
+状态：`Experimental`。`2.0.0a3` 已包含严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI/TUI 审批恢复、Agent Checkpoint 脱敏列表、应用事件回调，以及 CLI/TUI 文本运行入口。当前 main 另外实现 Workflow Checkpoint 脱敏汇总和显式恢复。
 
 ## 配置
 
@@ -113,7 +113,7 @@ wagent run-resume <session-id> <run-id> `
 
 ## TUI
 
-Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用；成功后显示输出、Token 和费用计量，并把 Session ID 留在输入框中用于下一轮。界面不会把确认保存为长期授权。Checkpoint 页面可刷新 Agent 审批摘要。TUI 当前不导入自有 Python 工具，也没有批准执行表单；带 `tools.enabled` 的配置会安全失败，需使用 Python API/CLI。
+Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用；成功后显示输出、Token 和费用计量，并把 Session ID 留在输入框中用于下一轮。界面不会把确认保存为长期授权。Checkpoint 页面可刷新 Agent 审批摘要，也可从指定 State Root 刷新 Workflow 摘要。开发者工具代码仅在输入 `LOAD TOOLS` 后导入，Workflow Definition 仅在输入 `LOAD WORKFLOW` 后导入；Agent 与 Workflow 恢复分别要求独立的 `RESUME` / `RESUME WORKFLOW` 一次性确认。
 
 ## 预算语义
 

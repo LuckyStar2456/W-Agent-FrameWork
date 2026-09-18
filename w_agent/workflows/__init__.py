@@ -11,9 +11,15 @@ from .adapters import (
     workflow_start_tool,
 )
 from .engine import LocalWorkflowEngine
+from .loading import (
+    WorkflowEntryLoadError,
+    load_workflow_entries,
+    load_workflow_entry,
+)
 from .persistence import (
     InMemoryWorkflowStore,
     JsonlWorkflowStore,
+    WorkflowCheckpointCatalog,
     WorkflowResumeConflictError,
     WorkflowStore,
     WorkflowStoreError,
@@ -24,6 +30,7 @@ from .types import (
     PythonWorkflowDefinition,
     StateGraphDefinition,
     WorkflowCheckpoint,
+    WorkflowCheckpointSummary,
     WorkflowCheckpointStatus,
     WorkflowContext,
     WorkflowDefinition,
@@ -52,10 +59,13 @@ __all__ = [
     "PythonWorkflowDefinition",
     "StateGraphDefinition",
     "WorkflowCheckpoint",
+    "WorkflowCheckpointCatalog",
+    "WorkflowCheckpointSummary",
     "WorkflowCheckpointStatus",
     "WorkflowContext",
     "WorkflowDefinition",
     "WorkflowEngineProtocol",
+    "WorkflowEntryLoadError",
     "WorkflowEvent",
     "WorkflowEventType",
     "WorkflowKind",
@@ -73,4 +83,6 @@ __all__ = [
     "agent_workflow_node",
     "workflow_resume_tool",
     "workflow_start_tool",
+    "load_workflow_entries",
+    "load_workflow_entry",
 ]

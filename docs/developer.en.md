@@ -4,7 +4,7 @@ English | [简体中文](./developer.md)
 
 ## 1. Development baseline
 
-The current repository version is `2.0.0a3` (the latest alpha is `2.0.0a2`): the Phase 1 microkernel, Phase 2 model foundation, Phase 3 agent/tool foundation, and Phase 4 local-workflow foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives a status label.
+Package metadata and the latest alpha are both `2.0.0a3`; main now carries subsequent unpublished changes. The Phase 1 microkernel, Phase 2 model foundation, Phase 3 agent/tool foundation, and Phase 4 local-workflow foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives both a release-boundary note and a status label.
 
 Next-generation targets:
 

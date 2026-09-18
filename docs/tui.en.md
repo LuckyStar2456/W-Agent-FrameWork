@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in current `2.0.0a3`; workflow-checkpoint aggregation and general plugin operations remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements privacy-safe workflow-checkpoint discovery, explicit definition loading, and guided recovery; general plugin operations remain `Planned`.
 
 ## Principles
 
@@ -21,6 +21,8 @@ wagent doctor
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
+wagent checkpoint workflow-list [--state-root <path>]
+wagent checkpoint workflow-resume <run-id> --workflow-entry <module:attribute> --confirm-workflow-code --confirm-resume
 wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
 wagent run <prompt> --confirm-model-call
 wagent run-resume <session-id> <run-id> --approve-tool-call <call-id> --confirm-model-call
@@ -32,7 +34,7 @@ These commands are implemented. The CLI prints human-readable text by default; t
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Optional versioned pricing exposes cost and completeness in CLI/TUI runs, sessions, checkpoints, and evaluation. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. The TUI uses independent `RUN`, `LOAD TOOLS`, authority input, and `RESUME` confirmations bound to exact session/run/call IDs, and clears confirmations immediately. Its RunEvent panels expose only allowlisted identity, status, token, and cost fields. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Optional versioned pricing exposes cost and completeness in CLI/TUI runs, sessions, checkpoints, and evaluation. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. The TUI uses independent `RUN`, `LOAD TOOLS`, authority input, and `RESUME` confirmations bound to exact session/run/call IDs, and clears confirmations immediately. Workflow recovery likewise requires independent code-load and execution confirmations and selects a definition by checkpoint name, version, and kind. RunEvent panels expose only allowlisted identity, status, token, and cost fields. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, general plugin operations, and composition-install confirmation remain `Planned`.
 
 The TUI Evaluation screen requires typing `EVALUATE` before sequentially running a strict JSON dataset. It uses disposable state, clears confirmation immediately, displays only token/cost/latency/tool/pass metrics, and may write a default privacy-safe report. Custom scorers, output persistence, and developer tool entries use the Python API/CLI.
 
@@ -70,7 +72,9 @@ Creates, lists, archives, and unarchives local sessions through the same `JsonSe
 
 ### Checkpoints
 
-The current screen refreshes prompt-free local agent approval checkpoints with run/session, status, tool name, call ID, argument names, tokens, and cost, but no prompts, argument values, or output. The user can resume after supplying configuration, tool entries, authority, the exact call ID, and separate `LOAD TOOLS`/`RESUME` confirmations; checkpoints never restore authority. Unified workflow-checkpoint listing, version comparison, and guided recovery remain `Planned`.
+The current screen refreshes prompt-free local agent approval checkpoints with run/session, status, tool name, call ID, argument names, tokens, and cost, but no prompts, argument values, or output. The user can resume after supplying configuration, tool entries, authority, the exact call ID, and separate `LOAD TOOLS`/`RESUME` confirmations; checkpoints never restore authority.
+
+Current main also refreshes workflow-checkpoint summaries from a user-selected local state root. It shows workflow name/version/kind, status, node identifiers, and counters while excluding input, state, output, scope, and metadata values. Recovery requires a `module:attribute` definition entry plus separate `LOAD WORKFLOW` and `RESUME WORKFLOW` confirmations; the loaded name, version, and kind must match exactly. Results and events use privacy-safe projections. The UI neither copies nor migrates stores automatically, and it never force-replays an uncertain `RESUMING` checkpoint.
 
 ### Sandbox
 

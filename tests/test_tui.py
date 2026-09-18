@@ -7,6 +7,8 @@ import w_agent.tui as tui_module
 from w_agent import (
     CompositionManifest,
     LocalProviderAssembly,
+    JsonlWorkflowStore,
+    LocalWorkflowEngine,
     MessageRole,
     ModelCapability,
     ModelDescriptor,
@@ -17,6 +19,10 @@ from w_agent import (
     RunResult,
     StopReason,
     TokenUsage,
+    PythonWorkflowDefinition,
+    WorkflowContext,
+    WorkflowNodeResult,
+    WorkflowStopReason,
     encode_composition,
 )
 from w_agent.tui import WAgentTui
@@ -33,6 +39,9 @@ async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path)
         assert len(app.query("TabPane")) == 10
         assert "No agent checkpoints" in str(
             app.query_one("#checkpoint-result").content
+        )
+        assert "No workflow checkpoints" in str(
+            app.query_one("#workflow-checkpoint-result").content
         )
 
         app.query_one(TabbedContent).active = "composition"
@@ -288,6 +297,106 @@ async def test_tui_resumes_exact_approved_call_with_live_events(
         assert "pending_call_id=call-1" in events
         assert app.query_one("#checkpoint-confirm").value == ""
         assert app.query_one("#checkpoint-tool-confirm").value == ""
+
+
+@pytest.mark.asyncio
+async def test_tui_workflow_code_requires_separate_import_confirmation(
+    tmp_path,
+    monkeypatch,
+):
+    loaded = []
+    monkeypatch.setattr(
+        tui_module,
+        "load_workflow_entries",
+        lambda entries: loaded.append(entries) or {},
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(150, 80)) as pilot:
+        app.query_one(TabbedContent).active = "checkpoints"
+        await pilot.pause()
+        app.query_one("#workflow-checkpoint-run").value = "workflow-1"
+        app.query_one("#workflow-checkpoint-entries").value = "my_workflows:review"
+        app.query_one("#workflow-checkpoint-resume-confirm").value = (
+            "RESUME WORKFLOW"
+        )
+        await app._resume_workflow()
+
+        assert loaded == []
+        assert "type LOAD WORKFLOW" in str(
+            app.query_one("#workflow-checkpoint-resume-result").content
+        )
+
+
+@pytest.mark.asyncio
+async def test_tui_lists_and_resumes_exact_workflow_without_runtime_values(
+    tmp_path,
+    monkeypatch,
+):
+    calls = []
+
+    def handler(context):
+        calls.append(context.resume_count)
+        if context.resume_count == 0:
+            return WorkflowNodeResult(
+                output="SECRET_WAITING_OUTPUT",
+                state_updates={"draft": "SECRET_STATE"},
+                pause=True,
+            )
+        return WorkflowNodeResult(output="SECRET_FINAL_OUTPUT")
+
+    definition = PythonWorkflowDefinition("review", handler, version="3")
+    store = JsonlWorkflowStore(tmp_path / ".wagent")
+    first = await LocalWorkflowEngine(store).start(
+        definition,
+        WorkflowContext(
+            "workflow-1",
+            input="SECRET_INPUT",
+            metadata={"credential": "SECRET_METADATA"},
+        ),
+    )
+    assert first.stop_reason == WorkflowStopReason.PAUSED
+    monkeypatch.setattr(
+        tui_module,
+        "load_workflow_entries",
+        lambda entries: {("review", "3"): definition},
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(160, 90)) as pilot:
+        app.query_one(TabbedContent).active = "checkpoints"
+        await pilot.pause()
+        listed = str(app.query_one("#workflow-checkpoint-result").content)
+        assert "workflow-1" in listed
+        assert "review@3" in listed
+        assert "status=paused" in listed
+        assert "SECRET_INPUT" not in listed
+        assert "SECRET_STATE" not in listed
+        assert "SECRET_WAITING_OUTPUT" not in listed
+        assert "SECRET_METADATA" not in listed
+
+        app.query_one("#workflow-checkpoint-run").value = "workflow-1"
+        app.query_one("#workflow-checkpoint-entries").value = "my_workflows:review"
+        app.query_one("#workflow-checkpoint-load-confirm").value = "LOAD WORKFLOW"
+        app.query_one("#workflow-checkpoint-resume-confirm").value = (
+            "RESUME WORKFLOW"
+        )
+        await app._resume_workflow()
+        await pilot.pause()
+
+        result = str(app.query_one("#workflow-checkpoint-resume-result").content)
+        events = str(app.query_one("#workflow-checkpoint-events").content)
+        assert "Stop: completed" in result
+        assert "Runtime input, state, output, and metadata are hidden" in result
+        assert "workflow-resumed" in events
+        assert "SECRET_FINAL_OUTPUT" not in result
+        assert "SECRET_FINAL_OUTPUT" not in events
+        assert "No workflow checkpoints" in str(
+            app.query_one("#workflow-checkpoint-result").content
+        )
+        assert app.query_one("#workflow-checkpoint-load-confirm").value == ""
+        assert app.query_one("#workflow-checkpoint-resume-confirm").value == ""
+        assert calls == [0, 1]
 
 
 @pytest.mark.asyncio

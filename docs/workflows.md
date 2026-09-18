@@ -4,7 +4,7 @@
 
 ## 状态
 
-`Implemented`：当前 `2.0.0a1` 源码提供三种 Workflow 定义、统一引擎协议、确定性本地执行、节点事件、协作式取消、内存/JSONL 节点边界暂停恢复，以及 Agent/Workflow 双向适配器。
+`Implemented`：`2.0.0a1` 提供三种 Workflow 定义、统一引擎协议、确定性本地执行、节点事件、协作式取消、内存/JSONL 节点边界暂停恢复，以及 Agent/Workflow 双向适配器。当前 main 另外提供脱敏 Checkpoint 汇总、显式 Workflow 入口加载和精确版本恢复；这些增量尚未发布到 PyPI。
 
 `Planned`：并行 DAG 调度、Agent 审批与 Workflow 暂停的自动级联恢复、运行中的外部暂停句柄和通用 Session 投影。
 
@@ -22,8 +22,11 @@
 | `LocalWorkflowEngine` | 内置的确定性顺序执行器 |
 | `WorkflowRegistry` | 通过共享微内核 Registry 按名称、版本和 Scope 注册定义 |
 | `WorkflowStore` | 可替换事件与 Checkpoint 存储协议 |
+| `WorkflowCheckpointCatalog` | 与稳定 Store 分离的可选 Checkpoint 发现协议 |
 | `InMemoryWorkflowStore` | 进程内开发与测试存储 |
 | `JsonlWorkflowStore` | 单一本地所有者使用的持久化存储 |
+| `WorkflowCheckpointSummary` | 不含输入、状态、输出、Scope 或 Metadata 值的恢复发现投影 |
+| `load_workflow_entry()` / `load_workflow_entries()` | 在应用明确授权后导入 `module:attribute` Definition |
 | `agent_workflow_node()` | 把固定 Agent Loop/Definition 适配为 Workflow 节点 |
 | `workflow_start_tool()` / `workflow_resume_tool()` | 把固定 Workflow 适配为受治理的 Agent 工具 |
 
@@ -145,6 +148,25 @@ READY / PAUSED → claim → RESUMING → 节点完成 → READY / PAUSED
 - Workflow 名称、版本或类型发生变化时，恢复被拒绝。行为变更应使用新的 `version`。
 
 成功完成和达到步骤上限是终止状态，Checkpoint 会删除；显式暂停和边界取消保留可恢复 Checkpoint。节点失败会返回不含异常文本的稳定失败码，并保留 `RESUMING` 状态供人工诊断。
+
+## 脱敏发现与显式恢复
+
+`WorkflowCheckpointCatalog.list_checkpoints()` 返回按 Run ID 稳定排序的 `WorkflowCheckpointSummary`。发现能力与稳定的 `WorkflowStore` 执行协议分离，因此旧自定义 Store 不会被迫实现新方法。摘要仅包含 Workflow 名称、版本、类型、状态、节点标识与计数；不包含持久化的 Input、State、Output、Scope 或 Metadata 值。`InMemoryWorkflowStore` 与 `JsonlWorkflowStore` 同时实现这两个协议。
+
+开发者 Definition 必须通过单独授权后调用 `load_workflow_entry()` / `load_workflow_entries()` 才会导入。Checkpoint 或配置文件不能自动触发 Python Import。加载器按 `(name, version)` 建立 Catalog，拒绝重复身份；恢复前引擎还会再次核对 Definition 的名称、版本和类型。
+
+```python
+store = JsonlWorkflowStore(".wagent")
+summaries = await store.list_checkpoints()
+
+# 只有宿主已经向用户确认执行开发者 Python 代码后才调用：
+catalog = load_workflow_entries(("my_workflows:definitions",))
+checkpoint = await store.load_checkpoint("review-1")
+definition = catalog[(checkpoint.workflow_name, checkpoint.workflow_version)]
+result = await LocalWorkflowEngine(store).resume(definition, checkpoint.run_id)
+```
+
+CLI 提供 `wagent checkpoint workflow-list` 和 `workflow-resume`。恢复必须同时传入 `--workflow-entry`、`--confirm-workflow-code` 与 `--confirm-resume`；TUI 使用独立的 `LOAD WORKFLOW` 和 `RESUME WORKFLOW` 一次性确认。两者都允许明确选择 State Root，因此可恢复不同本地 Store Root 中的 Run，但不会复制、合并或自动迁移 Store。CLI/TUI 结果默认隐藏运行时值。`RESUMING` 表示节点副作用不确定，仍会失败关闭并要求人工诊断。
 
 ## 取消与事件
 

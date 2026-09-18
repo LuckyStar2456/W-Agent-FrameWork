@@ -16,6 +16,7 @@ from w_agent.kernel import ScopePath
 
 from .types import (
     WorkflowCheckpoint,
+    WorkflowCheckpointSummary,
     WorkflowCheckpointStatus,
     WorkflowEvent,
     WorkflowEventType,
@@ -46,6 +47,12 @@ class WorkflowStore(Protocol):
     async def claim_checkpoint(self, run_id: str) -> WorkflowCheckpoint: ...
 
     async def delete_checkpoint(self, run_id: str) -> None: ...
+
+
+class WorkflowCheckpointCatalog(Protocol):
+    """Optional discovery capability kept separate from the stable run store."""
+
+    async def list_checkpoints(self) -> tuple[WorkflowCheckpointSummary, ...]: ...
 
 
 class InMemoryWorkflowStore:
@@ -80,6 +87,16 @@ class InMemoryWorkflowStore:
     ) -> WorkflowCheckpoint | None:
         async with self._lock:
             return self._checkpoints.get(run_id)
+
+    async def list_checkpoints(self) -> tuple[WorkflowCheckpointSummary, ...]:
+        async with self._lock:
+            return tuple(
+                WorkflowCheckpointSummary.from_checkpoint(checkpoint)
+                for checkpoint in sorted(
+                    self._checkpoints.values(),
+                    key=lambda item: item.run_id,
+                )
+            )
 
     async def claim_checkpoint(self, run_id: str) -> WorkflowCheckpoint:
         async with self._lock:
@@ -128,6 +145,9 @@ class JsonlWorkflowStore:
         run_id: str,
     ) -> WorkflowCheckpoint | None:
         return await asyncio.to_thread(self._load_checkpoint_sync, run_id)
+
+    async def list_checkpoints(self) -> tuple[WorkflowCheckpointSummary, ...]:
+        return await asyncio.to_thread(self._list_checkpoints_sync)
 
     async def claim_checkpoint(self, run_id: str) -> WorkflowCheckpoint:
         return await asyncio.to_thread(self._claim_checkpoint_sync, run_id)
@@ -214,6 +234,19 @@ class JsonlWorkflowStore:
                     f"workflow run {run_id!r} checkpoint identity differs"
                 )
             return checkpoint
+
+    def _list_checkpoints_sync(self) -> tuple[WorkflowCheckpointSummary, ...]:
+        with self._lock:
+            summaries: list[WorkflowCheckpointSummary] = []
+            for run_dir in sorted(self.runs_root.iterdir(), key=lambda path: path.name):
+                if not run_dir.is_dir() or not (run_dir / "checkpoint.json").is_file():
+                    continue
+                checkpoint = self._load_checkpoint_sync(run_dir.name)
+                if checkpoint is not None:
+                    summaries.append(
+                        WorkflowCheckpointSummary.from_checkpoint(checkpoint)
+                    )
+            return tuple(summaries)
 
     def _claim_checkpoint_sync(self, run_id: str) -> WorkflowCheckpoint:
         with self._lock:

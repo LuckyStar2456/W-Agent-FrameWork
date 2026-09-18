@@ -244,6 +244,47 @@ class WorkflowCheckpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkflowCheckpointSummary:
+    """Privacy-safe checkpoint projection for discovery and recovery UIs.
+
+    Runtime input, state, output, scope, and metadata values are deliberately
+    excluded. Applications must load the full checkpoint only after selecting
+    an exact run for an authorized recovery operation.
+    """
+
+    run_id: str
+    workflow_name: str
+    workflow_version: str
+    kind: WorkflowKind
+    status: WorkflowCheckpointStatus
+    session_id: str | None
+    current_node: str | None
+    completed_nodes: tuple[str, ...]
+    remaining_nodes: tuple[str, ...]
+    graph_steps: int
+    resume_count: int
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint: WorkflowCheckpoint,
+    ) -> "WorkflowCheckpointSummary":
+        return cls(
+            run_id=checkpoint.run_id,
+            workflow_name=checkpoint.workflow_name,
+            workflow_version=checkpoint.workflow_version,
+            kind=checkpoint.kind,
+            status=checkpoint.status,
+            session_id=checkpoint.session_id,
+            current_node=checkpoint.current_node,
+            completed_nodes=checkpoint.completed_nodes,
+            remaining_nodes=checkpoint.remaining_nodes,
+            graph_steps=checkpoint.graph_steps,
+            resume_count=checkpoint.resume_count,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class WorkflowResult:
     run_id: str
     stop_reason: WorkflowStopReason

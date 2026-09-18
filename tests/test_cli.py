@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -6,6 +7,8 @@ from typer.testing import CliRunner
 import w_agent.cli as cli_module
 from w_agent import (
     LocalProviderAssembly,
+    JsonlWorkflowStore,
+    LocalWorkflowEngine,
     MessageRole,
     ModelCapability,
     ModelDescriptor,
@@ -14,6 +17,9 @@ from w_agent import (
     RunResult,
     StopReason,
     TokenUsage,
+    PythonWorkflowDefinition,
+    WorkflowContext,
+    WorkflowNodeResult,
 )
 from w_agent.cli import app
 
@@ -284,6 +290,117 @@ def test_cli_checkpoint_list_is_machine_readable_and_prompt_free(tmp_path):
 
     assert result.exit_code == 0
     assert json.loads(result.stdout) == []
+
+
+def test_cli_workflow_checkpoint_list_is_machine_readable_and_value_free(tmp_path):
+    definition = PythonWorkflowDefinition(
+        "private-review",
+        lambda context: WorkflowNodeResult(
+            output="SECRET_OUTPUT",
+            state_updates={"draft": "SECRET_STATE"},
+            pause=True,
+        ),
+        version="4",
+    )
+    asyncio.run(
+        LocalWorkflowEngine(JsonlWorkflowStore(tmp_path)).start(
+            definition,
+            WorkflowContext("workflow-1", input="SECRET_INPUT"),
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        ["checkpoint", "workflow-list", "--state-root", str(tmp_path), "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload[0]["run_id"] == "workflow-1"
+    assert payload[0]["workflow_name"] == "private-review"
+    assert payload[0]["workflow_version"] == "4"
+    assert payload[0]["status"] == "paused"
+    assert "SECRET_INPUT" not in result.stdout
+    assert "SECRET_STATE" not in result.stdout
+    assert "SECRET_OUTPUT" not in result.stdout
+
+
+def test_cli_workflow_resume_requires_code_and_execution_authority():
+    missing_resume = runner.invoke(
+        app,
+        [
+            "checkpoint",
+            "workflow-resume",
+            "workflow-1",
+            "--workflow-entry",
+            "example:workflow",
+        ],
+    )
+    missing_code = runner.invoke(
+        app,
+        [
+            "checkpoint",
+            "workflow-resume",
+            "workflow-1",
+            "--workflow-entry",
+            "example:workflow",
+            "--confirm-resume",
+        ],
+    )
+
+    assert missing_resume.exit_code == 2
+    assert "--confirm-resume" in missing_resume.stderr
+    assert missing_code.exit_code == 2
+    assert "--confirm-workflow-code" in missing_code.stderr
+
+
+def test_cli_resumes_exact_workflow_and_hides_runtime_values(tmp_path, monkeypatch):
+    def handler(context):
+        if context.resume_count == 0:
+            return WorkflowNodeResult(
+                output="SECRET_WAITING_OUTPUT",
+                state_updates={"draft": "SECRET_STATE"},
+                pause=True,
+            )
+        return WorkflowNodeResult(output="SECRET_FINAL_OUTPUT")
+
+    definition = PythonWorkflowDefinition("review", handler, version="5")
+    asyncio.run(
+        LocalWorkflowEngine(JsonlWorkflowStore(tmp_path)).start(
+            definition,
+            WorkflowContext("workflow-2", input="SECRET_INPUT"),
+        )
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "load_workflow_entries",
+        lambda entries: {("review", "5"): definition},
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "checkpoint",
+            "workflow-resume",
+            "workflow-2",
+            "--workflow-entry",
+            "example:workflow",
+            "--state-root",
+            str(tmp_path),
+            "--confirm-workflow-code",
+            "--confirm-resume",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["stop_reason"] == "completed"
+    assert payload["checkpoint_id"] is None
+    assert "SECRET_INPUT" not in result.stdout
+    assert "SECRET_STATE" not in result.stdout
+    assert "SECRET_WAITING_OUTPUT" not in result.stdout
+    assert "SECRET_FINAL_OUTPUT" not in result.stdout
 
 
 def test_cli_evaluate_requires_explicit_model_call_authorization(tmp_path):

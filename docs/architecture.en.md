@@ -6,7 +6,7 @@ English | [简体中文](./architecture.md)
 
 W-Agent is an open agent framework for local developers, not a hosted platform or a fixed harness. It provides stable protocols, lifecycle management, and default templates required for composition while leaving models, routing, agent loops, workflows, tools, state, sandboxes, and interfaces under developer control.
 
-Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The latest alpha is `2.0.0a2`, and the current mainline version is `2.0.0a3`. This document covers both implemented capabilities and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
+Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The latest alpha is `2.0.0a3`, and current main contains subsequent unpublished changes. This document covers both implemented capabilities and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
 
 ## 2. Design principles
 

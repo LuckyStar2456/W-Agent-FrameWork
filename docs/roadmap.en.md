@@ -56,6 +56,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | DAG, state-graph, and Python workflows | `Implemented` | Phase 4 / 2.0.0a1 |
 | Local node-level checkpoint, pause, and resume | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/workflow convenience adapters | `Implemented` | Phase 4 / 2.0.0a1 |
+| Privacy-safe workflow-checkpoint discovery, explicit definition loading, and CLI/TUI recovery | `Experimental` | Phase 4/6 / main (unpublished) |
 | Docker/OCI coding sandbox | `Implemented` | Phase 5 / 2.0.0a1 |
 | Explicit `UnsafeLocalSandbox` mode | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
@@ -121,6 +122,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Status: the local sequential engine, node-boundary recovery, and bidirectional agent adapters are `Implemented`; parallel execution is `Planned`.
 - Implemented DAG, state-graph, and Python APIs sharing `WorkflowEngineProtocol`, events, and results.
 - Implemented in-memory/JSONL node checkpoints, explicit pause, restart resume, and boundary cancellation.
+- Current main implements `WorkflowCheckpointSummary`, a `WorkflowCheckpointCatalog` query contract separate from the stable store, explicit `module:attribute` definition loading, and CLI/TUI recovery with exact name/version/kind checks. Runtime values are hidden by default, and code loading and execution are confirmed separately.
 - Uncertain node execution remains `RESUMING` and rejects automatic replay; arbitrary Python instruction stacks are not restored.
 - Implemented `agent_workflow_node()` plus `workflow_start_tool()` / `workflow_resume_tool()` governed by the normal tool permission and per-call approval pipeline. The adapters depend only on public protocols and allow replacement of message, authority-context, and result mapping.
 - Later work adds optional parallel DAG scheduling. Automatic cascading recovery between agent approval checkpoints and workflow pauses remains a later design.
@@ -145,7 +147,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented network-free scripted model providers, JSONL recording/sequential replay requiring explicit sensitive-content authorization, and a sequential evaluation runner with replaceable scorers. The CLI reads strict JSON datasets, uses disposable state by default, and reports token completeness, latency, errors, and tool success rate. JSON reports omit prompts, outputs, metadata, and exception bodies by default.
 - Implemented a sequential TUI evaluation screen with strict JSON cases, disposable state, one-shot `EVALUATE` authorization, aggregate metrics, and optional privacy-safe reports; prompts and outputs are hidden by default.
 - The TUI now implements separately confirmed tool-entry loading, per-run authority, exact session/run/call-ID approval resume, and privacy-safe live RunEvents. Confirmations are not retained, and the UI omits prompts, model text, tool arguments, and tool results.
-- Workflow-checkpoint aggregation/cross-store recovery and general plugin-install confirmation remain `Planned`.
+- Implemented workflow-checkpoint discovery and recovery from an explicitly selected local state root; stores are never copied, merged, or migrated automatically. General plugin install/upgrade/removal confirmation remains `Planned`.
 - Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 

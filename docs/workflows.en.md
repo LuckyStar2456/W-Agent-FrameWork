@@ -4,7 +4,7 @@ English | [简体中文](./workflows.md)
 
 ## Status
 
-`Implemented`: current `2.0.0a1` source includes three workflow definitions, one engine protocol, deterministic local execution, node events, cooperative cancellation, in-memory/JSONL pause and recovery at node boundaries, and bidirectional agent/workflow adapters.
+`Implemented`: `2.0.0a1` includes three workflow definitions, one engine protocol, deterministic local execution, node events, cooperative cancellation, in-memory/JSONL pause and recovery at node boundaries, and bidirectional agent/workflow adapters. Current main additionally provides privacy-safe checkpoint discovery, explicit workflow-entry loading, and exact-version recovery; these increments are not yet published to PyPI.
 
 `Planned`: parallel DAG scheduling, automatic cascading recovery between agent approval and workflow pause, an external pause handle for a running workflow, and general session projections.
 
@@ -22,8 +22,11 @@ English | [简体中文](./workflows.md)
 | `LocalWorkflowEngine` | Built-in deterministic sequential executor |
 | `WorkflowRegistry` | Registers definitions by name, version, and scope through the shared microkernel registry |
 | `WorkflowStore` | Replaceable event and checkpoint storage contract |
+| `WorkflowCheckpointCatalog` | Optional checkpoint-discovery contract kept separate from the stable store |
 | `InMemoryWorkflowStore` | In-process development and test storage |
 | `JsonlWorkflowStore` | Durable storage for one local lifecycle owner |
+| `WorkflowCheckpointSummary` | Recovery-discovery projection without input, state, output, scope, or metadata values |
+| `load_workflow_entry()` / `load_workflow_entries()` | Import `module:attribute` definitions after explicit application authorization |
 | `agent_workflow_node()` | Adapts a fixed agent loop/definition into a workflow node |
 | `workflow_start_tool()` / `workflow_resume_tool()` | Adapt a fixed workflow into governed agent tools |
 
@@ -145,6 +148,25 @@ READY / PAUSED → claim → RESUMING → node completes → READY / PAUSED
 - Recovery rejects a changed workflow name, version, or kind. Behavioral changes should use a new `version`.
 
 Successful completion and reaching a step bound are terminal and delete the checkpoint. An explicit pause or boundary cancellation retains a resumable checkpoint. Node failure returns a stable failure code without exception text and keeps `RESUMING` for manual diagnosis.
+
+## Privacy-safe discovery and explicit recovery
+
+`WorkflowCheckpointCatalog.list_checkpoints()` returns `WorkflowCheckpointSummary` values in stable run-ID order. Discovery stays separate from the stable `WorkflowStore` execution contract, so existing custom stores are not forced to implement a new method. A summary contains only workflow name, version, kind, status, node identifiers, and counters; persisted input, state, output, scope, and metadata values are excluded. `InMemoryWorkflowStore` and `JsonlWorkflowStore` implement both contracts.
+
+Developer definitions are imported through `load_workflow_entry()` / `load_workflow_entries()` only after a separate authorization. A checkpoint or configuration file cannot trigger Python imports. The loader builds a catalog keyed by `(name, version)` and rejects duplicate identities; the engine checks name, version, and kind again before recovery.
+
+```python
+store = JsonlWorkflowStore(".wagent")
+summaries = await store.list_checkpoints()
+
+# Call only after the host confirms execution of developer-owned Python code:
+catalog = load_workflow_entries(("my_workflows:definitions",))
+checkpoint = await store.load_checkpoint("review-1")
+definition = catalog[(checkpoint.workflow_name, checkpoint.workflow_version)]
+result = await LocalWorkflowEngine(store).resume(definition, checkpoint.run_id)
+```
+
+The CLI provides `wagent checkpoint workflow-list` and `workflow-resume`. Recovery requires `--workflow-entry`, `--confirm-workflow-code`, and `--confirm-resume` together. The TUI uses separate one-shot `LOAD WORKFLOW` and `RESUME WORKFLOW` confirmations. Both can target an explicitly selected state root, so a run in another local store root can be recovered without copying, merging, or automatically migrating stores. Runtime values stay hidden in default CLI/TUI results. A `RESUMING` checkpoint still fails closed because node side effects are uncertain and require manual diagnosis.
 
 ## Cancellation and events
 

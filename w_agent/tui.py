@@ -58,6 +58,14 @@ from w_agent.models import (
 from w_agent.sandbox import DockerSandboxProvider
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
 from w_agent.tools import ToolEntryLoadError, load_tool_entries
+from w_agent.workflows import (
+    JsonlWorkflowStore,
+    LocalWorkflowEngine,
+    WorkflowEntryLoadError,
+    WorkflowEvent,
+    WorkflowStoreError,
+    load_workflow_entries,
+)
 
 
 class WAgentTui(App[None]):
@@ -72,7 +80,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #run-events, #checkpoint-result, #checkpoint-resume-result, #checkpoint-events, #evaluation-result { min-height: 8; }
+    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #run-events, #checkpoint-result, #checkpoint-resume-result, #checkpoint-events, #workflow-checkpoint-result, #workflow-checkpoint-resume-result, #workflow-checkpoint-events, #evaluation-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -216,6 +224,51 @@ class WAgentTui(App[None]):
                     id="checkpoint-resume-result",
                     classes="panel",
                 )
+                yield Label("Workflow checkpoints (runtime values are hidden)")
+                yield Input(value=".wagent", id="workflow-checkpoint-state-root")
+                yield Button(
+                    "Refresh workflow checkpoints",
+                    id="workflow-checkpoint-refresh",
+                )
+                yield Static(
+                    "Loading workflow checkpoints…",
+                    id="workflow-checkpoint-result",
+                    classes="panel",
+                )
+                yield Label("Load the exact workflow definition and resume")
+                yield Input(
+                    placeholder="Workflow run ID",
+                    id="workflow-checkpoint-run",
+                )
+                yield Input(
+                    placeholder=(
+                        "Workflow entries, comma-separated module:attribute"
+                    ),
+                    id="workflow-checkpoint-entries",
+                )
+                yield Input(
+                    placeholder="Type LOAD WORKFLOW to authorize Python imports",
+                    id="workflow-checkpoint-load-confirm",
+                )
+                yield Input(
+                    placeholder="Type RESUME WORKFLOW to authorize execution",
+                    id="workflow-checkpoint-resume-confirm",
+                )
+                yield Button(
+                    "Load exact definition and resume",
+                    id="workflow-checkpoint-resume",
+                    variant="warning",
+                )
+                yield Static(
+                    "No resumed workflow events.",
+                    id="workflow-checkpoint-events",
+                    classes="panel",
+                )
+                yield Static(
+                    "No workflow checkpoint resumed.",
+                    id="workflow-checkpoint-resume-result",
+                    classes="panel",
+                )
             with TabPane("Sandbox", id="sandbox"):
                 yield Static(
                     "Checking Docker/OCI…", id="sandbox-summary", classes="panel"
@@ -259,6 +312,7 @@ class WAgentTui(App[None]):
         self.query_one("#home-summary", Static).update(summary)
         await self._refresh_sessions()
         await self._refresh_checkpoints()
+        await self._refresh_workflow_checkpoints()
         available = await DockerSandboxProvider().available()
         self.query_one("#sandbox-summary", Static).update(
             f"Docker/OCI available: {available}\n"
@@ -289,6 +343,10 @@ class WAgentTui(App[None]):
             await self._refresh_checkpoints()
         elif event.button.id == "checkpoint-resume":
             await self._resume_configured_agent()
+        elif event.button.id == "workflow-checkpoint-refresh":
+            await self._refresh_workflow_checkpoints()
+        elif event.button.id == "workflow-checkpoint-resume":
+            await self._resume_workflow()
         elif event.button.id == "evaluation-button":
             await self._run_evaluation()
 
@@ -432,6 +490,28 @@ class WAgentTui(App[None]):
             for item in checkpoints
         ]
         target.update("\n".join(lines) if lines else "No agent checkpoints.")
+
+    async def _refresh_workflow_checkpoints(self) -> None:
+        target = self.query_one("#workflow-checkpoint-result", Static)
+        try:
+            store = self._workflow_store()
+            checkpoints = await store.list_checkpoints()
+        except (OSError, WorkflowStoreError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        lines = [
+            (
+                f"{item.run_id} | session={item.session_id or '-'} | "
+                f"workflow={item.workflow_name}@{item.workflow_version} | "
+                f"kind={item.kind.value} | status={item.status.value} | "
+                f"current={item.current_node or '-'} | "
+                f"completed={','.join(item.completed_nodes) or '-'} | "
+                f"remaining={','.join(item.remaining_nodes) or '-'} | "
+                f"steps={item.graph_steps} | resumes={item.resume_count}"
+            )
+            for item in checkpoints
+        ]
+        target.update("\n".join(lines) if lines else "No workflow checkpoints.")
 
     async def _run_configured_agent(self) -> None:
         target = self.query_one("#run-result", Static)
@@ -583,6 +663,92 @@ class WAgentTui(App[None]):
         await self._refresh_sessions()
         await self._refresh_checkpoints()
 
+    async def _resume_workflow(self) -> None:
+        target = self.query_one("#workflow-checkpoint-resume-result", Static)
+        resume_confirmation = self.query_one(
+            "#workflow-checkpoint-resume-confirm",
+            Input,
+        )
+        if resume_confirmation.value.strip() != "RESUME WORKFLOW":
+            target.update(
+                "Rejected: type RESUME WORKFLOW to authorize workflow execution"
+            )
+            return
+        run_id = self.query_one("#workflow-checkpoint-run", Input).value.strip()
+        if not run_id:
+            target.update("Rejected: workflow run ID is required")
+            return
+        try:
+            entries = _split_values(
+                self.query_one("#workflow-checkpoint-entries", Input).value
+            )
+        except ValueError as error:
+            target.update(f"Rejected: {error}")
+            return
+        if not entries:
+            target.update("Rejected: at least one workflow entry is required")
+            return
+        load_confirmation = self.query_one(
+            "#workflow-checkpoint-load-confirm",
+            Input,
+        )
+        if load_confirmation.value.strip() != "LOAD WORKFLOW":
+            target.update(
+                "Rejected: type LOAD WORKFLOW to authorize developer Python imports"
+            )
+            return
+
+        event_target = self.query_one("#workflow-checkpoint-events", Static)
+        target.update("Loading exact workflow definition and resuming…")
+        event_target.update("Waiting for resumed workflow events…")
+        resume_confirmation.value = ""
+        load_confirmation.value = ""
+        try:
+            store = self._workflow_store()
+            checkpoint = await store.load_checkpoint(run_id)
+            if checkpoint is None:
+                raise WorkflowStoreError(
+                    f"workflow run {run_id!r} has no resumable checkpoint"
+                )
+            catalog = load_workflow_entries(entries)
+            identity = (checkpoint.workflow_name, checkpoint.workflow_version)
+            definition = catalog.get(identity)
+            if definition is None:
+                raise WorkflowEntryLoadError(
+                    "loaded entries do not provide exact workflow "
+                    f"{checkpoint.workflow_name}@{checkpoint.workflow_version}"
+                )
+            if definition.kind is not checkpoint.kind:
+                raise WorkflowStoreError(
+                    "loaded workflow kind differs from the checkpoint"
+                )
+            result = await LocalWorkflowEngine(store).resume(definition, run_id)
+        except (
+            OSError,
+            WorkflowEntryLoadError,
+            WorkflowStoreError,
+            ValueError,
+        ) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Workflow resume failed: {type(error).__name__}")
+            return
+
+        event_target.update(
+            "\n".join(_workflow_event_text(event) for event in result.events)
+            or "No workflow events."
+        )
+        target.update(
+            f"Run: {result.run_id}\n"
+            f"Stop: {result.stop_reason.value}\n"
+            f"Completed nodes: {','.join(result.completed_nodes) or '-'}\n"
+            f"Checkpoint retained: {result.checkpoint_id or '-'}\n"
+            f"Events: {len(result.events)}\n"
+            "Runtime input, state, output, and metadata are hidden."
+        )
+        await self._refresh_workflow_checkpoints()
+
     def _show_run_result(self, target: Static, run: LocalRuntimeRun) -> None:
         result = run.result
         cost_text = (
@@ -692,6 +858,12 @@ class WAgentTui(App[None]):
         path = Path(value.strip())
         return path if path.is_absolute() else self.workspace / path
 
+    def _workflow_store(self) -> JsonlWorkflowStore:
+        value = self.query_one("#workflow-checkpoint-state-root", Input).value.strip()
+        if not value:
+            raise ValueError("workflow state root is required")
+        return JsonlWorkflowStore(self._workspace_path(value))
+
     @staticmethod
     def _profile_text() -> str:
         templates = (CUSTOMER_SUPPORT_AGENT_TEMPLATE, CODING_AGENT_TEMPLATE)
@@ -749,6 +921,28 @@ def _event_text(event: RunEvent) -> str:
         currency = cost.get("currency")
         if total is not None and currency is not None:
             details.append(f"cost={total} {currency}")
+    prefix = f"{event.sequence:03d} {event.type.value}"
+    return prefix if not details else f"{prefix} | {' | '.join(details)}"
+
+
+def _workflow_event_text(event: WorkflowEvent) -> str:
+    """Render workflow control metadata without runtime values."""
+
+    fields = (
+        "workflow",
+        "version",
+        "kind",
+        "status",
+        "node",
+        "paused",
+        "reason",
+        "code",
+    )
+    details = [
+        f"{name}={event.data[name]}"
+        for name in fields
+        if event.data.get(name) is not None
+    ]
     prefix = f"{event.sequence:03d} {event.type.value}"
     return prefix if not details else f"{prefix} | {' | '.join(details)}"
 

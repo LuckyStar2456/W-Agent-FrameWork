@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental` in current `2.0.0a3`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI/TUI approval resume, prompt-free agent-checkpoint listing, application event callbacks, and CLI/TUI text-run entry points are implemented. Workflow-checkpoint aggregation remains `Planned`.
+Status: `Experimental`. `2.0.0a3` includes strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI/TUI approval resume, prompt-free agent-checkpoint listing, application event callbacks, and CLI/TUI text-run entry points. Current main additionally implements privacy-safe workflow-checkpoint discovery and explicit recovery.
 
 ## Configuration
 
@@ -113,7 +113,7 @@ If the run or call ID is unknown, run `wagent checkpoint list --json`; `--sessio
 
 ## TUI
 
-The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output, token usage, and cost, and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The Checkpoints screen can refresh prompt-free agent approval summaries. The TUI currently neither imports developer Python tools nor exposes approval execution; a configuration with `tools.enabled` fails closed and should be run through the Python API or CLI.
+The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output, token usage, and cost, and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The Checkpoints screen refreshes prompt-free agent summaries and workflow summaries from a selected state root. Developer tool code is imported only after `LOAD TOOLS`; workflow definitions are imported only after `LOAD WORKFLOW`. Agent and workflow recovery independently require one-shot `RESUME` and `RESUME WORKFLOW` confirmations.
 
 ## Budget semantics
 

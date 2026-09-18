@@ -4,6 +4,7 @@ from w_agent import (
     CancellationToken,
     DagWorkflowDefinition,
     JsonlWorkflowStore,
+    InMemoryWorkflowStore,
     LocalWorkflowEngine,
     PythonWorkflowDefinition,
     StateGraphDefinition,
@@ -320,3 +321,53 @@ def test_workflow_definitions_use_shared_versioned_registry():
     first.dispose()
     with pytest.raises(ValueError, match="must match"):
         registry.register(version_2, version="3")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store_factory", [InMemoryWorkflowStore, JsonlWorkflowStore])
+async def test_workflow_checkpoint_listing_is_deterministic_and_privacy_safe(
+    tmp_path,
+    store_factory,
+):
+    store = (
+        store_factory()
+        if store_factory is InMemoryWorkflowStore
+        else store_factory(tmp_path)
+    )
+
+    async def save(run_id):
+        definition = PythonWorkflowDefinition(
+            "private-review",
+            lambda context: WorkflowNodeResult(
+                output="SECRET_OUTPUT",
+                state_updates={"draft": "SECRET_STATE"},
+                pause=True,
+            ),
+            version="7",
+        )
+        await LocalWorkflowEngine(store).start(
+            definition,
+            WorkflowContext(
+                run_id,
+                input="SECRET_INPUT",
+                metadata={"token": "SECRET_METADATA"},
+                session_id="session-private",
+            ),
+        )
+
+    await save("workflow-b")
+    await save("workflow-a")
+
+    summaries = await store.list_checkpoints()
+
+    assert [item.run_id for item in summaries] == ["workflow-a", "workflow-b"]
+    assert summaries[0].workflow_name == "private-review"
+    assert summaries[0].workflow_version == "7"
+    assert summaries[0].status == WorkflowCheckpointStatus.PAUSED
+    assert summaries[0].current_node == "python"
+    assert summaries[0].resume_count == 1
+    rendered = repr(summaries)
+    assert "SECRET_INPUT" not in rendered
+    assert "SECRET_STATE" not in rendered
+    assert "SECRET_OUTPUT" not in rendered
+    assert "SECRET_METADATA" not in rendered

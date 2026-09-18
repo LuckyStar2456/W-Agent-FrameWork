@@ -2,7 +2,7 @@
 
 English | [简体中文](./api.md)
 
-This document separates stable 1.5.2 APIs, the latest alpha `2.0.0a2`, current `2.0.0a3` source APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
+This document separates stable 1.5.2 APIs, the latest alpha `2.0.0a3`, current unpublished main APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
 
 ## 1. Current top-level API
 
@@ -158,7 +158,7 @@ class WorkflowEngineProtocol(Protocol):
     ) -> WorkflowResult: ...
 ```
 
-`DagWorkflowDefinition`, `StateGraphDefinition`, and `PythonWorkflowDefinition` use the same engine and can be registered by version and scope through `WorkflowRegistry` on the shared microkernel. Nodes return `WorkflowNodeResult` to update state, select a next node, or request a pause. `LocalWorkflowEngine` supports boundary cancellation and writes events/checkpoints through a replaceable `WorkflowStore`; in-memory and JSONL implementations are included. Recovery guarantees completed node boundaries only and never restores an arbitrary Python instruction stack. An uncertain node remains `RESUMING` and rejects automatic replay. `agent_workflow_node()` and `workflow_start_tool()` / `workflow_resume_tool()` provide bidirectional public-protocol adapters. Parallel DAGs, automatic cascading recovery, and nested workflows are not implemented. See [Workflows and node-boundary recovery](./workflows.en.md).
+`DagWorkflowDefinition`, `StateGraphDefinition`, and `PythonWorkflowDefinition` use the same engine and can be registered by version and scope through `WorkflowRegistry` on the shared microkernel. Nodes return `WorkflowNodeResult` to update state, select a next node, or request a pause. `LocalWorkflowEngine` supports boundary cancellation and writes events/checkpoints through a replaceable `WorkflowStore`; in-memory and JSONL implementations are included. On current main, the separate `WorkflowCheckpointCatalog.list_checkpoints()` returns `WorkflowCheckpointSummary` without input/state/output/scope/metadata values, leaving the stable `WorkflowStore` contract unchanged. `load_workflow_entry()` / `load_workflow_entries()` import developer `module:attribute` definitions only after explicit application authorization and catalog them by name and version. Recovery guarantees completed node boundaries only and never restores an arbitrary Python instruction stack. An uncertain node remains `RESUMING` and rejects automatic replay. `agent_workflow_node()` and `workflow_start_tool()` / `workflow_resume_tool()` provide bidirectional public-protocol adapters. Parallel DAGs, automatic cascading recovery, and nested workflows are not implemented. See [Workflows and node-boundary recovery](./workflows.en.md).
 
 ## 9. Tool protocol
 

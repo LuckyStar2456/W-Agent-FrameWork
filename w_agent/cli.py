@@ -66,6 +66,14 @@ from w_agent.sessions import (
     SessionRecord,
 )
 from w_agent.tools import ToolEntryLoadError, load_tool_entries
+from w_agent.workflows import (
+    JsonlWorkflowStore,
+    LocalWorkflowEngine,
+    WorkflowCheckpointSummary,
+    WorkflowEntryLoadError,
+    WorkflowStoreError,
+    load_workflow_entries,
+)
 
 app = typer.Typer(
     name="wagent",
@@ -531,6 +539,100 @@ def checkpoint_list(
     console.print(table)
 
 
+@checkpoint_app.command("workflow-list")
+def workflow_checkpoint_list(
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    session_id: str | None = typer.Option(None, "--session"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """List workflow checkpoints without runtime input/state/output values."""
+
+    try:
+        checkpoints = asyncio.run(
+            JsonlWorkflowStore(state_root).list_checkpoints()
+        )
+    except (OSError, WorkflowStoreError, ValueError) as error:
+        _fail(str(error))
+    if session_id is not None:
+        checkpoints = tuple(
+            item for item in checkpoints if item.session_id == session_id
+        )
+    payload = [_workflow_checkpoint_payload(item) for item in checkpoints]
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Workflow checkpoints")
+    table.add_column("Run")
+    table.add_column("Session")
+    table.add_column("Workflow")
+    table.add_column("Kind")
+    table.add_column("Status")
+    table.add_column("Current node")
+    table.add_column("Completed")
+    table.add_column("Remaining")
+    for item in payload:
+        table.add_row(
+            str(item["run_id"]),
+            str(item["session_id"] or "-"),
+            f"{item['workflow_name']}@{item['workflow_version']}",
+            str(item["kind"]),
+            str(item["status"]),
+            str(item["current_node"] or "-"),
+            ", ".join(item["completed_nodes"]) or "-",
+            ", ".join(item["remaining_nodes"]) or "-",
+        )
+    console.print(table)
+
+
+@checkpoint_app.command("workflow-resume")
+def workflow_checkpoint_resume(
+    run_id: str = typer.Argument(..., help="Workflow run/checkpoint ID."),
+    workflow_entry: list[str] = typer.Option(
+        [],
+        "--workflow-entry",
+        help="Explicit module:attribute workflow definition entry; may repeat.",
+    ),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    confirm_workflow_code: bool = typer.Option(
+        False,
+        "--confirm-workflow-code",
+        help="Authorize importing and executing developer Python workflow code.",
+    ),
+    confirm_resume: bool = typer.Option(
+        False,
+        "--confirm-resume",
+        help="Authorize resuming the exact persisted workflow run.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Load an exact versioned workflow definition and resume its checkpoint."""
+
+    if not confirm_resume:
+        _fail("workflow resume not authorized; pass --confirm-resume")
+    if not workflow_entry:
+        _fail("no workflow definition supplied; pass --workflow-entry")
+    if not confirm_workflow_code:
+        _fail("workflow code not authorized; pass --confirm-workflow-code")
+    try:
+        result = asyncio.run(
+            _resume_workflow_checkpoint(
+                state_root,
+                run_id,
+                workflow_entry,
+            )
+        )
+    except (
+        OSError,
+        WorkflowEntryLoadError,
+        WorkflowStoreError,
+        ValueError,
+    ) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"workflow resume failed: {type(error).__name__}")
+    _emit(_workflow_result_payload(result), json_output)
+
+
 @config_app.command("list")
 def config_list(
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
@@ -851,6 +953,30 @@ async def _probe_configured_provider(
         )
 
 
+async def _resume_workflow_checkpoint(
+    state_root: Path,
+    run_id: str,
+    workflow_entries: list[str],
+):
+    store = JsonlWorkflowStore(state_root)
+    checkpoint = await store.load_checkpoint(run_id)
+    if checkpoint is None:
+        raise WorkflowStoreError(
+            f"workflow run {run_id!r} has no resumable checkpoint"
+        )
+    catalog = load_workflow_entries(workflow_entries)
+    identity = (checkpoint.workflow_name, checkpoint.workflow_version)
+    definition = catalog.get(identity)
+    if definition is None:
+        raise WorkflowEntryLoadError(
+            "loaded entries do not provide exact workflow "
+            f"{checkpoint.workflow_name}@{checkpoint.workflow_version}"
+        )
+    if definition.kind is not checkpoint.kind:
+        raise WorkflowStoreError("loaded workflow kind differs from the checkpoint")
+    return await LocalWorkflowEngine(store).resume(definition, run_id)
+
+
 def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
         _emit(payload, True)
@@ -1080,6 +1206,56 @@ def _checkpoint_payload(checkpoint: RunCheckpointSummary) -> dict[str, Any]:
         },
         "cost": _cost_payload(checkpoint.cost),
         "cost_complete": checkpoint.cost_complete,
+    }
+
+
+def _workflow_checkpoint_payload(
+    checkpoint: WorkflowCheckpointSummary,
+) -> dict[str, Any]:
+    return {
+        "run_id": checkpoint.run_id,
+        "session_id": checkpoint.session_id,
+        "workflow_name": checkpoint.workflow_name,
+        "workflow_version": checkpoint.workflow_version,
+        "kind": checkpoint.kind.value,
+        "status": checkpoint.status.value,
+        "current_node": checkpoint.current_node,
+        "completed_nodes": list(checkpoint.completed_nodes),
+        "remaining_nodes": list(checkpoint.remaining_nodes),
+        "graph_steps": checkpoint.graph_steps,
+        "resume_count": checkpoint.resume_count,
+    }
+
+
+def _workflow_result_payload(result: Any) -> dict[str, Any]:
+    safe_fields = {
+        "workflow",
+        "version",
+        "kind",
+        "status",
+        "node",
+        "paused",
+        "reason",
+        "code",
+    }
+    return {
+        "run_id": result.run_id,
+        "stop_reason": result.stop_reason.value,
+        "completed_nodes": list(result.completed_nodes),
+        "checkpoint_id": result.checkpoint_id,
+        "failure": result.failure,
+        "events": [
+            {
+                "sequence": event.sequence,
+                "type": event.type.value,
+                "data": {
+                    key: value
+                    for key, value in event.data.items()
+                    if key in safe_fields
+                },
+            }
+            for event in result.events
+        ],
     }
 
 

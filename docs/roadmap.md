@@ -56,6 +56,7 @@
 | DAG、状态图、Python Workflow | `Implemented` | Phase 4 / 2.0.0a1 |
 | 本地节点级 Checkpoint、暂停和恢复 | `Implemented` | Phase 4 / 2.0.0a1 |
 | Agent/Workflow 双向便捷适配器 | `Implemented` | Phase 4 / 2.0.0a1 |
+| Workflow Checkpoint 脱敏汇总、显式 Definition 加载与 CLI/TUI 恢复 | `Experimental` | Phase 4/6 / main（未发布） |
 | Docker/OCI 编码沙箱 | `Implemented` | Phase 5 / 2.0.0a1 |
 | `UnsafeLocalSandbox` 显式授权模式 | `Implemented` | Phase 5 / 2.0.0a1 |
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
@@ -121,6 +122,7 @@
 - 状态：本地顺序执行引擎、节点边界恢复与 Agent 双向适配为 `Implemented`；并行执行为 `Planned`。
 - 已实现 DAG、状态图和 Python API，共用 `WorkflowEngineProtocol`、事件和结果协议。
 - 已实现内存/JSONL 节点 Checkpoint、显式暂停、重启恢复和边界取消。
+- 当前 main 已实现 `WorkflowCheckpointSummary`、与稳定 Store 分离的 `WorkflowCheckpointCatalog` 查询协议、显式 `module:attribute` Definition 加载，以及按名称/版本/类型精确校验的 CLI/TUI 恢复；运行时值默认隐藏，代码加载与执行分别确认。
 - 节点执行状态不确定时保留 `RESUMING` 并拒绝自动重放；不恢复任意 Python 指令栈。
 - 已实现 `agent_workflow_node()`，以及受工具权限/逐调用审批管线保护的 `workflow_start_tool()` / `workflow_resume_tool()`；适配器只依赖公开协议且允许替换消息、权限上下文和结果映射。
 - 后续提供可选并行 DAG 调度；Agent 审批断点与 Workflow 暂停的自动级联恢复仍保留为后续设计。
@@ -145,7 +147,7 @@
 - 已实现无网络的脚本化 Model Provider、需显式敏感内容授权的 JSONL 录制/顺序回放，以及可替换 Scorer 的顺序评测运行器；CLI 可读取严格 JSON 用例集，默认使用一次性状态，并输出 Token 完整性、延迟、错误与工具成功率。JSON 报告默认排除 Prompt、输出、Metadata 和异常正文。
 - 已实现 TUI 顺序评测页面：严格 JSON 用例、一次性状态、`EVALUATE` 单次授权、汇总指标和可选安全报告；不默认展示 Prompt 或输出。
 - 已实现 TUI 工具入口独立加载确认、本次权限、精确 Session/Run/Call ID 审批恢复和脱敏实时 RunEvent；确认不持久化，界面不展示 Prompt、模型文本、工具参数或工具结果。
-- Workflow Checkpoint 汇总/跨 Store 恢复与通用插件安装确认仍为 `Planned`。
+- 已实现从显式选择的本地 State Root 汇总和恢复 Workflow Checkpoint；不会自动复制、合并或迁移 Store。通用插件安装/升级/卸载确认仍为 `Planned`。
 - 已实现评测报告、CLI 与 TUI 的版本化费用汇总；客服与编码内置基准任务仍为 `Planned`。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 

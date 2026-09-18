@@ -2,7 +2,7 @@
 
 [English](./api.en.md) | 简体中文
 
-本文区分稳定版 1.5.2、最新 Alpha `2.0.0a2`、当前 `2.0.0a3` 源码 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
+本文区分稳定版 1.5.2、最新 Alpha `2.0.0a3`、当前 main 的未发布源码 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
 
 ## 1. 当前顶层 API
 
@@ -158,7 +158,7 @@ class WorkflowEngineProtocol(Protocol):
     ) -> WorkflowResult: ...
 ```
 
-`DagWorkflowDefinition`、`StateGraphDefinition` 和 `PythonWorkflowDefinition` 使用相同引擎，并可通过共享微内核上的 `WorkflowRegistry` 按版本和 Scope 注册。节点返回 `WorkflowNodeResult` 以更新状态、选择下一节点或请求暂停。`LocalWorkflowEngine` 支持边界取消，并通过可替换 `WorkflowStore` 写入事件和检查点；内置内存与 JSONL 实现。恢复只承诺已完成节点边界，不恢复任意 Python 指令栈。不确定节点执行保留 `RESUMING` 并拒绝自动重放。`agent_workflow_node()` 与 `workflow_start_tool()` / `workflow_resume_tool()` 已提供双向公共协议适配；并行 DAG、自动级联恢复和嵌套 Workflow 尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
+`DagWorkflowDefinition`、`StateGraphDefinition` 和 `PythonWorkflowDefinition` 使用相同引擎，并可通过共享微内核上的 `WorkflowRegistry` 按版本和 Scope 注册。节点返回 `WorkflowNodeResult` 以更新状态、选择下一节点或请求暂停。`LocalWorkflowEngine` 支持边界取消，并通过可替换 `WorkflowStore` 写入事件和检查点；内置内存与 JSONL 实现。当前 main 新增的独立 `WorkflowCheckpointCatalog.list_checkpoints()` 返回不含 Input/State/Output/Scope/Metadata 值的 `WorkflowCheckpointSummary`，不修改稳定 `WorkflowStore` 合约；`load_workflow_entry()` / `load_workflow_entries()` 仅在应用显式授权后导入开发者 `module:attribute` Definition，并按名称与版本建立 Catalog。恢复只承诺已完成节点边界，不恢复任意 Python 指令栈。不确定节点执行保留 `RESUMING` 并拒绝自动重放。`agent_workflow_node()` 与 `workflow_start_tool()` / `workflow_resume_tool()` 已提供双向公共协议适配；并行 DAG、自动级联恢复和嵌套 Workflow 尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
 
 ## 9. 工具协议
 

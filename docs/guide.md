@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a2`；仓库 `2.0.0a3` 进一步加入 TUI 工具审批恢复和脱敏实时事件。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和通用插件/Workflow Checkpoint 界面仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a3`；main 在该发布之后继续加入 Workflow Checkpoint 脱敏汇总、显式代码加载与精确版本恢复。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和通用插件操作仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -17,7 +17,7 @@ pip install wagent-framework
 安装已发布 Alpha：
 
 ```bash
-pip install --pre wagent-framework==2.0.0a2
+pip install --pre wagent-framework==2.0.0a3
 ```
 
 可选能力：
@@ -298,7 +298,7 @@ wagent composition save <composition-code> --alias stable
 wagent tui
 ```
 
-TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行、Agent Checkpoint 脱敏列表和本地评测。工具批准执行、插件操作、Workflow Checkpoint 与实时事件仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务。
+TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行、Agent/Workflow Checkpoint 脱敏列表、工具批准/精确恢复、脱敏实时事件和本地评测。通用插件操作仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务；Workflow 恢复界面属于 main 的未发布能力。
 
 ## 15. 当前本地评测
 
