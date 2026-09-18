@@ -116,7 +116,7 @@ Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `Registr
 
 ## 6. Models, routing, and probing
 
-Status: the Phase 2A protocols, registry, routing, and probe framework plus the Phase 2B OpenAI-compatible provider, generic HTTP mapping layer, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/pass-through executors, and explicit register-and-safe-probe service are `Implemented`; cross-stream recovery remains `Planned`.
+Status: the Phase 2A protocols, registry, routing, and probe framework plus the Phase 2B OpenAI-compatible provider, generic HTTP mapping layer, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/pass-through executors, and explicit register-and-safe-probe service are `Implemented`; explicit text-prefix recovery is `Experimental`, while provider-native cursor continuation is `Planned`.
 
 The model protocol can express the capabilities needed by OpenAI, Anthropic, Gemini, OpenAI-compatible APIs, Ollama, vLLM, and custom providers. Current implementations include OpenAI-compatible Chat Completions, an OpenAI Responses mapping, vLLM-specific extensions, a generic HTTP provider with replaceable request mapping, stream decoding, and transport, and Anthropic, Gemini, Ollama, Qwen, DeepSeek, GLM, and Turbo templates. Multimodality, tool calling, structured output, reasoning, and prompt caching are exposed through capabilities rather than a lowest-common-denominator API; templates never infer capabilities from model names.
 

@@ -13,8 +13,9 @@ from typing import Protocol
 from w_agent.kernel import ScopePath
 
 from .errors import ModelError, ModelFailure, ModelFailureKind
-from .provider import CancellationToken, ModelRegistry
+from .provider import CancellationToken, ModelProvider, ModelRegistry
 from .routing import ModelRouter, RouteDecision
+from .stream_recovery import StreamRecoveryStrategy
 from .types import (
     ModelRequest,
     ModelResponse,
@@ -51,6 +52,7 @@ class InvocationPolicy:
 
     max_attempts_per_route: int = 1
     max_routes: int = 1
+    max_stream_replays: int = 0
     timeout: float = 60.0
     initial_backoff: float = 0.25
     backoff_multiplier: float = 2.0
@@ -71,6 +73,8 @@ class InvocationPolicy:
             raise ValueError("max_attempts_per_route must be at least 1")
         if self.max_routes < 1:
             raise ValueError("max_routes must be at least 1")
+        if self.max_stream_replays < 0:
+            raise ValueError("max_stream_replays must not be negative")
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
         if self.initial_backoff < 0 or self.max_backoff < 0:
@@ -167,6 +171,7 @@ class ModelStreamExecution:
         scope: ScopePath | None,
         cancellation: CancellationToken | None,
         replay_safe: bool,
+        stream_recovery: StreamRecoveryStrategy | None,
     ) -> None:
         self._executor = executor
         self._request = request
@@ -175,6 +180,7 @@ class ModelStreamExecution:
         self._scope = scope
         self._cancellation = cancellation
         self._replay_safe = replay_safe
+        self._stream_recovery = stream_recovery
         self._started = False
         self.decision: RouteDecision | None = decision
         self.provider: str | None = None
@@ -333,11 +339,13 @@ class ModelExecutor:
         scope: ScopePath | None = None,
         cancellation: CancellationToken | None = None,
         replay_safe: bool = True,
+        stream_recovery: StreamRecoveryStrategy | None = None,
     ) -> ModelStreamExecution:
         """Create a single-use pass-through execution handle.
 
         Retry and failover are allowed only before the first event is yielded to
-        the caller. After that boundary, every failure is final and observable.
+        the caller. Visible-stream replay requires both an explicit recovery
+        strategy and a positive ``policy.max_stream_replays`` value.
         """
 
         return ModelStreamExecution(
@@ -348,6 +356,7 @@ class ModelExecutor:
             scope=scope,
             cancellation=cancellation,
             replay_safe=replay_safe,
+            stream_recovery=stream_recovery,
         )
 
     async def _stream_execution(
@@ -363,11 +372,10 @@ class ModelExecutor:
         )
         execution.decision = decision
         policy = execution._policy
+        stream_replay_limit = _stream_replay_limit(policy)
         routes = ((decision.provider, decision.model), *decision.fallbacks)
         route_limit = policy.max_routes if execution._replay_safe else 1
-        attempt_limit = (
-            policy.max_attempts_per_route if execution._replay_safe else 1
-        )
+        attempt_limit = policy.max_attempts_per_route if execution._replay_safe else 1
         routes = routes[:route_limit]
         last_failure: ModelFailure | None = None
 
@@ -380,6 +388,7 @@ class ModelExecutor:
                 started = time.perf_counter()
                 emitted = 0
                 validator = ModelStreamValidator()
+                visible_events: list[StreamEvent] = []
                 try:
                     provider = self.models.provider(
                         provider_name,
@@ -399,6 +408,7 @@ class ModelExecutor:
                                 break
                             validator.feed(event)
                             emitted += 1
+                            visible_events.append(event)
                             yield event
                     finally:
                         closer = getattr(provider_stream, "aclose", None)
@@ -411,6 +421,36 @@ class ModelExecutor:
                     failure = _normalize_failure(error, provider_name, model)
                     last_failure = failure
                     before_visibility = emitted == 0
+                    strategy = execution._stream_recovery
+                    can_recover_visible = (
+                        execution._replay_safe
+                        and not before_visibility
+                        and strategy is not None
+                        and stream_replay_limit > 0
+                        and policy.permits_retry(failure)
+                        and strategy.can_recover(routed_request, tuple(visible_events))
+                    )
+                    if can_recover_visible:
+                        async for recovered_event in self._recover_visible_stream(
+                            execution,
+                            decision=decision,
+                            provider=provider,
+                            routed_request=routed_request,
+                            provider_name=provider_name,
+                            model=model,
+                            route_index=route_index,
+                            route_attempt=route_attempt,
+                            validator=validator,
+                            visible_events=visible_events,
+                            initial_ordinal=ordinal,
+                            initial_started_at=started_at,
+                            initial_started=started,
+                            initial_emitted=emitted,
+                            initial_failure=failure,
+                            replay_limit=stream_replay_limit,
+                        ):
+                            yield recovered_event
+                        return
                     can_replay = (
                         execution._replay_safe
                         and before_visibility
@@ -419,9 +459,7 @@ class ModelExecutor:
                     retry_same_route = can_replay and route_attempt < attempt_limit
                     can_failover = can_replay and route_index + 1 < len(routes)
                     delay = (
-                        policy.retry_delay(route_attempt)
-                        if retry_same_route
-                        else None
+                        policy.retry_delay(route_attempt) if retry_same_route else None
                     )
                     execution._attempts.append(
                         _attempt_record(
@@ -475,6 +513,139 @@ class ModelExecutor:
             "route decision did not contain an executable route",
         )
         raise ModelInvocationError(failure, decision, execution.attempts)
+
+    async def _recover_visible_stream(
+        self,
+        execution: ModelStreamExecution,
+        *,
+        decision: RouteDecision,
+        provider: ModelProvider,
+        routed_request: ModelRequest,
+        provider_name: str,
+        model: str,
+        route_index: int,
+        route_attempt: int,
+        validator: ModelStreamValidator,
+        visible_events: list[StreamEvent],
+        initial_ordinal: int,
+        initial_started_at: datetime,
+        initial_started: float,
+        initial_emitted: int,
+        initial_failure: ModelFailure,
+        replay_limit: int,
+    ) -> AsyncIterator[StreamEvent]:
+        """Replay one visible text stream with exact semantic prefix checks."""
+
+        policy = execution._policy
+        cancellation = execution._cancellation
+        strategy = execution._stream_recovery
+        if strategy is None:
+            raise RuntimeError("stream recovery strategy disappeared")
+        first_delay = policy.retry_delay(1)
+        execution._attempts.append(
+            _attempt_record(
+                ordinal=initial_ordinal,
+                route_index=route_index,
+                route_attempt=route_attempt,
+                provider=provider_name,
+                model=model,
+                outcome=AttemptOutcome.FAILED,
+                started_at=initial_started_at,
+                started=initial_started,
+                events_emitted=initial_emitted,
+                failure=initial_failure,
+                next_delay=first_delay,
+            )
+        )
+
+        for replay_index in range(1, replay_limit + 1):
+            delay = policy.retry_delay(replay_index)
+            await self._wait_for_retry(delay, cancellation)
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            ordinal = len(execution._attempts) + 1
+            replay_route_attempt = route_attempt + replay_index
+            started_at = datetime.now(UTC)
+            started = time.perf_counter()
+            emitted = 0
+            replay_filter = strategy.start(routed_request, tuple(visible_events))
+            try:
+                provider_stream = provider.stream(
+                    routed_request,
+                    cancellation=cancellation,
+                )
+                try:
+                    while True:
+                        try:
+                            async with asyncio.timeout(policy.timeout):
+                                event = await provider_stream.__anext__()
+                        except StopAsyncIteration:
+                            break
+                        for recovered in replay_filter.feed(event):
+                            validator.feed(recovered)
+                            visible_events.append(recovered)
+                            emitted += 1
+                            yield recovered
+                finally:
+                    closer = getattr(provider_stream, "aclose", None)
+                    if closer is not None:
+                        await closer()
+                replay_filter.finish()
+                response = validator.finish()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                failure = _normalize_failure(error, provider_name, model)
+                can_retry = (
+                    replay_index < replay_limit
+                    and policy.permits_retry(failure)
+                    and strategy.can_recover(routed_request, tuple(visible_events))
+                )
+                next_delay = policy.retry_delay(replay_index + 1) if can_retry else None
+                execution._attempts.append(
+                    _attempt_record(
+                        ordinal=ordinal,
+                        route_index=route_index,
+                        route_attempt=replay_route_attempt,
+                        provider=provider_name,
+                        model=model,
+                        outcome=AttemptOutcome.FAILED,
+                        started_at=started_at,
+                        started=started,
+                        events_emitted=emitted,
+                        failure=failure,
+                        next_delay=next_delay,
+                    )
+                )
+                if can_retry:
+                    continue
+                raise ModelInvocationError(
+                    failure,
+                    decision,
+                    execution.attempts,
+                ) from error
+
+            execution._attempts.append(
+                _attempt_record(
+                    ordinal=ordinal,
+                    route_index=route_index,
+                    route_attempt=replay_route_attempt,
+                    provider=provider_name,
+                    model=model,
+                    outcome=AttemptOutcome.SUCCEEDED,
+                    started_at=started_at,
+                    started=started,
+                    events_emitted=emitted,
+                    usage=(response.usage if response.usage_reported else None),
+                    usage_reported=response.usage_reported,
+                )
+            )
+            execution.provider = provider_name
+            execution.model = model
+            execution.response = response
+            return
+
+        raise RuntimeError("stream recovery loop exhausted without a result")
 
     async def _wait_for_retry(
         self,
@@ -538,6 +709,13 @@ def _attempt_record(
         usage=usage,
         usage_reported=usage_reported,
     )
+
+
+def _stream_replay_limit(policy: InvocationPolicyProtocol) -> int:
+    value = getattr(policy, "max_stream_replays", 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("policy.max_stream_replays must be a non-negative integer")
+    return value
 
 
 def _normalize_failure(

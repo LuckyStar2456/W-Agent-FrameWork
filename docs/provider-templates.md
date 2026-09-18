@@ -102,7 +102,7 @@ class MyMapping:
 - API Key 只进入请求 Header，不进入模型描述、路由决定或模板目录。
 - Base URL 拒绝用户信息、查询串、片段和无效端口；私有部署地址仍由用户自行信任。
 - 当前测试使用模拟传输，不消耗远程额度；真实凭据和在线兼容性未在仓库测试中验证。
-- OpenAI Responses 与 vLLM 差异适配已实现并可由严格本地配置、CLI/TUI 运行及探测链路装配；Reasoning 内容增量、OpenAI 托管工具事件、多模态输出和跨流断点恢复仍为 `Planned`。
+- OpenAI Responses 与 vLLM 差异适配已实现并可由严格本地配置、CLI/TUI 运行及探测链路装配；模型执行层另有显式文本前缀重放恢复。Reasoning 内容增量、OpenAI 托管工具事件、多模态输出和 Provider 原生游标续传仍为 `Planned`。
 - 厂商协议会变化。模板版本随 W-Agent 发布；应用可固定、复制或注册自己的版本。
 
 协议依据： [OpenAI Responses](https://developers.openai.com/api/reference/typescript/resources/beta/subresources/responses/methods/create)、[vLLM OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/)、[Anthropic Messages](https://platform.claude.com/docs/en/api/overview)、[Gemini API](https://ai.google.dev/api/generate-content)、[Ollama Chat](https://docs.ollama.com/api/chat)、[Qwen DashScope](https://docs.qwencloud.com/api-reference/chat/dashscope)、[DeepSeek API](https://api-docs.deepseek.com/zh-cn/)、[GLM 快速开始](https://zhipu-ef7018ed.mintlify.app/cn/guide/start/quick-start)、[Turbo AI Endpoint](https://docs.turbo-ai.com/features/endpoint/)。

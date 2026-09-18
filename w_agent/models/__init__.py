@@ -78,6 +78,11 @@ from .routing import (
     WeightedRoutingPolicy,
     YamlRoutingPolicy,
 )
+from .stream_recovery import (
+    StreamRecoveryStrategy,
+    StreamReplayFilter,
+    VerifiedTextPrefixRecovery,
+)
 from .templates import (
     BUILTIN_PROVIDER_TEMPLATES,
     ProviderTemplate,
@@ -208,6 +213,8 @@ __all__ = [
     "RoutingPolicy",
     "RoutingWeights",
     "StreamEvent",
+    "StreamRecoveryStrategy",
+    "StreamReplayFilter",
     "TextContent",
     "TextDelta",
     "TokenUsage",
@@ -217,6 +224,7 @@ __all__ = [
     "ToolResultContent",
     "UsageEvent",
     "VllmProvider",
+    "VerifiedTextPrefixRecovery",
     "WeightedRoutingPolicy",
     "YamlRoutingPolicy",
     "anthropic_provider",

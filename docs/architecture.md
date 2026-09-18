@@ -116,7 +116,7 @@ ModelRequest(
 
 ## 6. 模型、路由与探测
 
-状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/透传调用执行器和显式注册安全探测服务为 `Implemented`；跨流恢复为 `Planned`。
+状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/透传调用执行器和显式注册安全探测服务为 `Implemented`；显式文本前缀恢复为 `Experimental`，Provider 原生游标续传为 `Planned`。
 
 模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力。当前已提供 OpenAI-compatible Chat Completions Provider、OpenAI Responses 映射、vLLM 专用扩展、可拆换请求映射/流解码/传输的通用 HTTP Provider，以及 Anthropic、Gemini、Ollama、Qwen、DeepSeek、GLM 和 Turbo 模板。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集；模板不会根据模型名称猜测能力。
 

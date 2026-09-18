@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` on current main; cross-stream recovery remains `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, verified-prefix text-stream recovery, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` on current main; provider-native cursor continuation remains `Planned`.
 
 ## Implemented boundary
 
@@ -170,6 +170,8 @@ The default policy permits one attempt on one route, so it never creates extra p
 
 Collecting mode validates the complete provider stream through `collect_stream()` before returning, so policy-driven route switching remains safe before results become visible. Pass-through mode validates and yields each event incrementally: retry or failover is allowed before the first event becomes visible, but any later failure terminates the execution without silent replay, preventing duplicated text or tool-call deltas. In pass-through mode, `timeout` bounds waiting for the provider's next frame and excludes time spent by the caller processing an event.
 
+To recover an already visible text-only stream, the caller must both configure a positive `InvocationPolicy.max_stream_replays` and pass `VerifiedTextPrefixRecovery()` (or another `StreamRecoveryStrategy`) to `stream()`. The built-in strategy accepts one text block only and rejects tools, multiple blocks, and failure after usage. It starts another request on the same provider/model, semantically verifies the visible text prefix, and exposes only the unseen suffix. Divergent or incomplete replay is a non-retryable protocol error. Every replay is represented in `AttemptRecord`, can incur another charge, never changes route, and is not provider-native cursor continuation or cross-process recovery. The default remains `max_stream_replays=0`.
+
 Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. `AttemptRecord` contains provider/model identity, indexes, duration, emitted-event count, normalized failure, next delay, and TokenUsage/`usage_reported` when explicitly supplied by the provider—never messages, prompts, bodies, or credentials. Missing usage for a failed attempt remains unknown rather than being inferred as zero. Ordinary model execution does not mutate `CandidateState`; health feedback must be attached through an explicit observation or registration-probe service.
 
 ## Endpoint probing
@@ -199,5 +201,5 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 ## Remaining Phase 2B plan
 
 - Reasoning-content deltas, OpenAI hosted-tool events, and more vendor-specific features in existing templates.
-- Cross-stream recovery and pluggable feedback bridges to rate limiters.
+- Provider-native cursor continuation, cross-process recovery, and pluggable feedback bridges to rate limiters.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

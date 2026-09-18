@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（当前 main）；跨流断点恢复为 `Planned`。
+状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式验证前缀的文本流恢复、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（当前 main）；Provider 原生游标续传为 `Planned`。
 
 ## 已实现边界
 
@@ -170,6 +170,8 @@ final_response = execution.response
 
 收集模式在返回前通过 `collect_stream()` 校验整个 Provider 流，因此失败发生在结果暴露前，可以按策略安全切换路由。透传模式使用增量校验器逐事件输出：首个事件可见前仍可按策略重试或切换路由；任何事件一旦可见，后续失败立即结束本次执行，绝不静默重放，避免重复文本或工具调用增量。透传模式的 `timeout` 约束等待 Provider 下一帧的时间，不把调用者处理事件所用时间计入超时。
 
+需要恢复已经可见的纯文本流时，调用者必须同时配置正数 `InvocationPolicy.max_stream_replays` 并向 `stream()` 传入 `VerifiedTextPrefixRecovery()`（或自定义 `StreamRecoveryStrategy`）。内置策略只接受单个文本块且拒绝工具、多块、Usage 后失败等情况；它在同一 Provider/模型上重新发起请求，按文本语义校验已公开前缀，并只输出未见后缀。分歧或不完整重放是不可重试的协议错误。每次重放都进入 `AttemptRecord`，可能重复计费，不会切换路由，也不等同于 Provider 原生游标续传或跨进程恢复。默认 `max_stream_replays=0`，因此现有安全边界不变。
+
 调用者可传入 `replay_safe=False` 强制只执行选中路由一次，即使装配策略允许重试。`AttemptRecord` 保存 Provider、模型、序号、耗时、已输出事件数、标准失败、下次退避，以及 Provider 明确报告时的 TokenUsage/`usage_reported`；它不保存消息、Prompt、请求体或凭据。失败尝试未报告用量时保持未知，不推断为零。普通模型执行不会自动修改 `CandidateState`；健康反馈必须通过显式观测或注册探测服务接入。
 
 ## 接口探测
@@ -199,5 +201,5 @@ final_response = execution.response
 ## Phase 2B 后续计划
 
 - 扩展现有模板的 Reasoning 内容增量、OpenAI 托管工具事件和更多厂商特性。
-- 跨流断点恢复，以及与限流器的可插拔反馈桥接。
+- Provider 原生游标续传、跨进程恢复，以及与限流器的可插拔反馈桥接。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

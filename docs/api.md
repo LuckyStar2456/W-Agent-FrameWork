@@ -108,7 +108,7 @@ class RoutingPolicy(Protocol):
 
 `RouteDecision` 包含候选模型、过滤原因、得分、最终路由、故障转移列表和策略版本，但不保存提示词明文。`WeightedRoutingPolicy` 与使用 `yaml.safe_load` 的 `YamlRoutingPolicy` 产生同一类型。`ModelRouter` 获取当前模型目录并应用策略，仍不直接执行调用。
 
-`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，使用 `ModelStreamValidator` 实时校验和透传事件；首个事件可见前允许按策略重试/故障转移，之后禁止静默重放。默认只调用一次；提高上限会产生额外可能计费的请求。`AttemptRecord` 记录已输出事件数、Provider 明确报告的 TokenUsage 和完整性标记，但不包含 Prompt 或凭据。执行失败抛出携带决定和全部已完成尝试的 `ModelInvocationError`。
+`ModelExecutor.invoke()` 消费决定，通过 `InvocationPolicy` 控制逐尝试超时、重试次数、路由数和确定性退避，并返回 `ModelInvocationResult`。`ModelExecutor.stream()` 返回单次消费的 `ModelStreamExecution`，使用 `ModelStreamValidator` 实时校验和透传事件；首个事件可见前允许按策略重试/故障转移。默认 `max_stream_replays=0`；调用者可显式传入 `VerifiedTextPrefixRecovery` 或自定义 `StreamRecoveryStrategy`，在同一路由对单文本块执行有界重放、前缀核对与后缀去重。该操作可能再次计费，且不是 Provider 原生游标续传。`AttemptRecord` 记录已输出事件数、Provider 明确报告的 TokenUsage 和完整性标记，但不包含 Prompt 或凭据。执行失败抛出携带决定和全部已完成尝试的 `ModelInvocationError`。
 
 ## 6. 探测协议
 

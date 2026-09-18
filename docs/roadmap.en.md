@@ -37,7 +37,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Collecting invocation, timeout, retry, and failover executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Safe event-pass-through executor | `Implemented` | Phase 2B / 2.0.0a1 |
 | Normalized provider input/output token metering | `Implemented` | Phase 2B / 2.0.0a1 |
-| Cross-stream recovery and resume | `Planned` | Phase 2B |
+| Explicit verified-prefix text-stream recovery | `Experimental` | Phase 2B / current main |
+| Provider-native cursor continuation | `Planned` | Phase 2B |
 | Single-agent ReAct/tool-loop template | `Implemented` | Phase 3 / 2.0.0a1 |
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -94,7 +95,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 2: models and routing
 
-- Status: `Implemented` for the 2A foundation and initial 2B adapters/execution; dedicated differences and cross-stream recovery remain `Planned`.
+- Status: `Implemented` for the 2A foundation and 2B adapters/execution; explicit text-prefix recovery is `Experimental`, while provider-native cursor continuation is `Planned`.
 - 2A implements model requests, responses, stream events, capabilities, extensions, the provider registry, and stable error categories.
 - 2A implements explainable route decisions, Python/YAML policies, endpoint sniffing, provider probes, caching, and periodic scheduling.
 - 2B implements an OpenAI-compatible Chat Completions provider with replaceable HTTP transport.
@@ -102,7 +103,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2B implements collecting and event-pass-through executors with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records. Pass-through execution prohibits silent replay after any event becomes visible.
 - 2B normalizes provider-reported input, output, and cached-input tokens. `usage_reported` distinguishes a real zero-token report from missing provider metadata instead of presenting a zero value as complete metering.
 - 2B implements optional register-and-safe-probe through `ModelRegistrationProbeService` and `ProbeHealthBridge`; low-level `ModelRegistry.register()` keeps pure registration semantics.
-- 2B now includes dedicated OpenAI Responses/vLLM handling, credential-free L1 endpoint probes, and CLI/TUI provider probes assembled from strict local configuration. Provider-only assembly performs no registration or I/O; whether `safe` accesses a remote catalog is provider-defined, while explicitly authorized `active` verifies minimal generation and stream termination. Later work adds cross-stream recovery and more vendor event mappings.
+- 2B now includes dedicated OpenAI Responses/vLLM handling, credential-free L1 endpoint probes, and CLI/TUI provider probes assembled from strict local configuration. Provider-only assembly performs no registration or I/O; whether `safe` accesses a remote catalog is provider-defined, while explicitly authorized `active` verifies minimal generation and stream termination.
+- Current main adds `StreamRecoveryStrategy` and `VerifiedTextPrefixRecovery`. A same-route replay occurs only when the caller passes a strategy and configures a positive `max_stream_replays`; already visible text is checked as a semantic prefix and only the unseen suffix is exposed. Divergence, tool/multi-block events, and incomplete replay fail closed. Every replay enters the attempt ledger and may incur another charge. Provider-native cursor continuation and cross-process recovery remain later work.
 
 ### Phase 3: agents and tools
 

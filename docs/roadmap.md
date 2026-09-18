@@ -37,7 +37,8 @@
 | 收集式调用、超时、重试与故障转移执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | 安全逐事件透传执行器 | `Implemented` | Phase 2B / 2.0.0a1 |
 | Provider 输入/输出 Token 规范化计量 | `Implemented` | Phase 2B / 2.0.0a1 |
-| 跨流断点恢复与续传 | `Planned` | Phase 2B |
+| 显式验证前缀的文本跨流恢复 | `Experimental` | Phase 2B / 当前 main |
+| Provider 原生游标续传 | `Planned` | Phase 2B |
 | 单 Agent ReAct/tool loop 模板 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Run 级 Token 可见计量与硬预算 | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -94,7 +95,7 @@
 
 ### Phase 2：模型与路由
 
-- 状态：`Implemented`（2A 基础与 2B 首批适配/执行）；专用差异适配与跨流恢复为 `Planned`。
+- 状态：`Implemented`（2A 基础与 2B 适配/执行）；显式文本前缀恢复为 `Experimental`，Provider 原生游标续传为 `Planned`。
 - 2A 已实现模型请求、响应、流事件、能力声明、扩展参数、Provider 注册表和稳定错误分类。
 - 2A 已实现可解释路由决策、Python/YAML 策略、端点嗅探、Provider 探测、缓存和周期调度。
 - 2B 已实现带可替换 HTTP 传输的 OpenAI-compatible Chat Completions Provider。
@@ -102,7 +103,8 @@
 - 2B 已实现默认单次调用、显式有界重试/故障转移、逐尝试超时与审计记录的收集式和逐事件透传执行器；透传一旦暴露任何事件便禁止静默重放。
 - 2B 已统一 Provider 上报的输入、输出和缓存输入 Token；`usage_reported` 明确区分真实零用量与 Provider 未上报，不用零值伪装完整计量。
 - 2B 已实现可选的 `ModelRegistrationProbeService` 注册安全探测路径和 `ProbeHealthBridge`；底层 `ModelRegistry.register()` 保持纯注册语义。
-- 2B 已提供 OpenAI Responses/vLLM 专用适配、CLI/TUI 的无凭据 L1 安全端点探测，以及从严格本地配置装配 Provider 的安全目录/显式授权主动生成探测。Provider 单独装配不注册、不发起 I/O；`safe` 是否访问远程目录由具体 Provider 决定，`active` 才验证最小生成与流终止协议。后续提供跨流断点恢复及更多厂商事件映射。
+- 2B 已提供 OpenAI Responses/vLLM 专用适配、CLI/TUI 的无凭据 L1 安全端点探测，以及从严格本地配置装配 Provider 的安全目录/显式授权主动生成探测。Provider 单独装配不注册、不发起 I/O；`safe` 是否访问远程目录由具体 Provider 决定，`active` 才验证最小生成与流终止协议。
+- 2B 当前 main 新增 `StreamRecoveryStrategy` 与 `VerifiedTextPrefixRecovery`。只有调用者显式传入策略且配置正数 `max_stream_replays` 才会在同一路由重放；已公开文本按语义前缀校验并只暴露未见后缀，分歧、工具/多块事件或不完整重放都会失败关闭。每次重放进入 Attempt 账本且可能再次计费。Provider 原生游标续传与跨进程恢复仍为后续能力。
 
 ### Phase 3：Agent 与工具
 
