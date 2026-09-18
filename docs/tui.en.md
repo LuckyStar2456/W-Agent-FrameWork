@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, prompt-free agent-checkpoint listing, CLI tool selection/authority/approval resume, and CLI/TUI local evaluation are `Experimental` in `2.0.0a1`; TUI tool-approval execution, workflow-checkpoint aggregation, and general plugin operations remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI tool selection/authority/approval resume, and CLI/TUI local evaluation are `Experimental` in current `2.0.0a2`; TUI tool-approval execution, workflow-checkpoint aggregation, and general plugin operations remain `Planned`.
 
 ## Principles
 
@@ -28,13 +28,13 @@ wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens and mark whether usage is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` performs credential-free L1 probing; `provider-probe` assembles a provider from strict configuration and requires the additional `--confirm-active-probe` flag for active mode.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens plus versioned cost when available, and mark whether metering is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` performs credential-free L1 probing; `provider-probe` assembles a provider from strict configuration and requires the additional `--confirm-active-probe` flag for active mode.
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Optional versioned pricing exposes cost and completeness in CLI/TUI runs, sessions, checkpoints, and evaluation. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. `checkpoint list` discovers prompt-free agent approval points; `run-resume` then requires exact `--approve-tool-call` values. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, workflow-checkpoint aggregation, general plugin operations, and composition-install confirmation remain `Planned`.
 
-The TUI Evaluation screen requires typing `EVALUATE` before sequentially running a strict JSON dataset. It uses disposable state, clears confirmation immediately, displays only token/latency/tool/pass metrics, and may write a default privacy-safe report. Custom scorers, output persistence, and developer tool entries use the Python API/CLI.
+The TUI Evaluation screen requires typing `EVALUATE` before sequentially running a strict JSON dataset. It uses disposable state, clears confirmation immediately, displays only token/cost/latency/tool/pass metrics, and may write a default privacy-safe report. Custom scorers, output persistence, and developer tool entries use the Python API/CLI.
 
 ## TUI technology
 
@@ -62,15 +62,15 @@ Displays a resolved profile, compares named versions, exports a code, and previe
 
 ### Run
 
-The current screen can read strict local configuration, start a text agent, and show final output plus input/output tokens. The user must type `RUN` before a model call. The TUI does not import developer Python tools. Tool selection, approval resume, and live RunEvent streaming remain `Planned`; the later UI projects RunEvent values and never reads private loop state.
+The current screen can read strict local configuration, start a text agent, and show final output, input/output tokens, and versioned cost. The user must type `RUN` before a model call. The TUI does not import developer Python tools. Tool selection, approval resume, and live RunEvent streaming remain `Planned`; the later UI projects RunEvent values and never reads private loop state.
 
 ### Sessions
 
-Creates, lists, archives, and unarchives local sessions through the same `JsonSessionStore` used by the Python API. The list shows run count and cumulative tokens; starting a configured agent remains later work for the Run screen.
+Creates, lists, archives, and unarchives local sessions through the same `JsonSessionStore` used by the Python API. Details show run count, cumulative tokens, and aggregate cost when table version and currency match; configured agents start from the Run screen.
 
 ### Checkpoints
 
-The current screen refreshes prompt-free local agent approval checkpoints with run/session, status, tool name, call ID, argument names, and tokens, but no prompts, argument values, or output. Unified workflow-checkpoint listing, version comparison, and guided recovery remain `Planned`.
+The current screen refreshes prompt-free local agent approval checkpoints with run/session, status, tool name, call ID, argument names, tokens, and cost, but no prompts, argument values, or output. Unified workflow-checkpoint listing, version comparison, and guided recovery remain `Planned`.
 
 ### Sandbox
 

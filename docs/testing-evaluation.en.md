@@ -2,7 +2,7 @@
 
 English | [简体中文](./testing-evaluation.md)
 
-Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, and CLI/TUI evaluation entry points are `Experimental` in `2.0.0a1`. Built-in customer-support/coding benchmark suites and cost metrics remain `Planned`.
+Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, versioned cost metrics, and CLI/TUI evaluation entry points are `Experimental` in `2.0.0a2`. Built-in customer-support/coding benchmark suites remain `Planned`.
 
 ## Deterministic model tests
 
@@ -24,10 +24,11 @@ The cassette request fingerprint stores only model name, message roles, content-
 
 - case pass rate, error count, total latency, and average latency;
 - input, output, cached-input, and total tokens plus metering completeness;
+- total cost, currency, price-table version, and pricing completeness when cases use one table version;
 - tool successes, failures, and success rate from the final `TOOL_COMPLETED` event for each call ID;
 - each scorer value, threshold, and pass state.
 
-`JsonEvaluationReporter` omits prompts, metadata, model outputs, and exception bodies by default, retaining only exception types. Outputs are persisted only with explicit `include_outputs=True`. There is no built-in price table yet, so the framework never silently converts tokens into cost; versioned pricing and cost budgets remain `Planned`.
+`JsonEvaluationReporter` omits prompts, metadata, model outputs, and exception bodies by default, retaining only exception types. Outputs are persisted only with explicit `include_outputs=True`. Evaluation aggregates only costs already calculated in `RunResult` with an explicit application-supplied table version. If any case is not fully priced or versions/currencies differ, aggregate cost remains unavailable instead of being inferred from tokens.
 
 ## CLI datasets
 

@@ -53,7 +53,9 @@ from w_agent.local_runtime import (
 from w_agent.models import (
     AttemptRecord,
     EndpointProbe,
+    ModelCost,
     ModelProviderProbe,
+    PricingError,
     ProbeMode,
     ProbeResult,
 )
@@ -861,6 +863,14 @@ def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
         f"total={usage['total_tokens']} complete={payload['usage_complete']}",
         markup=False,
     )
+    if payload["cost"] is not None:
+        console.print(
+            "Cost: "
+            f"{payload['cost']['total']} {payload['cost']['currency']} "
+            f"(table={payload['cost']['price_table_version']}, "
+            f"complete={payload['cost_complete']})",
+            markup=False,
+        )
     table = Table(title="Evaluation cases")
     table.add_column("Case")
     table.add_column("Status")
@@ -931,6 +941,7 @@ def _session_payload(
     output_tokens = sum(item.usage.output_tokens for item in session.runs)
     model_calls = sum(item.model_calls for item in session.runs)
     reported_usage_calls = sum(item.reported_usage_calls for item in session.runs)
+    cost = _aggregate_costs(tuple(item.cost for item in session.runs))
     payload: dict[str, Any] = {
         "session_id": session.session_id,
         "title": session.title,
@@ -943,6 +954,10 @@ def _session_payload(
         "model_calls": model_calls,
         "reported_usage_calls": reported_usage_calls,
         "usage_complete": all(item.usage_complete for item in session.runs),
+        "cost": _cost_payload(cost),
+        "cost_complete": (
+            cost is not None and all(item.cost_complete for item in session.runs)
+        ),
         "created_at": session.created_at.isoformat(),
         "updated_at": session.updated_at.isoformat(),
     }
@@ -972,6 +987,9 @@ def _session_payload(
                 "tool_calls": item.tool_calls,
                 "model_calls": item.model_calls,
                 "reported_usage_calls": item.reported_usage_calls,
+                "cost": _cost_payload(item.cost),
+                "cost_complete": item.cost_complete,
+                "priced_usage_calls": item.priced_usage_calls,
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
             }
@@ -1032,6 +1050,9 @@ def _local_run_payload(run: Any) -> dict[str, Any]:
             "total_tokens": result.usage.total_tokens,
             "complete": result.usage_complete,
         },
+        "cost": _cost_payload(result.cost),
+        "cost_complete": result.cost_complete,
+        "priced_usage_calls": result.priced_usage_calls,
     }
 
 
@@ -1049,6 +1070,7 @@ def _checkpoint_payload(checkpoint: RunCheckpointSummary) -> dict[str, Any]:
         "tool_calls": checkpoint.tool_calls,
         "model_calls": checkpoint.model_calls,
         "reported_usage_calls": checkpoint.reported_usage_calls,
+        "priced_usage_calls": checkpoint.priced_usage_calls,
         "usage": {
             "input_tokens": checkpoint.usage.input_tokens,
             "output_tokens": checkpoint.usage.output_tokens,
@@ -1056,7 +1078,36 @@ def _checkpoint_payload(checkpoint: RunCheckpointSummary) -> dict[str, Any]:
             "total_tokens": checkpoint.usage.total_tokens,
             "complete": checkpoint.usage_complete,
         },
+        "cost": _cost_payload(checkpoint.cost),
+        "cost_complete": checkpoint.cost_complete,
     }
+
+
+def _cost_payload(cost: ModelCost | None) -> dict[str, str] | None:
+    if cost is None:
+        return None
+    return {
+        "currency": cost.currency,
+        "price_table_version": cost.price_table_version,
+        "input_cost": str(cost.input_cost),
+        "output_cost": str(cost.output_cost),
+        "cached_input_cost": str(cost.cached_input_cost),
+        "total": str(cost.total),
+    }
+
+
+def _aggregate_costs(costs: tuple[ModelCost | None, ...]) -> ModelCost | None:
+    if not costs or any(cost is None for cost in costs):
+        return None
+    total = costs[0]
+    assert total is not None
+    try:
+        for cost in costs[1:]:
+            assert cost is not None
+            total = total.add(cost)
+    except PricingError:
+        return None
+    return total
 
 
 def _fail(message: str) -> None:

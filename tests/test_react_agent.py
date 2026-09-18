@@ -18,6 +18,10 @@ from w_agent import (
     ModelRegistry,
     ModelRouter,
     JsonlRunStore,
+    CostBudget,
+    ModelPrice,
+    PriceTable,
+    PricingCatalog,
     ReactAgentLoop,
     RunResumeConflictError,
     RunContext,
@@ -79,7 +83,7 @@ class AgentProvider:
         yield FinishEvent(reason)
 
 
-def _loop(responses, binding, *, store=None, policy=None):
+def _loop(responses, binding, *, store=None, policy=None, pricing=None):
     provider = AgentProvider(responses)
     models = ModelRegistry()
     models.register("fake", provider)
@@ -96,6 +100,7 @@ def _loop(responses, binding, *, store=None, policy=None):
         tools,
         tool_executor,
         store=store,
+        pricing=pricing,
     ), provider
 
 
@@ -388,6 +393,90 @@ async def test_react_loop_can_fail_closed_when_provider_omits_usage():
 
 
 @pytest.mark.asyncio
+async def test_react_loop_enforces_versioned_cost_budget_before_tools():
+    calls = 0
+
+    def ping() -> str:
+        nonlocal calls
+        calls += 1
+        return "pong"
+
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1000000", "1000000"),),
+            ),
+        )
+    )
+    loop, _ = _loop(
+        [
+            (
+                (ToolCallContent("ping-1", "ping", "{}"),),
+                FinishReason.TOOL_CALLS,
+                TokenUsage(8, 4),
+            )
+        ],
+        python_tool(ping),
+        pricing=pricing,
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "cost-bounded",
+            cost_budget=CostBudget("10", "prices-v1", "USD"),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COST_BUDGET
+    assert result.cost is not None
+    assert result.cost.total == 12
+    assert result.cost_complete is True
+    assert result.priced_usage_calls == 1
+    assert calls == 0
+    cost_event = next(
+        event for event in result.events if event.type is RunEventType.COST_USAGE
+    )
+    assert cost_event.data["cost"]["total"] == "12"
+
+
+@pytest.mark.asyncio
+async def test_react_cost_budget_fails_closed_without_usage_or_pricing():
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1", "2"),),
+            ),
+        )
+    )
+    unmetered, _ = _loop(
+        [((TextContent("unmetered"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+        pricing=pricing,
+    )
+    missing_resolver, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP, TokenUsage(1, 1))],
+        python_tool(lambda: "unused", name="unused"),
+    )
+    definition = AgentDefinition(
+        "strict-cost",
+        cost_budget=CostBudget("1", "prices-v1", "USD"),
+    )
+
+    unmetered_result = await unmetered.run(definition, _context())
+    missing_result = await missing_resolver.run(definition, _context())
+
+    assert unmetered_result.stop_reason is StopReason.COST_UNAVAILABLE
+    assert unmetered_result.cost_complete is False
+    assert missing_result.stop_reason is StopReason.COST_UNAVAILABLE
+    assert provider.requests == []
+
+
+@pytest.mark.asyncio
 async def test_react_attempt_ledger_marks_retry_usage_incomplete():
     loop, _ = _loop(
         [
@@ -469,6 +558,70 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
     assert checkpoint.attempts[0].failure is not None
     assert "omitted" in checkpoint.attempts[0].failure.message
     assert "secret provider response" not in persisted
+
+
+@pytest.mark.asyncio
+async def test_cost_ledger_survives_approval_checkpoint_resume(tmp_path):
+    saved = []
+    binding = python_tool(
+        lambda text: saved.append(text) or "saved",
+        name="save",
+        side_effect=ToolSideEffect.WRITE,
+    )
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1000000", "1000000"),),
+            ),
+        )
+    )
+    definition = AgentDefinition(
+        "priced-writer",
+        cost_budget=CostBudget("100", "prices-v1", "USD"),
+    )
+    first_loop, _ = _loop(
+        [
+            (
+                (ToolCallContent("write-1", "save", '{"text":"value"}'),),
+                FinishReason.TOOL_CALLS,
+                TokenUsage(6, 2),
+            )
+        ],
+        binding,
+        store=JsonlRunStore(tmp_path),
+        pricing=pricing,
+    )
+
+    pending = await first_loop.run(definition, _context())
+    checkpoint = await JsonlRunStore(tmp_path).load_checkpoint("run-1")
+
+    assert pending.stop_reason is StopReason.NEEDS_APPROVAL
+    assert checkpoint is not None
+    assert checkpoint.cost is not None
+    assert checkpoint.cost.total == 8
+    assert checkpoint.priced_usage_calls == 1
+
+    second_loop, _ = _loop(
+        [((TextContent("saved"),), FinishReason.STOP, TokenUsage(7, 3))],
+        binding,
+        store=JsonlRunStore(tmp_path),
+        pricing=pricing,
+    )
+    resumed = await second_loop.resume(
+        "run-1",
+        tool_context=ToolExecutionContext(
+            approved_call_ids=frozenset({"write-1"})
+        ),
+    )
+
+    assert resumed.stop_reason is StopReason.COMPLETED
+    assert resumed.cost is not None
+    assert resumed.cost.total == 18
+    assert resumed.cost_complete is True
+    assert resumed.priced_usage_calls == 2
+    assert saved == ["value"]
 
 
 @pytest.mark.asyncio

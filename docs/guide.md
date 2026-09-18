@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2；仓库 `2.0.0a1` 已实现插件微内核、模型与工具基础、单 Agent ReAct、Token 预算、本地 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox，以及工程装配编码/预览/版本库。完整 Session、并行/嵌套 Workflow、装配安装/加载确认和 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a2`。该 Alpha 已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和完整交互 TUI 仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -12,6 +12,12 @@
 
 ```bash
 pip install wagent-framework
+```
+
+安装已发布 Alpha：
+
+```bash
+pip install --pre wagent-framework==2.0.0a2
 ```
 
 可选能力：

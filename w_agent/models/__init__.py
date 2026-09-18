@@ -48,6 +48,15 @@ from .probing import (
     ProbeStatus,
     ProbedModelRegistration,
 )
+from .pricing import (
+    ModelCost,
+    ModelPrice,
+    PriceNotFoundError,
+    PriceTable,
+    PricingCatalog,
+    PricingError,
+    PricingResolver,
+)
 from .provider import (
     MODEL_PROVIDER_CAPABILITY,
     CancellationToken,
@@ -145,6 +154,7 @@ __all__ = [
     "InvocationPolicyProtocol",
     "MessageRole",
     "ModelCapability",
+    "ModelCost",
     "ModelDescriptor",
     "ModelError",
     "ModelExecutor",
@@ -156,6 +166,7 @@ __all__ = [
     "ModelStreamExecution",
     "ModelProvider",
     "ModelProviderProbe",
+    "ModelPrice",
     "ModelRegistrationProbeService",
     "ModelRegistry",
     "ModelRequest",
@@ -177,6 +188,11 @@ __all__ = [
     "ProbeResult",
     "ProbeStatus",
     "ProbedModelRegistration",
+    "PriceNotFoundError",
+    "PriceTable",
+    "PricingCatalog",
+    "PricingError",
+    "PricingResolver",
     "ProviderTemplate",
     "ProviderTemplateRegistry",
     "QwenDashScopeMapping",

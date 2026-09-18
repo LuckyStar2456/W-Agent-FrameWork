@@ -11,6 +11,7 @@ from w_agent import (
     ModelCapability,
     ModelDescriptor,
     ModelMessage,
+    ModelCost,
     RunResult,
     StopReason,
     TokenUsage,
@@ -227,6 +228,8 @@ async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypa
                     usage=TokenUsage(4, 2),
                     model_calls=1,
                     reported_usage_calls=1,
+                    cost=ModelCost("USD", "prices-v1", "0.01", "0.02"),
+                    priced_usage_calls=1,
                 )
             )
 
@@ -252,6 +255,7 @@ async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypa
         rendered = str(app.query_one("#evaluation-result").content)
         assert "Passed: 1/1" in rendered
         assert "in=4, out=2" in rendered
+        assert "Cost: 0.03 USD" in rendered
         assert "SECRET_PROMPT" not in rendered
         assert "VISIBLE_OUTPUT" not in rendered
         assert app.query_one("#evaluation-confirm").value == ""

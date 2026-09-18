@@ -42,7 +42,8 @@
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Run 级 Token 可见计量与硬预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Session 累计与逐尝试 Token 账本 | `Implemented` | Phase 3/6 / 2.0.0a1 |
-| Agent 跨 Session 聚合、预估器与费用预算 | `Planned` | Phase 3/6 |
+| 版本化价格表、费用计量与 Run 费用硬预算 | `Implemented` | Phase 3/6 / 2.0.0a2 |
+| Agent 跨 Session 聚合、调用前预估器与软阈值 | `Planned` | Phase 3/6 |
 | 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -66,7 +67,8 @@
 | Agent 审批 Checkpoint 脱敏列表（API/CLI/TUI） | `Implemented` | Phase 3/6 / 2.0.0a1 |
 | 脚本化模型 Mock、显式录制/回放和本地评测指标 | `Experimental` | Phase 6 / 2.0.0a1 |
 | CLI/TUI 本地评测入口与安全报告 | `Experimental` | Phase 6 / 2.0.0a1 |
-| 客服/编码内置基准集与价格/费用指标 | `Planned` | Phase 6 |
+| 评测价格/费用指标 | `Experimental` | Phase 6 / 2.0.0a2 |
+| 客服/编码内置基准集 | `Planned` | Phase 6 |
 | 1.x 最小 `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## 实施阶段
@@ -88,7 +90,7 @@
 
 ### Phase 2：模型与路由
 
-- 状态：`Implemented`（2A 基础）/ `Planned`（2B 适配与执行）。
+- 状态：`Implemented`（2A 基础与 2B 首批适配/执行）；专用差异适配与跨流恢复为 `Planned`。
 - 2A 已实现模型请求、响应、流事件、能力声明、扩展参数、Provider 注册表和稳定错误分类。
 - 2A 已实现可解释路由决策、Python/YAML 策略、端点嗅探、Provider 探测、缓存和周期调度。
 - 2B 已实现带可替换 HTTP 传输的 OpenAI-compatible Chat Completions Provider。
@@ -105,7 +107,8 @@
 - 已实现 `TokenBudget` 的 Run 级输入、输出、总量硬限制，`RunResult.usage` 与 `TOKEN_USAGE` 事件公开累计值；审批 Checkpoint 保存计量状态。`max_output_tokens` 仍只表示单次模型生成上限。
 - 当前预算依据成功响应中 Provider 返回的实际用量在响应后核算，并用剩余输出/总量收紧下一次请求上限；可用 `require_usage=True` 在 Provider 不上报时失败关闭。首个请求的输入 Token 不能在没有分词器时精确预知，失败/中断的重试尝试也可能已经产生未上报用量。
 - 已实现 Session 级累计、覆盖重试/故障转移的 `AttemptRecord` Token 账本，以及 RunEvent/CLI 可见性；未报告的失败尝试保持未知并使严格计量失败关闭。
-- 后续实现 Agent 跨 Session 聚合、可插拔调用前 Token 预估器、软阈值动作与费用预算。费用预算必须基于显式版本化价格表，不从 Token 数静默推断。
+- 已实现应用提供的版本化价格表、普通/缓存输入与输出费用计量、费用完整性、审批断点持久化和 Run 费用硬预算；缺少价格或用量时失败关闭，不从 Token 数静默推断金额。
+- 后续实现 Agent 跨 Session 聚合、可插拔调用前 Token 预估器与软阈值动作。
 - 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
 - 后续实现多模态、工具和任意 RunEvent 的通用投影/回放，以及 Agent 逐 Token 文本事件。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
@@ -141,7 +144,7 @@
 - 已实现无网络的脚本化 Model Provider、需显式敏感内容授权的 JSONL 录制/顺序回放，以及可替换 Scorer 的顺序评测运行器；CLI 可读取严格 JSON 用例集，默认使用一次性状态，并输出 Token 完整性、延迟、错误与工具成功率。JSON 报告默认排除 Prompt、输出、Metadata 和异常正文。
 - 已实现 TUI 顺序评测页面：严格 JSON 用例、一次性状态、`EVALUATE` 单次授权、汇总指标和可选安全报告；不默认展示 Prompt 或输出。
 - TUI 工具批准执行页面、RunEvent 实时查看、Workflow Checkpoint 汇总/跨 Store 恢复与通用插件安装确认仍为 `Planned`。
-- 客服与编码内置基准任务、版本化价格表和费用指标仍为 `Planned`。
+- 已实现评测报告、CLI 与 TUI 的版本化费用汇总；客服与编码内置基准任务仍为 `Planned`。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 
 ## 保留但未排期

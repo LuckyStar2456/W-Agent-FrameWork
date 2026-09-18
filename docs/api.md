@@ -2,7 +2,7 @@
 
 [English](./api.en.md) | 简体中文
 
-本文区分稳定版 1.5.2、当前 `2.0.0a1` 微内核/模型 API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
+本文区分稳定版 1.5.2、最新 Alpha `2.0.0a2` API 与后续计划协议。标记 `Planned` 的协议用于设计评审，当前不能导入。
 
 ## 1. 当前顶层 API
 
@@ -10,9 +10,9 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore` |
+| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore`、`TokenBudget`、`CostBudget` |
 | Session | `SessionManager`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
-| 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalProviderAssembly`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_provider`、`assemble_local_runtime` |
+| 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalPricingConfig`、`LocalProviderAssembly`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_provider`、`assemble_local_runtime` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
 | 配置 | `DynamicConfigManager` |
 | 装饰器 | `AgentComponent`、`ServiceComponent`、`ToolComponent`、`Component`、`Autowired`、`Qualifier` |
@@ -24,7 +24,7 @@
 | 技能/沙箱 | `Skill`、`WasmSkillSandbox`、`NsJailSkillSandbox`、`SandboxProvider`、`DockerSandboxProvider`、`UnsafeLocalSandboxProvider` |
 | 工具/扫描 | `ToolRegistry`、`ToolExecutor`、`ToolCall`、`ToolResult`、`python_tool`、`load_tool_entries`、`LangChainToolAdapter`、`ParallelASTScanner`、`Doctor` |
 | 微内核 | `PluginManager`、`Registry`、`ScopePath`、`EventDispatcher` 等 |
-| 模型 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板等 |
+| 模型/价格 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板、`ModelPrice`、`PriceTable`、`PricingResolver`、`PricingCatalog`、`ModelCost` 等 |
 | 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 | Workflow | `WorkflowEngineProtocol`、`LocalWorkflowEngine`、三种 Definition、`WorkflowStore`、`JsonlWorkflowStore` 等 |
 | 测试与评测 | `ScriptedModelProvider`、`RecordingModelProvider`、`ReplayModelProvider`、`LocalEvaluationRunner`、Scorer 与 JSON Reporter |
@@ -136,7 +136,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`RunStore.list_checkpoints()` 提供不含 Prompt/参数值/输出的 `RunCheckpointSummary`。`TokenBudget` 提供 Run 级累计输入/输出/总量限制；`TOKEN_USAGE`、`RunResult.usage`、`RunResult.attempts` 和 `usage_complete` 提供可见计量，Checkpoint 在审批恢复间保留累计值与尝试账本。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`RunStore.list_checkpoints()` 提供不含 Prompt/参数值/输出的 `RunCheckpointSummary`。`TokenBudget` 提供 Run 级累计 Token 限制；`CostBudget` 配合可替换 `PricingResolver` 和应用提供的版本化 `PriceTable` 提供费用计量与硬停止。`TOKEN_USAGE`/`COST_USAGE`、`RunResult` 和 Checkpoint 公开并保留 Token、费用、尝试账本与完整性。`SessionManager` 与内存/JSON Store 已提供本地生命周期、跨 Run 文本上下文和审批恢复协调。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
 
 ## 8. Workflow 协议
 
@@ -207,9 +207,9 @@ CompositionStore(".wagent/compositions").save(manifest, alias="stable")
 
 ## 12. 测试与评测 API
 
-状态：`Experimental`（`2.0.0a1`）。
+状态：`Experimental`（`2.0.0a2`）。
 
-`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`load_evaluation_cases()` 从有界严格 JSON 加载唯一命名的 `EvaluationCase`。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行用例，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token 与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。CLI `wagent evaluate` 仅在显式模型调用授权后运行，默认使用一次性状态。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`load_evaluation_cases()` 从有界严格 JSON 加载唯一命名的 `EvaluationCase`。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行用例，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token/费用与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。CLI `wagent evaluate` 仅在显式模型调用授权后运行，默认使用一次性状态。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 13. 兼容接口
 

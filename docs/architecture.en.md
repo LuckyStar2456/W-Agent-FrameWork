@@ -6,7 +6,7 @@ English | [简体中文](./architecture.md)
 
 W-Agent is an open agent framework for local developers, not a hosted platform or a fixed harness. It provides stable protocols, lifecycle management, and default templates required for composition while leaving models, routing, agent loops, workflows, tools, state, sandboxes, and interfaces under developer control.
 
-Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The current `2.0.0a1` source implements the Phase 1 microkernel and Phase 2A model foundation. The remainder of this document covers both implemented capabilities and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
+Stable version 1.5.2 implements the IOC, AOP, configuration, lifecycle, resilience, security, and observability foundation. The latest alpha and current mainline version is `2.0.0a2`. This document covers both implemented capabilities and the `Planned` architecture; capabilities not marked `Implemented` must not be presented as available.
 
 ## 2. Design principles
 
@@ -132,7 +132,7 @@ Status: public run/loop contracts, bounded single-agent ReAct, in-process/JSONL 
 
 The runtime defines run lifecycle, context, events, cancellation, budgets, and results without prescribing one reasoning policy. The first release provides a usable ReAct template. Users can replace the entire loop, insert pipelines between phases, add step types, choose the next step dynamically, or invoke a workflow from an agent.
 
-The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step, tool-call, and run-level token budgets, and stop safely for approval. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request, while checkpoints preserve cumulative token usage. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Model calls remain collected; per-token text events, complete multimodal/tool-event projections, per-attempt usage ledgers, and general recovery are later work. See [Agent runtime and ReAct loop](./agents.en.md).
+The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step/tool-call/run-token budgets plus cost budgets based on application-supplied versioned price tables, and stop safely for approval. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request, while checkpoints preserve cumulative tokens, costs, and attempt ledgers. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Model calls remain collected; per-token text events, complete multimodal/tool-event projections, and general recovery are later work. See [Agent runtime and ReAct loop](./agents.en.md).
 
 `SessionManager` sits outside the loop and uses public contracts to manage create/list/archive, cross-run text projection, and approval resume with memory/JSON stores. It reads no private loop state and never presents tool or multimodal events as replayed content.
 
@@ -180,7 +180,7 @@ Current code implements canonical manifests, deterministic encoding/decoding, si
 
 The CLI and Textual TUI use public Python APIs and do not form a private control plane. The first release covers initialization, configuration validation, plugin inspection, model probing, profile resolution, runs, checkpoint recovery, sandbox authorization, and event inspection.
 
-The current `Experimental` local evaluation layer provides network-free scripted models, explicitly authorized JSONL model recording/sequential replay, replaceable scorers, and token-completeness, latency, error, and tool-success metrics. Recording is an ordinary replaceable model-provider decorator, and evaluation targets depend only on public `RunResult` values, so neither has kernel privilege. The CLI/TUI can run a configured agent from a strict JSON dataset with disposable state and privacy-safe report defaults. Built-in customer-support/coding suites and pricing/cost metrics remain `Planned`; an online evaluation platform is outside project scope. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+The current `Experimental` local evaluation layer provides network-free scripted models, explicitly authorized JSONL model recording/sequential replay, replaceable scorers, and token/versioned-cost completeness, latency, error, and tool-success metrics. Recording is an ordinary replaceable model-provider decorator, and evaluation targets depend only on public `RunResult` values, so neither has kernel privilege. The CLI/TUI can run a configured agent from a strict JSON dataset with disposable state and privacy-safe report defaults. Built-in customer-support/coding suites remain `Planned`; an online evaluation platform is outside project scope. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 13. 1.x compatibility
 

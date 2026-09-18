@@ -42,7 +42,7 @@ wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量上报计数、输入/输出/缓存 Token 和 `usage_complete`，不会启动模型或产生费用。TUI 当前提供创建、刷新、归档和恢复；配置化 Agent 可在 Run 页面启动。CLI 已支持通过已知 Session/Run/Call ID 审批恢复；TUI 工具与审批界面仍为 `Planned`。
+CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量/计价计数、输入/输出/缓存 Token、版本化费用及完整性，不会启动模型或产生费用。不同价格表版本或币种不会被静默合并。TUI 当前提供创建、刷新、归档和恢复；配置化 Agent 可在 Run 页面启动。CLI 已支持通过已知 Session/Run/Call ID 审批恢复；TUI 工具与审批界面仍为 `Planned`。
 
 下一次 `run_agent()` 默认把此前投影的文本消息放在本次消息之前。设置 `include_history=False` 可关闭自动上下文拼接，但本次输入与结果仍会记入 Session。
 

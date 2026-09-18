@@ -42,7 +42,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Session totals and per-attempt token ledger | `Implemented` | Phase 3/6 / 2.0.0a1 |
-| Cross-session agent aggregation, estimators, and cost budgets | `Planned` | Phase 3/6 |
+| Versioned price tables, cost metering, and hard run cost budgets | `Implemented` | Phase 3/6 / 2.0.0a2 |
+| Cross-session agent aggregation, pre-call estimators, and soft thresholds | `Planned` | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -66,7 +67,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Prompt-free agent approval-checkpoint listing in API/CLI/TUI | `Implemented` | Phase 3/6 / 2.0.0a1 |
 | Scripted model mocks, explicit record/replay, and local evaluation metrics | `Experimental` | Phase 6 / 2.0.0a1 |
 | CLI/TUI local-evaluation entry points and privacy-safe reports | `Experimental` | Phase 6 / 2.0.0a1 |
-| Built-in support/coding suites and pricing/cost metrics | `Planned` | Phase 6 |
+| Evaluation pricing/cost metrics | `Experimental` | Phase 6 / 2.0.0a2 |
+| Built-in support/coding suites | `Planned` | Phase 6 |
 | Minimal 1.x `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## Delivery phases
@@ -88,7 +90,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 ### Phase 2: models and routing
 
-- Status: `Implemented` for the 2A foundation / `Planned` for 2B adapters and execution.
+- Status: `Implemented` for the 2A foundation and initial 2B adapters/execution; dedicated differences and cross-stream recovery remain `Planned`.
 - 2A implements model requests, responses, stream events, capabilities, extensions, the provider registry, and stable error categories.
 - 2A implements explainable route decisions, Python/YAML policies, endpoint sniffing, provider probes, caching, and periodic scheduling.
 - 2B implements an OpenAI-compatible Chat Completions provider with replaceable HTTP transport.
@@ -105,7 +107,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented run-level input, output, and total hard limits through `TokenBudget`; `RunResult.usage` and `TOKEN_USAGE` events expose cumulative values, and approval checkpoints preserve metering state. `max_output_tokens` remains a per-model-request generation cap.
 - Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. Exact first-request input usage cannot be known without a tokenizer, and failed or interrupted retry attempts may already have incurred unreported usage.
 - Implemented session totals, `AttemptRecord` token ledgers covering retry/failover, and RunEvent/CLI visibility. Missing usage for failed attempts remains unknown and makes strict accounting fail closed.
-- Later work adds cross-session agent aggregation, a pluggable pre-call token estimator, soft-threshold actions, and cost budgets. Cost control will require an explicit versioned price table and will not silently infer money from token counts.
+- Implemented application-supplied versioned price tables, normal/cached-input and output cost metering, pricing completeness, approval-checkpoint persistence, and hard run cost budgets. Missing prices or usage fail closed, and money is never silently inferred from token counts.
+- Later work adds cross-session agent aggregation, a pluggable pre-call token estimator, and soft-threshold actions.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
@@ -141,7 +144,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented network-free scripted model providers, JSONL recording/sequential replay requiring explicit sensitive-content authorization, and a sequential evaluation runner with replaceable scorers. The CLI reads strict JSON datasets, uses disposable state by default, and reports token completeness, latency, errors, and tool success rate. JSON reports omit prompts, outputs, metadata, and exception bodies by default.
 - Implemented a sequential TUI evaluation screen with strict JSON cases, disposable state, one-shot `EVALUATE` authorization, aggregate metrics, and optional privacy-safe reports; prompts and outputs are hidden by default.
 - TUI tool-approval execution, live RunEvent views, workflow-checkpoint aggregation/cross-store recovery, and general plugin-install confirmation remain `Planned`.
-- Built-in customer-support/coding benchmark tasks, a versioned price table, and cost metrics remain `Planned`.
+- Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 
 ## Reserved without a release phase

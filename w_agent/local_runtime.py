@@ -8,12 +8,14 @@ import re
 import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from w_agent.agents import (
     AgentDefinition,
+    CostBudget,
     JsonlRunStore,
     ReactAgentLoop,
     RunResult,
@@ -26,9 +28,14 @@ from w_agent.models import (
     ModelExecutor,
     ModelMessage,
     ModelProvider,
+    ModelPrice,
     ModelRegistry,
     ModelRouter,
     ProviderTemplateRegistry,
+    PriceTable,
+    PricingCatalog,
+    PricingError,
+    TokenUsage,
     WeightedRoutingPolicy,
     builtin_provider_template_registry,
 )
@@ -133,11 +140,36 @@ class LocalToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LocalPricingConfig:
+    """One explicit local price-table version and cumulative run limit."""
+
+    version: str
+    currency: str
+    max_cost: Decimal | str | int | float
+    prices: tuple[ModelPrice, ...]
+
+    def __post_init__(self) -> None:
+        try:
+            budget = CostBudget(self.max_cost, self.version, self.currency)
+            table = PriceTable(self.version, self.currency, tuple(self.prices))
+        except (TypeError, ValueError, PricingError) as error:
+            raise LocalRuntimeConfigError("pricing configuration is invalid") from error
+        object.__setattr__(self, "version", table.version)
+        object.__setattr__(self, "currency", table.currency)
+        object.__setattr__(self, "max_cost", budget.max_cost)
+        object.__setattr__(self, "prices", table.prices)
+
+    def price_table(self) -> PriceTable:
+        return PriceTable(self.version, self.currency, self.prices)
+
+
+@dataclass(frozen=True, slots=True)
 class LocalRuntimeConfig:
     provider: LocalProviderConfig
     agent: LocalAgentConfig = field(default_factory=LocalAgentConfig)
     invocation: LocalInvocationConfig = field(default_factory=LocalInvocationConfig)
     tools: LocalToolConfig = field(default_factory=LocalToolConfig)
+    pricing: LocalPricingConfig | None = None
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -300,7 +332,7 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
 
     _known_keys(
         value,
-        {"schema_version", "provider", "agent", "invocation", "tools"},
+        {"schema_version", "provider", "agent", "invocation", "tools", "pricing"},
         "config",
     )
     provider_value = _mapping(value.get("provider"), "provider")
@@ -335,6 +367,49 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
     )
     tools_value = _mapping(value.get("tools", {}), "tools")
     _known_keys(tools_value, {"enabled"}, "tools")
+    pricing_raw = value.get("pricing")
+    pricing = None
+    if pricing_raw is not None:
+        pricing_value = _mapping(pricing_raw, "pricing")
+        _known_keys(
+            pricing_value,
+            {"version", "currency", "max_cost", "prices"},
+            "pricing",
+        )
+        raw_prices = pricing_value.get("prices")
+        if not isinstance(raw_prices, list):
+            raise LocalRuntimeConfigError("pricing.prices must be a list")
+        prices: list[ModelPrice] = []
+        for index, raw_price in enumerate(raw_prices):
+            price = _mapping(raw_price, f"pricing.prices[{index}]")
+            _known_keys(
+                price,
+                {
+                    "provider",
+                    "model",
+                    "input_per_million",
+                    "output_per_million",
+                    "cached_input_per_million",
+                },
+                f"pricing.prices[{index}]",
+            )
+            try:
+                prices.append(ModelPrice(**price))
+            except (TypeError, ValueError, PricingError) as error:
+                raise LocalRuntimeConfigError(
+                    f"pricing.prices[{index}] is invalid"
+                ) from error
+        try:
+            pricing = LocalPricingConfig(
+                version=str(pricing_value.get("version", "")),
+                currency=str(pricing_value.get("currency", "")),
+                max_cost=pricing_value.get("max_cost", ""),
+                prices=tuple(prices),
+            )
+        except (TypeError, ValueError) as error:
+            if isinstance(error, LocalRuntimeConfigError):
+                raise
+            raise LocalRuntimeConfigError("pricing configuration is invalid") from error
     try:
         provider = LocalProviderConfig(**provider_value)
         agent = LocalAgentConfig(**agent_value)
@@ -345,6 +420,7 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
             agent=agent,
             invocation=invocation,
             tools=tools,
+            pricing=pricing,
             schema_version=int(value.get("schema_version", 1)),
         )
     except (TypeError, ValueError) as error:
@@ -407,11 +483,28 @@ def assemble_local_runtime(
         tools.register_binding(binding)
     tool_executor = ToolExecutor(tools)
     state = Path(state_root)
+    pricing_catalog = None
+    cost_budget = None
+    if config.pricing is not None:
+        table = config.pricing.price_table()
+        try:
+            table.quote(provider_name, provider_config.model, TokenUsage())
+        except PricingError as error:
+            raise LocalRuntimeConfigError(
+                "pricing needs a rate for the configured provider and model"
+            ) from error
+        pricing_catalog = PricingCatalog((table,))
+        cost_budget = CostBudget(
+            config.pricing.max_cost,
+            config.pricing.version,
+            config.pricing.currency,
+        )
     loop = ReactAgentLoop(
         executor,
         tools,
         tool_executor,
         store=JsonlRunStore(state),
+        pricing=pricing_catalog,
     )
     agent = config.agent
     definition = AgentDefinition(
@@ -429,6 +522,7 @@ def assemble_local_runtime(
             max_total_tokens=agent.max_total_tokens,
             require_usage=agent.require_usage,
         ),
+        cost_budget=cost_budget,
     )
     sessions = SessionManager(JsonSessionStore(state / "sessions"))
     return LocalAgentRuntime(config, definition, loop, sessions, models, tools)

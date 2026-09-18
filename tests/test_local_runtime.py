@@ -125,6 +125,81 @@ async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_pa
     assert "not-persisted" not in persisted
 
 
+@pytest.mark.asyncio
+async def test_local_runtime_loads_explicit_pricing_and_persists_cost(tmp_path):
+    config = local_runtime_config_from_mapping(
+        {
+            "provider": {
+                "template": "fake",
+                "name": "test-provider",
+                "model": "test-model",
+            },
+            "pricing": {
+                "version": "prices-v1",
+                "currency": "USD",
+                "max_cost": "10",
+                "prices": [
+                    {
+                        "provider": "test-provider",
+                        "model": "test-model",
+                        "input_per_million": "1000000",
+                        "output_per_million": "1000000",
+                    }
+                ],
+            },
+        }
+    )
+    runtime = assemble_local_runtime(
+        config,
+        tmp_path / ".wagent",
+        templates=_templates({}),
+    )
+
+    run = await runtime.run("priced")
+
+    assert run.result.cost is not None
+    assert run.result.cost.total == 5
+    assert run.result.cost_complete is True
+    assert run.session.runs[0].cost is not None
+    assert run.session.runs[0].cost.total == 5
+    persisted = next((tmp_path / ".wagent" / "sessions").glob("*.json")).read_text(
+        encoding="utf-8"
+    )
+    assert '"price_table_version":"prices-v1"' in persisted
+
+
+def test_local_runtime_pricing_requires_configured_provider_model_rate(tmp_path):
+    config = local_runtime_config_from_mapping(
+        {
+            "provider": {
+                "template": "fake",
+                "name": "test-provider",
+                "model": "test-model",
+            },
+            "pricing": {
+                "version": "prices-v1",
+                "currency": "USD",
+                "max_cost": "1",
+                "prices": [
+                    {
+                        "provider": "other",
+                        "model": "test-model",
+                        "input_per_million": "1",
+                        "output_per_million": "2",
+                    }
+                ],
+            },
+        }
+    )
+
+    with pytest.raises(LocalRuntimeConfigError, match="configured provider"):
+        assemble_local_runtime(
+            config,
+            tmp_path,
+            templates=_templates({}),
+        )
+
+
 def test_local_runtime_requires_env_reference_and_rejects_secret_fields(tmp_path):
     with pytest.raises(LocalRuntimeConfigError, match="environment variable"):
         assemble_local_runtime(

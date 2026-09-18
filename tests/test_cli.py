@@ -10,6 +10,7 @@ from w_agent import (
     ModelCapability,
     ModelDescriptor,
     ModelMessage,
+    ModelCost,
     RunResult,
     StopReason,
     TokenUsage,
@@ -24,7 +25,7 @@ def test_cli_version_and_profile_json_are_machine_readable():
     profiles = runner.invoke(app, ["profile", "list", "--json"])
 
     assert version.exit_code == 0
-    assert "2.0.0a1" in version.stdout
+    assert "2.0.0a2" in version.stdout
     assert profiles.exit_code == 0
     assert [item["key"] for item in json.loads(profiles.stdout)] == [
         "customer-support",
@@ -332,6 +333,8 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
                 usage=TokenUsage(3, 2),
                 model_calls=1,
                 reported_usage_calls=1,
+                cost=ModelCost("USD", "prices-v1", "0.01", "0.02"),
+                priced_usage_calls=1,
             )
             return SimpleNamespace(result=result)
 
@@ -364,6 +367,8 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
     assert payload["usage"]["input_tokens"] == 3
     assert payload["usage"]["output_tokens"] == 2
     assert payload["usage_complete"] is True
+    assert payload["cost"]["total"] == "0.03"
+    assert payload["cost_complete"] is True
     assert "output" not in payload["cases"][0]
     assert "secret prompt" not in persisted
     assert "VISIBLE_OUTPUT" not in persisted

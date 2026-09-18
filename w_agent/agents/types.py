@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol
@@ -13,6 +14,7 @@ from w_agent.kernel import ScopePath
 from w_agent.models import (
     AttemptRecord,
     CancellationToken,
+    ModelCost,
     ModelMessage,
     TokenUsage,
     ToolCallContent,
@@ -27,6 +29,8 @@ class StopReason(StrEnum):
     MAX_TOOL_CALLS = "max-tool-calls"
     TOKEN_BUDGET = "token-budget"
     TOKEN_USAGE_UNAVAILABLE = "token-usage-unavailable"
+    COST_BUDGET = "cost-budget"
+    COST_UNAVAILABLE = "cost-unavailable"
     MODEL_ERROR = "model-error"
     CANCELLED = "cancelled"
 
@@ -38,6 +42,8 @@ class RunEventType(StrEnum):
     MODEL_FAILED = "model-failed"
     TOKEN_USAGE = "token-usage"
     TOKEN_BUDGET_STOPPED = "token-budget-stopped"
+    COST_USAGE = "cost-usage"
+    COST_BUDGET_STOPPED = "cost-budget-stopped"
     TOOL_REQUESTED = "tool-requested"
     TOOL_COMPLETED = "tool-completed"
     RUN_RESUMED = "run-resumed"
@@ -91,6 +97,36 @@ class TokenBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class CostBudget:
+    """Cumulative monetary limit tied to one explicit price-table version."""
+
+    max_cost: Decimal | str | int | float
+    price_table_version: str
+    currency: str = "USD"
+
+    def __post_init__(self) -> None:
+        if isinstance(self.max_cost, bool):
+            raise ValueError("cost budget must be a positive finite decimal")
+        try:
+            amount = (
+                self.max_cost
+                if isinstance(self.max_cost, Decimal)
+                else Decimal(str(self.max_cost))
+            )
+        except (InvalidOperation, ValueError) as error:
+            raise ValueError("cost budget must be a positive finite decimal") from error
+        if not amount.is_finite() or amount <= 0:
+            raise ValueError("cost budget must be a positive finite decimal")
+        version = self.price_table_version.strip()
+        currency = self.currency.strip().upper()
+        if not version or not currency:
+            raise ValueError("cost budget version and currency must not be empty")
+        object.__setattr__(self, "max_cost", amount)
+        object.__setattr__(self, "price_table_version", version)
+        object.__setattr__(self, "currency", currency)
+
+
+@dataclass(frozen=True, slots=True)
 class AgentDefinition:
     """Replaceable loop configuration rather than an execution implementation."""
 
@@ -103,6 +139,7 @@ class AgentDefinition:
     max_output_tokens: int | None = None
     extensions: Mapping[str, Any] = field(default_factory=dict)
     token_budget: TokenBudget | None = None
+    cost_budget: CostBudget | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
@@ -170,6 +207,8 @@ class RunCheckpoint:
     model_calls: int = 0
     reported_usage_calls: int = 0
     attempts: tuple[AttemptRecord, ...] = ()
+    cost: ModelCost | None = None
+    priced_usage_calls: int = 0
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -179,10 +218,13 @@ class RunCheckpoint:
             self.tool_calls,
             self.model_calls,
             self.reported_usage_calls,
+            self.priced_usage_calls,
         ) < 0:
             raise ValueError("checkpoint counters must not be negative")
         if self.reported_usage_calls > self.model_calls:
             raise ValueError("reported usage calls cannot exceed model calls")
+        if self.priced_usage_calls > self.reported_usage_calls:
+            raise ValueError("priced usage calls cannot exceed reported usage calls")
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "attempts", tuple(self.attempts))
         object.__setattr__(
@@ -209,6 +251,8 @@ class RunCheckpointSummary:
     usage: TokenUsage
     model_calls: int
     reported_usage_calls: int
+    cost: ModelCost | None = None
+    priced_usage_calls: int = 0
 
     def __post_init__(self) -> None:
         if not self.run_id.strip() or not self.agent_name.strip():
@@ -221,10 +265,13 @@ class RunCheckpointSummary:
             self.tool_calls,
             self.model_calls,
             self.reported_usage_calls,
+            self.priced_usage_calls,
         ) < 0:
             raise ValueError("checkpoint summary counters must not be negative")
         if self.reported_usage_calls > self.model_calls:
             raise ValueError("reported usage calls cannot exceed model calls")
+        if self.priced_usage_calls > self.reported_usage_calls:
+            raise ValueError("priced usage calls cannot exceed reported usage calls")
         object.__setattr__(
             self,
             "pending_argument_keys",
@@ -234,6 +281,10 @@ class RunCheckpointSummary:
     @property
     def usage_complete(self) -> bool:
         return self.model_calls == self.reported_usage_calls
+
+    @property
+    def cost_complete(self) -> bool:
+        return self.cost is not None and self.priced_usage_calls == self.model_calls
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +302,8 @@ class RunResult:
     model_calls: int = 0
     reported_usage_calls: int = 0
     attempts: tuple[AttemptRecord, ...] = ()
+    cost: ModelCost | None = None
+    priced_usage_calls: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
@@ -262,6 +315,12 @@ class RunResult:
         """Whether every model attempt supplied usage metadata."""
 
         return self.reported_usage_calls == self.model_calls
+
+    @property
+    def cost_complete(self) -> bool:
+        """Whether every model attempt was priced by one table version."""
+
+        return self.cost is not None and self.priced_usage_calls == self.model_calls
 
 
 class AgentExecution(Protocol):

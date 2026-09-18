@@ -13,7 +13,7 @@ from types import MappingProxyType
 from typing import Any, Protocol
 
 from w_agent.agents import RunEventType, RunResult, StopReason
-from w_agent.models import CancellationToken, TokenUsage
+from w_agent.models import CancellationToken, ModelCost, PricingError, TokenUsage
 
 _MAX_DATASET_BYTES = 8 * 1024 * 1024
 _MAX_DATASET_CASES = 10_000
@@ -164,6 +164,8 @@ class EvaluationCaseResult:
     tool_failures: int
     scores: tuple[EvaluationScore, ...]
     error_type: str | None = None
+    cost: ModelCost | None = None
+    cost_complete: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +221,25 @@ class EvaluationReport:
     def usage_complete(self) -> bool:
         return all(case.usage_complete for case in self.cases)
 
+    @property
+    def cost(self) -> ModelCost | None:
+        values = [case.cost for case in self.cases]
+        if not values or any(value is None for value in values):
+            return None
+        total = values[0]
+        assert total is not None
+        try:
+            for value in values[1:]:
+                assert value is not None
+                total = total.add(value)
+        except PricingError:
+            return None
+        return total
+
+    @property
+    def cost_complete(self) -> bool:
+        return self.cost is not None and all(case.cost_complete for case in self.cases)
+
 
 EvaluationTarget = Callable[[EvaluationCase], Awaitable[RunResult]]
 
@@ -260,6 +281,8 @@ class LocalEvaluationRunner:
                         tool_successes,
                         tool_failures,
                         scores,
+                        cost=result.cost,
+                        cost_complete=result.cost_complete,
                     )
                 )
             except asyncio.CancelledError:
@@ -280,6 +303,8 @@ class LocalEvaluationRunner:
                         0,
                         (),
                         error_type=type(exc).__name__,
+                        cost=None,
+                        cost_complete=False,
                     )
                 )
         return EvaluationReport(tuple(results))
@@ -323,6 +348,7 @@ def evaluation_report_to_dict(
     include_outputs: bool = False,
 ) -> dict[str, Any]:
     usage = report.usage
+    cost = report.cost
     return {
         "total": report.total,
         "passed": report.passed,
@@ -334,6 +360,8 @@ def evaluation_report_to_dict(
         "tool_failures": report.tool_failures,
         "tool_success_rate": report.tool_success_rate,
         "usage_complete": report.usage_complete,
+        "cost_complete": report.cost_complete,
+        "cost": _cost_to_dict(cost),
         "usage": {
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
@@ -367,10 +395,25 @@ def evaluation_report_to_dict(
                     for score in case.scores
                 ],
                 "error_type": case.error_type,
+                "cost_complete": case.cost_complete,
+                "cost": _cost_to_dict(case.cost),
                 **({"output": case.output} if include_outputs else {}),
             }
             for case in report.cases
         ],
+    }
+
+
+def _cost_to_dict(cost: ModelCost | None) -> dict[str, str] | None:
+    if cost is None:
+        return None
+    return {
+        "currency": cost.currency,
+        "price_table_version": cost.price_table_version,
+        "input_cost": str(cost.input_cost),
+        "output_cost": str(cost.output_cost),
+        "cached_input_cost": str(cost.cached_input_cost),
+        "total": str(cost.total),
     }
 
 

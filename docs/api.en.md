@@ -2,7 +2,7 @@
 
 English | [简体中文](./api.md)
 
-This document separates stable 1.5.2 APIs, the current `2.0.0a1` microkernel/model APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
+This document separates stable 1.5.2 APIs, the latest alpha `2.0.0a2` APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
 
 ## 1. Current top-level API
 
@@ -10,9 +10,9 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 
 | Group | API |
 |---|---|
-| Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `RunCheckpointSummary`, `JsonlRunStore` |
+| Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `RunCheckpointSummary`, `JsonlRunStore`, `TokenBudget`, `CostBudget` |
 | Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
-| Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalProviderAssembly`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_provider`, `assemble_local_runtime` |
+| Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalPricingConfig`, `LocalProviderAssembly`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_provider`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
 | Decorators | `AgentComponent`, `ServiceComponent`, `ToolComponent`, `Component`, `Autowired`, `Qualifier` |
@@ -24,7 +24,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Skills/sandbox | `Skill`, `WasmSkillSandbox`, `NsJailSkillSandbox`, `SandboxProvider`, `DockerSandboxProvider`, `UnsafeLocalSandboxProvider` |
 | Tools/scanning | `ToolRegistry`, `ToolExecutor`, `ToolCall`, `ToolResult`, `python_tool`, `load_tool_entries`, `LangChainToolAdapter`, `ParallelASTScanner`, `Doctor` |
 | Microkernel | `PluginManager`, `Registry`, `ScopePath`, `EventDispatcher`, and related types |
-| Models | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, and related types |
+| Models/pricing | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, `ModelPrice`, `PriceTable`, `PricingResolver`, `PricingCatalog`, `ModelCost`, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 | Workflow | `WorkflowEngineProtocol`, `LocalWorkflowEngine`, all three definitions, `WorkflowStore`, `JsonlWorkflowStore`, and related types |
 | Testing/evaluation | `ScriptedModelProvider`, `RecordingModelProvider`, `ReplayModelProvider`, `LocalEvaluationRunner`, scorers, and the JSON reporter |
@@ -136,7 +136,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `RunStore.list_checkpoints()` exposes `RunCheckpointSummary` without prompts, argument values, or outputs. `TokenBudget` adds cumulative run input/output/total limits; `TOKEN_USAGE`, `RunResult.usage`, `RunResult.attempts`, and `usage_complete` expose metering, and checkpoints preserve totals plus the attempt ledger through approval resume. `SessionManager` plus memory/JSON stores now provide local lifecycle, cross-run text context, and approval-resume coordination. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `RunStore.list_checkpoints()` exposes `RunCheckpointSummary` without prompts, argument values, or outputs. `TokenBudget` provides cumulative token limits; `CostBudget` combines with a replaceable `PricingResolver` and application-supplied versioned `PriceTable` for cost metering and hard stops. `TOKEN_USAGE`/`COST_USAGE`, `RunResult`, and checkpoints expose and preserve token values, costs, attempt ledgers, and completeness. `SessionManager` plus memory/JSON stores provide local lifecycle, cross-run text context, and approval-resume coordination. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
 
 ## 8. Workflow protocol
 
@@ -207,9 +207,9 @@ Decode and preview perform no network access, install no dependency, load no plu
 
 ## 12. Testing and evaluation API
 
-Status: `Experimental` in `2.0.0a1`.
+Status: `Experimental` in `2.0.0a2`.
 
-`ScriptedModelProvider` supplies finite deterministic network-free model turns. `RecordingModelProvider` and `ReplayModelProvider` use `JsonlModelCassette` for complete-turn recording and sequential replay behind explicit sensitive-content authorization. `load_evaluation_cases()` loads uniquely named `EvaluationCase` values from bounded strict JSON. `LocalEvaluationRunner` executes cases sequentially against asynchronous targets returning the public `RunResult`, with `ExactTextScorer`, `ContainsTextScorer`, or custom `EvaluationScorer` implementations. `EvaluationReport`/`JsonEvaluationReporter` aggregate pass rate, token usage and completeness, latency, errors, and tool outcomes; reports do not persist prompts, metadata, outputs, or exception bodies by default. The `wagent evaluate` CLI runs only after explicit model-call authorization and uses disposable state by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+`ScriptedModelProvider` supplies finite deterministic network-free model turns. `RecordingModelProvider` and `ReplayModelProvider` use `JsonlModelCassette` for complete-turn recording and sequential replay behind explicit sensitive-content authorization. `load_evaluation_cases()` loads uniquely named `EvaluationCase` values from bounded strict JSON. `LocalEvaluationRunner` executes cases sequentially against asynchronous targets returning the public `RunResult`, with `ExactTextScorer`, `ContainsTextScorer`, or custom `EvaluationScorer` implementations. `EvaluationReport`/`JsonEvaluationReporter` aggregate pass rate, token/cost values and completeness, latency, errors, and tool outcomes; reports do not persist prompts, metadata, outputs, or exception bodies by default. The `wagent evaluate` CLI runs only after explicit model-call authorization and uses disposable state by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 13. Compatibility API
 

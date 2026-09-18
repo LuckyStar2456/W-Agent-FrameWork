@@ -63,7 +63,7 @@ class McpInputRequiredError(McpError):
 @dataclass(frozen=True, slots=True)
 class McpClientInfo:
     name: str = "w-agent"
-    version: str = "2.0.0a1"
+    version: str = "2.0.0a2"
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.version.strip():

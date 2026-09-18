@@ -20,6 +20,7 @@ from w_agent.models import (
     AudioContent,
     ImageContent,
     MessageRole,
+    ModelCost,
     ModelFailure,
     ModelFailureKind,
     ModelMessage,
@@ -33,6 +34,7 @@ from w_agent.tools import ToolCall
 from .types import (
     AgentDefinition,
     CheckpointStatus,
+    CostBudget,
     RunCheckpoint,
     RunCheckpointSummary,
     RunEvent,
@@ -296,6 +298,8 @@ def summarize_checkpoint(checkpoint: RunCheckpoint) -> RunCheckpointSummary:
         usage=checkpoint.usage,
         model_calls=checkpoint.model_calls,
         reported_usage_calls=checkpoint.reported_usage_calls,
+        cost=checkpoint.cost,
+        priced_usage_calls=checkpoint.priced_usage_calls,
     )
 
 
@@ -350,6 +354,17 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
                 if definition.token_budget is not None
                 else None
             ),
+            "cost_budget": (
+                {
+                    "max_cost": str(definition.cost_budget.max_cost),
+                    "price_table_version": (
+                        definition.cost_budget.price_table_version
+                    ),
+                    "currency": definition.cost_budget.currency,
+                }
+                if definition.cost_budget is not None
+                else None
+            ),
         },
         "scope": [[item.kind, item.value] for item in checkpoint.scope],
         "messages": [_message_to_data(item) for item in checkpoint.messages],
@@ -372,12 +387,15 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
         "model_calls": checkpoint.model_calls,
         "reported_usage_calls": checkpoint.reported_usage_calls,
         "attempts": [_attempt_to_data(item) for item in checkpoint.attempts],
+        "cost": _cost_to_data(checkpoint.cost),
+        "priced_usage_calls": checkpoint.priced_usage_calls,
     }
 
 
 def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
     definition = data["definition"]
     token_budget = definition.get("token_budget")
+    cost_budget = definition.get("cost_budget")
     usage = data.get("usage", {})
     remaining = tuple(_content_from_data(item) for item in data["remaining_tool_calls"])
     if not all(isinstance(item, ToolCallContent) for item in remaining):
@@ -404,6 +422,15 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
                 if isinstance(token_budget, Mapping)
                 else None
             ),
+            cost_budget=(
+                CostBudget(
+                    max_cost=str(cost_budget["max_cost"]),
+                    price_table_version=str(cost_budget["price_table_version"]),
+                    currency=str(cost_budget.get("currency", "USD")),
+                )
+                if isinstance(cost_budget, Mapping)
+                else None
+            ),
         ),
         scope=ScopePath.from_pairs(tuple(tuple(item) for item in data["scope"])),
         messages=tuple(_message_from_data(item) for item in data["messages"]),
@@ -424,8 +451,34 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
         model_calls=int(data.get("model_calls", 0)),
         reported_usage_calls=int(data.get("reported_usage_calls", 0)),
         attempts=tuple(_attempt_from_data(item) for item in data.get("attempts", ())),
+        cost=_cost_from_data(data.get("cost")),
+        priced_usage_calls=int(data.get("priced_usage_calls", 0)),
         status=CheckpointStatus(str(data["status"])),
         schema_version=int(data["schema_version"]),
+    )
+
+
+def _cost_to_data(cost: ModelCost | None) -> dict[str, str] | None:
+    if cost is None:
+        return None
+    return {
+        "currency": cost.currency,
+        "price_table_version": cost.price_table_version,
+        "input_cost": str(cost.input_cost),
+        "output_cost": str(cost.output_cost),
+        "cached_input_cost": str(cost.cached_input_cost),
+    }
+
+
+def _cost_from_data(data: Any) -> ModelCost | None:
+    if not isinstance(data, Mapping):
+        return None
+    return ModelCost(
+        currency=str(data["currency"]),
+        price_table_version=str(data["price_table_version"]),
+        input_cost=str(data.get("input_cost", "0")),
+        output_cost=str(data.get("output_cost", "0")),
+        cached_input_cost=str(data.get("cached_input_cost", "0")),
     )
 
 

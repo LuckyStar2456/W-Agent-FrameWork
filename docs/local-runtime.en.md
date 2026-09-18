@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental` in `2.0.0a1`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
+Status: `Experimental` in current `2.0.0a2`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
 
 ## Configuration
 
@@ -36,6 +36,20 @@ Example `.wagent/config.json`:
   },
   "tools": {
     "enabled": ["repository_search", "save_note"]
+  },
+  "pricing": {
+    "version": "my-prices-2026-09-18",
+    "currency": "USD",
+    "max_cost": "0.25",
+    "prices": [
+      {
+        "provider": "primary",
+        "model": "deepseek-chat",
+        "input_per_million": "1.00",
+        "output_per_million": "2.00",
+        "cached_input_per_million": "0.50"
+      }
+    ]
   }
 }
 ```
@@ -43,6 +57,8 @@ Example `.wagent/config.json`:
 `template` accepts built-in `anthropic`, `gemini`, `ollama`, `qwen-native`, `deepseek`, `glm`, `qwen`, or `turbo`. `turbo` requires an explicit `base_url`. The loader rejects unknown fields, inline `api_key`, and credential-shaped extension fields. Credentials are resolved from `api_key_env` only during assembly and are not written to runs, sessions, or composition codes.
 
 `tools.enabled` only selects names from the `tool_bindings` catalog explicitly supplied by the host. JSON imports no code, registers no unknown tool, and grants no permission or approval. `agent.max_tool_calls` must be positive when tools are enabled. Catalog tools that are not selected never enter this run's `ToolRegistry` or model context.
+
+`pricing` is optional and entirely application supplied; the framework does not bundle vendor prices that may become stale. The version, currency, maximum run cost, and per-million-token rate for each exact provider/model must be explicit. JSON strings are recommended for amounts to avoid binary floating-point ambiguity. The example rates demonstrate structure only and are not current vendor prices. Cached input falls back conservatively to the normal input rate when omitted. With a cost budget enabled, a missing matching rate or missing attempt usage fails closed with `cost-unavailable`.
 
 ## CLI
 
@@ -64,7 +80,7 @@ wagent run "Explain this repository" `
   --json
 ```
 
-Every command requires explicit `--confirm-model-call` authorization. A successful result contains session ID, run ID, stop reason, final text, step/tool counts, the per-attempt ledger, and input, output, cached-input, and total tokens plus the completeness flag. Use `--session <id>` to continue an existing text session.
+Every command requires explicit `--confirm-model-call` authorization. A successful result contains session ID, run ID, stop reason, final text, step/tool counts, the per-attempt ledger, and cumulative token/cost values plus completeness flags. Use `--session <id>` to continue an existing text session.
 
 Developer-owned tools may use an explicit `module:attribute` entry that returns one `ToolBinding` or an iterable of bindings. Importing Python tool code is a separate risk: the CLI executes it only when both `--tool-entry` and `--confirm-tool-code` are present. Configuration alone cannot trigger imports. Runtime permissions must also be granted per command through `--grant-permission`:
 
@@ -93,11 +109,11 @@ wagent run-resume <session-id> <run-id> `
 
 Every resume re-requests model-call authority, tool-code authority, and exact call IDs. Tool entries can change between processes; production hosts should pin package versions and verify their source.
 
-If the run or call ID is unknown, run `wagent checkpoint list --json`; `--session` filters the result. The prompt-free list includes agent, status, tool name, call ID, argument names, and token usage, but never prompts, argument values, outputs, or credentials.
+If the run or call ID is unknown, run `wagent checkpoint list --json`; `--session` filters the result. The prompt-free list includes agent, status, tool name, call ID, argument names, and token/cost usage, but never prompts, argument values, outputs, or credentials.
 
 ## TUI
 
-The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output and token usage and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The Checkpoints screen can refresh prompt-free agent approval summaries. The TUI currently neither imports developer Python tools nor exposes approval execution; a configuration with `tools.enabled` fails closed and should be run through the Python API or CLI.
+The Run screen reads the same configuration. The user must type `RUN` before a model call starts. After success it shows output, token usage, and cost, and keeps the session ID for the next turn. The UI never stores that confirmation as durable authority. The Checkpoints screen can refresh prompt-free agent approval summaries. The TUI currently neither imports developer Python tools nor exposes approval execution; a configuration with `tools.enabled` fails closed and should be run through the Python API or CLI.
 
 ## Budget semantics
 
@@ -105,6 +121,8 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 - `max_input_tokens`, `max_cumulative_output_tokens`, and `max_total_tokens` are cumulative within one run.
 - With `require_usage=true`, any attempt without usage, including a failed attempt before a successful retry, stops the run as `token-usage-unavailable`.
 - Provider-reported usage is enforceable only after a call. There is no pre-call token estimator yet, so the first call can cross a cumulative limit.
+- `pricing.max_cost` is the cumulative run limit computed with the named price-table version. Decimal arithmetic is exact, and an over-limit response stops as `cost-budget` before its tool calls execute.
+- Like token budgets, cost budgets reconcile actual reported usage after a call and cannot guarantee that the first network request stays under the limit. Missing usage or price data never continues as zero cost.
 - Setting `max_attempts_per_route` or `max_routes` above one authorizes additional, potentially billable retry or failover calls.
 
 ## Open assembly boundary

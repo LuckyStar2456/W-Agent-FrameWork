@@ -2,7 +2,7 @@
 
 [English](./testing-evaluation.en.md) | 简体中文
 
-状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a1`）。客服/编码内置基准集与费用指标仍为 `Planned`。
+状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告、版本化费用指标和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a2`）。客服/编码内置基准集仍为 `Planned`。
 
 ## 确定性模型测试
 
@@ -24,10 +24,11 @@ Cassette 的请求指纹只保存模型名、消息角色、内容块类型、�
 
 - 用例通过率、错误数、总延迟与平均延迟；
 - 输入、输出、缓存输入和总 Token，以及计量是否完整；
+- 使用同一版本价格表时的总费用、币种、版本及计价是否完整；
 - 基于每个 Call ID 最终 `TOOL_COMPLETED` 事件的工具成功数、失败数和成功率；
 - 每个 Scorer 的值、阈值和通过状态。
 
-`JsonEvaluationReporter` 默认不写 Prompt、Metadata、模型输出或异常正文，只保留异常类型。只有显式设置 `include_outputs=True` 才写输出。当前没有内置价格表，因此不会把 Token 静默换算为费用；版本化价格与费用预算仍为 `Planned`。
+`JsonEvaluationReporter` 默认不写 Prompt、Metadata、模型输出或异常正文，只保留异常类型。只有显式设置 `include_outputs=True` 才写输出。评测只聚合 `RunResult` 已按应用提供的明确价格表版本计算出的费用；任一用例未完整计价或版本/币种不一致时，总费用保持 unavailable，不会从 Token 静默推断。
 
 ## CLI 用例集
 

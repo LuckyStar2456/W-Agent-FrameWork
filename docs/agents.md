@@ -2,7 +2,7 @@
 
 [English](./agents.en.md) | 简体中文
 
-状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、追加式本地 RunStore、审批后恢复和本地 Session 生命周期为 `Implemented`（Phase 3 / `2.0.0a1`）。通用事件回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
+状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、Token/费用预算、追加式本地 RunStore、审批后恢复和本地 Session 生命周期为 `Implemented`（Phase 3 / 当前 `2.0.0a2`）。通用事件回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
 
 ## 分层
 
@@ -73,7 +73,9 @@ Run 事件包含重建模型上下文所需的模型文本、工具参数和结�
 
 `MODEL_COMPLETED` 包含本次响应 Token、逐尝试账本和 `attempt_usage_complete`；失败模型阶段也记录不含 Prompt/凭据的尝试摘要。随后产生的 `TOKEN_USAGE` 包含 Run 累计已知值。`RunResult.attempts` 提供强类型完整账本，`RunResult.usage` 提供累计已知用量，`usage_complete` 表明包括重试/故障转移在内的每次模型尝试是否都收到 Provider 用量。真实零用量与未上报不会混淆。
 
-Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。因为核心层不假设某个分词器，首个请求输入量无法精确预知；失败或中断尝试可能没有 Usage。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。Session 级累计与逐尝试账本已实现；Agent 跨 Session 聚合、调用前估算、软阈值和基于版本化价格表的费用预算仍在计划中。
+Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。因为核心层不假设某个分词器，首个请求输入量无法精确预知；失败或中断尝试可能没有 Usage。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。
+
+费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。Session 级累计与逐尝试账本已实现；Agent 跨 Session 聚合、调用前估算和软阈值仍在计划中。
 
 当前 ReAct 使用模型执行器的收集式 `invoke()`，所以 Run 事件尚不包含文本逐 Token 增量。模型层本身已经支持安全透传，接入 Agent 文本增量 RunEvent 是后续工作。
 
@@ -105,4 +107,4 @@ resumed = await loop.resume(
 
 Checkpoint 不保存权限或批准凭据。恢复时必须由本地应用重新提供。`SessionManager` 已提供列表、归档、跨 Run 文本对话投影和审批恢复协调；多模态/工具事件通用回放和任意位置恢复仍为 `Planned`。详见[Session 生命周期与跨 Run 上下文](./sessions.md)。
 
-其他停止原因包括 `MAX_STEPS`、`MAX_TOOL_CALLS`、`TOKEN_BUDGET`、`TOKEN_USAGE_UNAVAILABLE`、`MODEL_ERROR` 和 `CANCELLED`。模型错误不会泄露 Prompt；工具异常正文不会直接回送模型。
+其他停止原因包括 `MAX_STEPS`、`MAX_TOOL_CALLS`、`TOKEN_BUDGET`、`TOKEN_USAGE_UNAVAILABLE`、`COST_BUDGET`、`COST_UNAVAILABLE`、`MODEL_ERROR` 和 `CANCELLED`。模型错误不会泄露 Prompt；工具异常正文不会直接回送模型。

@@ -12,10 +12,13 @@ from w_agent.models import (
     AttemptRecord,
     CancellationToken,
     MessageRole,
+    ModelCost,
     ModelExecutor,
     ModelInvocationError,
     ModelMessage,
     ModelRequest,
+    PricingError,
+    PricingResolver,
     TokenUsage,
     ToolCallContent,
     ToolResultContent,
@@ -32,6 +35,7 @@ from .persistence import InMemoryRunStore, RunStore
 from .types import (
     AgentDefinition,
     CheckpointStatus,
+    CostBudget,
     RunCheckpoint,
     RunContext,
     RunEvent,
@@ -51,6 +55,9 @@ class _ReactState:
     model_calls: int = 0
     reported_usage_calls: int = 0
     attempts: list[AttemptRecord] = field(default_factory=list)
+    cost: ModelCost | None = None
+    priced_usage_calls: int = 0
+    pricing_error: str | None = None
 
 
 class ReactAgentExecution:
@@ -114,6 +121,12 @@ class ReactAgentExecution:
             reported_usage_calls=state.reported_usage_calls,
             attempts=_attempt_ledger(tuple(state.attempts)),
             usage_complete=state.reported_usage_calls == state.model_calls,
+            cost=_cost_payload(state.cost),
+            priced_usage_calls=state.priced_usage_calls,
+            cost_complete=(
+                state.cost is not None
+                and state.priced_usage_calls == state.model_calls
+            ),
         )
         self.result = RunResult(
             run_id=self._context.run_id,
@@ -133,6 +146,8 @@ class ReactAgentExecution:
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
             attempts=tuple(state.attempts),
+            cost=state.cost,
+            priced_usage_calls=state.priced_usage_calls,
         )
         return event
 
@@ -171,11 +186,13 @@ class ReactAgentLoop:
         tool_executor: ToolExecutorProtocol,
         *,
         store: RunStore | None = None,
+        pricing: PricingResolver | None = None,
     ) -> None:
         self.models = models
         self.tools = tools
         self.tool_executor = tool_executor
         self.store = store if store is not None else InMemoryRunStore()
+        self.pricing = pricing
 
     def stream(
         self,
@@ -263,13 +280,26 @@ class ReactAgentLoop:
                 0,
                 ModelMessage.text(MessageRole.SYSTEM, definition.system_prompt),
             )
-        state = _ReactState(messages)
+        cost, pricing_error = self._initial_cost(definition)
+        state = _ReactState(messages, cost=cost, pricing_error=pricing_error)
         yield await execution.emit(
             RunEventType.RUN_STARTED,
             agent=definition.name,
             max_steps=definition.max_steps,
             max_tool_calls=definition.max_tool_calls,
         )
+        if pricing_error is not None:
+            yield await execution.emit(
+                RunEventType.COST_BUDGET_STOPPED,
+                reason=StopReason.COST_UNAVAILABLE.value,
+                error=pricing_error,
+            )
+            yield await self._finish_terminal(
+                execution,
+                state,
+                StopReason.COST_UNAVAILABLE,
+            )
+            return
         async for event in self._model_loop(execution, state):
             yield event
 
@@ -280,15 +310,26 @@ class ReactAgentLoop:
         checkpoint = execution._checkpoint
         if checkpoint is None:
             raise RuntimeError("resume execution has no checkpoint")
+        _, pricing_error = self._initial_cost(checkpoint.definition)
+        if checkpoint.cost is not None and checkpoint.definition.cost_budget is not None:
+            budget = checkpoint.definition.cost_budget
+            if (
+                checkpoint.cost.price_table_version != budget.price_table_version
+                or checkpoint.cost.currency != budget.currency
+            ):
+                pricing_error = "checkpoint-cost-identity-mismatch"
         state = _ReactState(
-            list(checkpoint.messages),
-            checkpoint.steps,
-            checkpoint.tool_calls,
-            checkpoint.latest_output,
-            checkpoint.usage,
-            checkpoint.model_calls,
-            checkpoint.reported_usage_calls,
-            list(checkpoint.attempts),
+            messages=list(checkpoint.messages),
+            steps=checkpoint.steps,
+            tool_calls=checkpoint.tool_calls,
+            latest_output=checkpoint.latest_output,
+            usage=checkpoint.usage,
+            model_calls=checkpoint.model_calls,
+            reported_usage_calls=checkpoint.reported_usage_calls,
+            attempts=list(checkpoint.attempts),
+            cost=checkpoint.cost,
+            priced_usage_calls=checkpoint.priced_usage_calls,
+            pricing_error=pricing_error,
         )
         yield await execution.emit(
             RunEventType.RUN_RESUMED,
@@ -299,6 +340,20 @@ class ReactAgentLoop:
                 else None
             ),
         )
+        if pricing_error is not None or (
+            checkpoint.definition.cost_budget is not None and state.cost is None
+        ):
+            yield await execution.emit(
+                RunEventType.COST_BUDGET_STOPPED,
+                reason=StopReason.COST_UNAVAILABLE.value,
+                error=pricing_error or "checkpoint-cost-unavailable",
+            )
+            yield await self._finish_terminal(
+                execution,
+                state,
+                StopReason.COST_UNAVAILABLE,
+            )
+            return
 
         remaining = checkpoint.remaining_tool_calls
         if checkpoint.pending_tool_call is not None:
@@ -356,6 +411,26 @@ class ReactAgentLoop:
                     StopReason.TOKEN_BUDGET,
                 )
                 return
+            cost_budget = definition.cost_budget
+            if (
+                state.model_calls
+                and cost_budget is not None
+                and state.cost is not None
+                and state.cost.total >= cost_budget.max_cost
+            ):
+                yield await execution.emit(
+                    RunEventType.COST_BUDGET_STOPPED,
+                    step=state.steps,
+                    reason=StopReason.COST_BUDGET.value,
+                    max_cost=str(cost_budget.max_cost),
+                    cost=_cost_payload(state.cost),
+                )
+                yield await self._finish_terminal(
+                    execution,
+                    state,
+                    StopReason.COST_BUDGET,
+                )
+                return
             cancellation = context.cancellation
             if cancellation is not None and cancellation.cancelled:
                 yield await self._finish_terminal(
@@ -395,7 +470,12 @@ class ReactAgentLoop:
                 )
                 return
             except ModelInvocationError as error:
-                _record_attempt_usage(state, error.attempts)
+                _record_attempt_usage(
+                    state,
+                    error.attempts,
+                    pricing=self.pricing,
+                    cost_budget=definition.cost_budget,
+                )
                 yield await execution.emit(
                     RunEventType.MODEL_FAILED,
                     step=state.steps,
@@ -412,7 +492,12 @@ class ReactAgentLoop:
                 return
 
             response = invocation.response
-            _record_attempt_usage(state, invocation.attempts)
+            _record_attempt_usage(
+                state,
+                invocation.attempts,
+                pricing=self.pricing,
+                cost_budget=definition.cost_budget,
+            )
             state.latest_output = response.text
             calls = tuple(
                 block
@@ -452,6 +537,51 @@ class ReactAgentLoop:
                     state.reported_usage_calls == state.model_calls
                 ),
             )
+
+            cost_budget = definition.cost_budget
+            if cost_budget is not None:
+                yield await execution.emit(
+                    RunEventType.COST_USAGE,
+                    step=state.steps,
+                    cost=_cost_payload(state.cost),
+                    max_cost=str(cost_budget.max_cost),
+                    priced_usage_calls=state.priced_usage_calls,
+                    cost_complete=(
+                        state.cost is not None
+                        and state.priced_usage_calls == state.model_calls
+                    ),
+                )
+                if (
+                    state.pricing_error is not None
+                    or state.cost is None
+                    or state.priced_usage_calls != state.model_calls
+                ):
+                    yield await execution.emit(
+                        RunEventType.COST_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.COST_UNAVAILABLE.value,
+                        error=state.pricing_error or "attempt-cost-unavailable",
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.COST_UNAVAILABLE,
+                    )
+                    return
+                if state.cost.total > cost_budget.max_cost:
+                    yield await execution.emit(
+                        RunEventType.COST_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.COST_BUDGET.value,
+                        max_cost=str(cost_budget.max_cost),
+                        cost=_cost_payload(state.cost),
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.COST_BUDGET,
+                    )
+                    return
 
             budget = definition.token_budget
             if budget is not None:
@@ -695,7 +825,26 @@ class ReactAgentLoop:
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
             attempts=tuple(state.attempts),
+            cost=state.cost,
+            priced_usage_calls=state.priced_usage_calls,
         )
+
+    def _initial_cost(
+        self,
+        definition: AgentDefinition,
+    ) -> tuple[ModelCost | None, str | None]:
+        budget = definition.cost_budget
+        if budget is None:
+            return None, None
+        if self.pricing is None:
+            return None, "pricing-resolver-unavailable"
+        try:
+            table = self.pricing.table(budget.price_table_version)
+        except PricingError:
+            return None, "price-table-unavailable"
+        if table.currency != budget.currency:
+            return None, "price-table-currency-mismatch"
+        return table.zero(), None
 
     async def _save_ready_checkpoint(
         self,
@@ -743,6 +892,9 @@ def _add_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
 def _record_attempt_usage(
     state: _ReactState,
     attempts: tuple[AttemptRecord, ...],
+    *,
+    pricing: PricingResolver | None,
+    cost_budget: CostBudget | None,
 ) -> None:
     state.attempts.extend(attempts)
     state.model_calls += len(attempts)
@@ -750,6 +902,35 @@ def _record_attempt_usage(
         if attempt.usage is not None:
             state.usage = _add_usage(state.usage, attempt.usage)
             state.reported_usage_calls += 1
+            if (
+                cost_budget is not None
+                and pricing is not None
+                and state.cost is not None
+            ):
+                try:
+                    quoted = pricing.quote(
+                        cost_budget.price_table_version,
+                        attempt.provider,
+                        attempt.model,
+                        attempt.usage,
+                    )
+                    state.cost = state.cost.add(quoted)
+                    state.priced_usage_calls += 1
+                except PricingError:
+                    state.pricing_error = "attempt-price-unavailable"
+
+
+def _cost_payload(cost: ModelCost | None) -> dict[str, str] | None:
+    if cost is None:
+        return None
+    return {
+        "currency": cost.currency,
+        "price_table_version": cost.price_table_version,
+        "input_cost": str(cost.input_cost),
+        "output_cost": str(cost.output_cost),
+        "cached_input_cost": str(cost.cached_input_cost),
+        "total": str(cost.total),
+    }
 
 
 def _attempt_usage_complete(attempts: tuple[AttemptRecord, ...]) -> bool:

@@ -2,7 +2,7 @@
 
 English | [简体中文](./agents.md)
 
-Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, an append-only local RunStore, post-approval resume, and the local session lifecycle are `Implemented` in Phase 3 / `2.0.0a1`. General event replay and multi-agent orchestration remain `Planned` or `Reserved`.
+Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, token/cost budgets, an append-only local RunStore, post-approval resume, and the local session lifecycle are `Implemented` in Phase 3 / current `2.0.0a2`. General event replay and multi-agent orchestration remain `Planned` or `Reserved`.
 
 ## Layers
 
@@ -73,7 +73,9 @@ Run events contain model text, tool arguments, and result-stage information need
 
 `MODEL_COMPLETED` exposes response tokens, a per-attempt ledger, and `attempt_usage_complete`; failed model stages also record prompt-free, credential-free attempt summaries. The following `TOKEN_USAGE` event exposes known run totals. `RunResult.attempts` carries the typed complete ledger, `RunResult.usage` carries cumulative known usage, and `usage_complete` reports whether every attempt, including retry and failover, supplied provider usage. A real zero-token report is not confused with missing metadata.
 
-Hard token budgets reconcile every provider-reported attempt after a successful response and stop with `TOKEN_BUDGET` before executing tool calls from a response that exceeded a limit. Remaining output/total allowance also tightens the next request's output cap. Because the core does not assume a tokenizer, it cannot know the first request's exact input usage in advance; failed or interrupted attempts may lack usage. With `require_usage=True`, any unreported attempt—including a failed attempt before a successful retry—stops the run with `TOKEN_USAGE_UNAVAILABLE`. Session aggregation and per-attempt ledgers are implemented; cross-session agent aggregation, pre-call estimation, soft thresholds, and versioned-price cost budgets remain planned.
+Hard token budgets reconcile every provider-reported attempt after a successful response and stop with `TOKEN_BUDGET` before executing tool calls from a response that exceeded a limit. Remaining output/total allowance also tightens the next request's output cap. Because the core does not assume a tokenizer, it cannot know the first request's exact input usage in advance; failed or interrupted attempts may lack usage. With `require_usage=True`, any unreported attempt—including a failed attempt before a successful retry—stops the run with `TOKEN_USAGE_UNAVAILABLE`.
+
+Cost metering uses an application-supplied `PriceTable`/`PricingResolver` and exact provider, model, table version, and currency identities. Normal input, cached input, and output costs use `Decimal`. `CostBudget` binds a run to one explicit table version, and `RunResult.cost_complete` becomes true only when every attempt was priced. An over-limit response stops with `COST_BUDGET` before its tools execute. Missing rates or usage and version/currency mismatches fail closed as `COST_UNAVAILABLE`. Cost and table identity flow through `COST_USAGE`, terminal events, results, sessions, and approval checkpoints so resumed runs continue the same ledger. The framework bundles no potentially stale vendor prices and never silently infers money from token counts. Session totals and per-attempt ledgers are implemented; cross-session agent aggregation, pre-call estimation, and soft thresholds remain planned.
 
 The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain per-token text deltas. The model layer already supports safe pass-through; adapting text deltas into agent RunEvents is later work.
 
@@ -105,4 +107,4 @@ Resume executes the original pending call and remaining calls from the same mode
 
 Checkpoints store neither permissions nor approval credentials; the local application must provide them again. `SessionManager` now provides listing, archival, cross-run text conversation projection, and approval-resume coordination. General multimodal/tool event replay and arbitrary-position recovery remain `Planned`. See [Session lifecycle and cross-run context](./sessions.en.md).
 
-Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `TOKEN_BUDGET`, `TOKEN_USAGE_UNAVAILABLE`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.
+Other stop reasons include `MAX_STEPS`, `MAX_TOOL_CALLS`, `TOKEN_BUDGET`, `TOKEN_USAGE_UNAVAILABLE`, `COST_BUDGET`, `COST_UNAVAILABLE`, `MODEL_ERROR`, and `CANCELLED`. Model failures expose no prompt, and tool exception text is not sent directly back to the model.

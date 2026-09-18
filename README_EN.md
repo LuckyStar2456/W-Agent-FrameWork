@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-The current stable release is `1.5.2`; the main branch is now developing `2.0.0a1`. The 1.x engineering foundation remains available, while the microkernel, model, tool, single-agent, and local-workflow foundations are implemented. Remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
+The current stable release is `1.5.2`, and the latest alpha is `2.0.0a2`. The 1.x engineering foundation remains available, while the microkernel, model, tool, single-agent, and local-workflow foundations are implemented. Remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
 ## Status labels
 
@@ -40,7 +40,7 @@ The following 1.5.2 source capabilities are `Implemented`:
 - Skill loading, signature verification, MCP JWT authentication, and Redis locks.
 - LangChain tool adapters, a FastAPI integration example, and test helpers.
 
-The following Phase 1 capabilities are `Implemented` in the current `2.0.0a1` source:
+The following Phase 1 capabilities are `Implemented` in the current `2.0.0a2` source:
 
 - `PluginSpec`, decorators, YAML references, and Python entry-point discovery.
 - One version-aware, scoped capability registry with immutable snapshots.
@@ -62,12 +62,13 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
 - Tool definition/binding/registry separation, Python/HTTP/shell-free command templates, MCP binding and 2026-07-28 stdio/Streamable HTTP clients, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, strict token budgets, JSONL RunEvent/attempt-ledger recording, and approval-checkpoint resume.
+- Application-supplied versioned price tables, normal/cached-input and output cost metering, fail-closed run cost budgets, and cost visibility across sessions, checkpoints, and evaluation.
 - A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
 - Unified `SandboxProvider`/`SandboxRegistry` contracts, a Docker/OCI lifecycle backend, an explicitly runtime-authorized `UnsafeLocalSandboxProvider`, and policy-protected `sandbox_command_tool()`.
 - Bidirectional agent/workflow adapters plus fully overridable customer-support/RAG and coding-agent templates.
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
 - Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
-- A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token budgets/metering.
+- A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token/cost budgets and metering.
 - Deterministic scripted model providers, explicitly authorized JSONL recording/sequential replay, and a local evaluation runner with privacy-safe JSON reports.
 
 `BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
@@ -90,6 +91,12 @@ Next-generation APIs are exported directly from `w_agent`; no `w_agent.v2` names
 pip install wagent-framework
 ```
 
+Install the latest alpha with:
+
+```bash
+pip install --pre wagent-framework==2.0.0a2
+```
+
 Optional dependencies:
 
 ```bash
@@ -99,7 +106,7 @@ pip install "wagent-framework[wasm]"
 pip install "wagent-framework[tui]"
 ```
 
-PyPI 1.x supports Python 3.9+. The current `2.0.0a1` source requires Python 3.11+.
+PyPI 1.x supports Python 3.9+. `2.0.0a2` and later 2.x alphas require Python 3.11+.
 
 ## Minimal 1.x example
 

@@ -45,7 +45,13 @@ from w_agent.local_runtime import (
     assemble_local_runtime,
     load_local_runtime_config,
 )
-from w_agent.models import EndpointProbe, ModelProviderProbe, ProbeMode
+from w_agent.models import (
+    EndpointProbe,
+    ModelCost,
+    ModelProviderProbe,
+    PricingError,
+    ProbeMode,
+)
 from w_agent.sandbox import DockerSandboxProvider
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
 
@@ -346,7 +352,8 @@ class WAgentTui(App[None]):
                 f"{item.session_id} | {item.status.value} | {item.title} | "
                 f"runs={len(item.runs)} | "
                 f"attempts={sum(run.model_calls for run in item.runs)} | "
-                f"tokens={sum(run.usage.total_tokens for run in item.runs)}"
+                f"tokens={sum(run.usage.total_tokens for run in item.runs)} | "
+                f"cost={_session_cost_text(item.runs)}"
             )
             for item in sessions
         ]
@@ -366,7 +373,8 @@ class WAgentTui(App[None]):
                 f"{item.status.value} | tool={item.pending_tool_name or '-'} | "
                 f"call={item.pending_call_id or '-'} | "
                 f"keys={','.join(item.pending_argument_keys)} | "
-                f"tokens={item.usage.total_tokens}"
+                f"tokens={item.usage.total_tokens} | "
+                f"cost={_cost_text(item.cost, complete=item.cost_complete)}"
             )
             for item in checkpoints
         ]
@@ -402,6 +410,13 @@ class WAgentTui(App[None]):
             target.update(f"Run failed: {type(error).__name__}")
             return
         result = run.result
+        cost_text = (
+            f"\nCost: {result.cost.total} {result.cost.currency}, "
+            f"table={result.cost.price_table_version}, "
+            f"complete={result.cost_complete}"
+            if result.cost is not None
+            else "\nCost: unavailable"
+        )
         target.update(
             f"Session: {run.session.session_id}\n"
             f"Run: {result.run_id}\n"
@@ -410,7 +425,8 @@ class WAgentTui(App[None]):
             f"Tokens: in={result.usage.input_tokens}, "
             f"out={result.usage.output_tokens}, "
             f"total={result.usage.total_tokens}, "
-            f"complete={result.usage_complete}\n\n"
+            f"complete={result.usage_complete}"
+            f"{cost_text}\n\n"
             f"{result.output}"
         )
         self.query_one("#run-session", Input).value = run.session.session_id
@@ -475,6 +491,14 @@ class WAgentTui(App[None]):
             f"average={report.average_latency_ms:.2f} ms",
             f"Tools: success={report.tool_successes}, failed={report.tool_failures}",
         ]
+        if report.cost is not None:
+            lines.append(
+                f"Cost: {report.cost.total} {report.cost.currency}, "
+                f"table={report.cost.price_table_version}, "
+                f"complete={report.cost_complete}"
+            )
+        else:
+            lines.append("Cost: unavailable")
         lines.extend(
             f"{case.name}: {'PASS' if case.passed else 'FAIL'} | "
             f"stop={case.stop_reason or '-'} | tokens={case.usage.total_tokens}"
@@ -498,3 +522,24 @@ class WAgentTui(App[None]):
 
 def run_tui(workspace: str | Path = ".") -> None:
     WAgentTui(workspace).run()
+
+
+def _cost_text(cost: ModelCost | None, *, complete: bool) -> str:
+    if cost is None:
+        return "unavailable"
+    suffix = "" if complete else " (incomplete)"
+    return f"{cost.total} {cost.currency}@{cost.price_table_version}{suffix}"
+
+
+def _session_cost_text(runs) -> str:
+    if not runs or any(run.cost is None for run in runs):
+        return "unavailable"
+    total = runs[0].cost
+    assert total is not None
+    try:
+        for run in runs[1:]:
+            assert run.cost is not None
+            total = total.add(run.cost)
+    except PricingError:
+        return "mixed"
+    return _cost_text(total, complete=all(run.cost_complete for run in runs))

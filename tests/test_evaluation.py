@@ -10,6 +10,7 @@ from w_agent import (
     JsonEvaluationReporter,
     LocalEvaluationRunner,
     MessageRole,
+    ModelCost,
     ModelMessage,
     RunEvent,
     RunEventType,
@@ -21,7 +22,7 @@ from w_agent import (
 )
 
 
-def _result(name, output, *, reason=StopReason.COMPLETED, events=()):
+def _result(name, output, *, reason=StopReason.COMPLETED, events=(), cost=None):
     return RunResult(
         f"run-{name}",
         reason,
@@ -33,6 +34,8 @@ def _result(name, output, *, reason=StopReason.COMPLETED, events=()):
         usage=TokenUsage(4, 2),
         model_calls=1,
         reported_usage_calls=1,
+        cost=cost,
+        priced_usage_calls=1 if cost is not None else 0,
     )
 
 
@@ -62,6 +65,29 @@ async def test_local_evaluation_scores_cases_and_aggregates_usage():
     assert report.tool_success_rate is None
     assert report.cases[0].passed is True
     assert report.cases[1].passed is False
+
+
+@pytest.mark.asyncio
+async def test_local_evaluation_aggregates_versioned_cost_metrics():
+    async def target(case):
+        return _result(
+            case.name,
+            "ok",
+            cost=ModelCost("USD", "prices-v1", "0.01", "0.02", "0.003"),
+        )
+
+    report = await LocalEvaluationRunner().run(
+        (EvaluationCase("one", "a"), EvaluationCase("two", "b")),
+        target,
+    )
+    payload = evaluation_report_to_dict(report)
+
+    assert report.cost is not None
+    assert str(report.cost.total) == "0.066"
+    assert report.cost_complete is True
+    assert payload["cost"]["total"] == "0.066"
+    assert payload["cost_complete"] is True
+    assert payload["cases"][0]["cost"]["price_table_version"] == "prices-v1"
 
 
 @pytest.mark.asyncio

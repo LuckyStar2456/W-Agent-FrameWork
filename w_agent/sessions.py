@@ -22,6 +22,7 @@ from w_agent.kernel import ScopePath
 from w_agent.models import (
     CancellationToken,
     MessageRole,
+    ModelCost,
     ModelMessage,
     TextContent,
     TokenUsage,
@@ -65,6 +66,9 @@ class SessionRunRecord:
     reported_usage_calls: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    cost: ModelCost | None = None
+    cost_complete: bool = False
+    priced_usage_calls: int = 0
 
     def __post_init__(self) -> None:
         _validate_id(self.run_id, "run")
@@ -73,10 +77,13 @@ class SessionRunRecord:
             self.tool_calls,
             self.model_calls,
             self.reported_usage_calls,
+            self.priced_usage_calls,
         ) < 0:
             raise ValueError("session run counters must not be negative")
         if self.reported_usage_calls > self.model_calls:
             raise ValueError("reported usage calls cannot exceed model calls")
+        if self.priced_usage_calls > self.reported_usage_calls:
+            raise ValueError("priced usage calls cannot exceed reported usage calls")
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,6 +367,9 @@ class SessionManager:
                 result.reported_usage_calls,
                 created_at=existing.created_at if existing is not None else now,
                 updated_at=now,
+                cost=result.cost,
+                cost_complete=result.cost_complete,
+                priced_usage_calls=result.priced_usage_calls,
             )
             runs = tuple(
                 run if item.run_id == result.run_id else item for item in latest.runs
@@ -438,6 +448,9 @@ def _session_to_data(session: SessionRecord) -> dict[str, Any]:
                 "tool_calls": item.tool_calls,
                 "model_calls": item.model_calls,
                 "reported_usage_calls": item.reported_usage_calls,
+                "cost": _cost_to_data(item.cost),
+                "cost_complete": item.cost_complete,
+                "priced_usage_calls": item.priced_usage_calls,
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
             }
@@ -488,8 +501,35 @@ def _run_from_data(data: Mapping[str, Any]) -> SessionRunRecord:
         tool_calls=int(data["tool_calls"]),
         model_calls=int(data.get("model_calls", 0)),
         reported_usage_calls=int(data.get("reported_usage_calls", 0)),
+        cost=_cost_from_data(data.get("cost")),
+        cost_complete=bool(data.get("cost_complete", False)),
+        priced_usage_calls=int(data.get("priced_usage_calls", 0)),
         created_at=datetime.fromisoformat(str(data["created_at"])),
         updated_at=datetime.fromisoformat(str(data["updated_at"])),
+    )
+
+
+def _cost_to_data(cost: ModelCost | None) -> dict[str, str] | None:
+    if cost is None:
+        return None
+    return {
+        "currency": cost.currency,
+        "price_table_version": cost.price_table_version,
+        "input_cost": str(cost.input_cost),
+        "output_cost": str(cost.output_cost),
+        "cached_input_cost": str(cost.cached_input_cost),
+    }
+
+
+def _cost_from_data(data: Any) -> ModelCost | None:
+    if not isinstance(data, Mapping):
+        return None
+    return ModelCost(
+        currency=str(data["currency"]),
+        price_table_version=str(data["price_table_version"]),
+        input_cost=str(data.get("input_cost", "0")),
+        output_cost=str(data.get("output_cost", "0")),
+        cached_input_cost=str(data.get("cached_input_cost", "0")),
     )
 
 

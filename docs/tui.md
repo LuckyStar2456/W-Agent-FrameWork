@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复和 CLI/TUI 本地评测为 `Experimental`（`2.0.0a1`）；TUI 工具批准执行、Workflow Checkpoint 汇总与通用插件操作仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复和 CLI/TUI 本地评测为 `Experimental`（当前 `2.0.0a2`）；TUI 工具批准执行、Workflow Checkpoint 汇总与通用插件操作仍为 `Planned`。
 
 ## 原则
 
@@ -28,13 +28,13 @@ wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，并明确标记用量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 执行不带凭据和请求体的 L1 探测；`provider-probe` 从严格配置装配 Provider，主动模式必须额外传入 `--confirm-active-probe`。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，以及可用时的版本化费用，并明确标记计量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 执行不带凭据和请求体的 L1 探测；`provider-probe` 从严格配置装配 Provider，主动模式必须额外传入 `--confirm-active-probe`。
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。可选版本化价格配置为 CLI/TUI Run、Session、Checkpoint 和评测提供费用与完整性。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
 
-TUI Evaluation 页要求输入 `EVALUATE` 才顺序运行严格 JSON 用例集；默认一次性状态，确认立即清空，只显示 Token/延迟/工具结果和通过状态，并可写默认脱敏报告。自定义 Scorer、输出持久化和开发者工具入口使用 Python API/CLI。
+TUI Evaluation 页要求输入 `EVALUATE` 才顺序运行严格 JSON 用例集；默认一次性状态，确认立即清空，只显示 Token/费用/延迟/工具结果和通过状态，并可写默认脱敏报告。自定义 Scorer、输出持久化和开发者工具入口使用 Python API/CLI。
 
 ## TUI 技术
 
@@ -62,15 +62,15 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Run
 
-当前可读取严格本地配置并启动文本 Agent，显示最终输出和输入/输出 Token；用户必须输入 `RUN` 才会发起模型调用。TUI 不导入开发者 Python 工具，工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
+当前可读取严格本地配置并启动文本 Agent，显示最终输出、输入/输出 Token 与版本化费用；用户必须输入 `RUN` 才会发起模型调用。TUI 不导入开发者 Python 工具，工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
 
 ### Sessions
 
-使用与 Python API 相同的 `JsonSessionStore` 创建、列出、归档和恢复本地 Session。列表显示每个 Session 的 Run 数与累计 Token；配置化 Agent 启动仍属于 Run 页面后续工作。
+使用与 Python API 相同的 `JsonSessionStore` 创建、列出、归档和恢复本地 Session。详情显示每个 Session 的 Run 数、累计 Token 和同版本/币种时的累计费用；配置化 Agent 启动属于 Run 页面。
 
 ### Checkpoints
 
-当前可刷新本地 Agent 审批 Checkpoint 的脱敏摘要，显示 Run/Session、状态、工具名、Call ID、参数名和 Token，不显示 Prompt、参数值或输出。Workflow Checkpoint 的统一列表、版本比较与引导恢复仍为 `Planned`。
+当前可刷新本地 Agent 审批 Checkpoint 的脱敏摘要，显示 Run/Session、状态、工具名、Call ID、参数名、Token 和费用，不显示 Prompt、参数值或输出。Workflow Checkpoint 的统一列表、版本比较与引导恢复仍为 `Planned`。
 
 ### Sandbox
 

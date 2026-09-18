@@ -4,7 +4,7 @@
 
 ## 1. 开发基线
 
-当前仓库版本为 `2.0.0a1`，Phase 1 微内核、Phase 2 模型基础、Phase 3 Agent/工具基础和 Phase 4 本地 Workflow 基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
+当前仓库和最新 Alpha 版本为 `2.0.0a2`，Phase 1 微内核、Phase 2 模型基础、Phase 3 Agent/工具基础和 Phase 4 本地 Workflow 基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记状态。
 
 下一代实现目标：
 

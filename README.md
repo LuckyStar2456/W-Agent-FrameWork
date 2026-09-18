@@ -4,7 +4,7 @@
 
 W-Agent 是一个面向本地开发者的 Python 开源 Agent 开发框架。它的目标不是提供托管平台或固定 Harness，而是提供稳定、可扩展的协议与可自由装配的模块，让开发者能够替换模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面实现。
 
-当前稳定发布版本是 `1.5.2`；仓库主线已进入 `2.0.0a1` 开发阶段。1.x 工程底座继续保留，微内核、模型、工具、单 Agent 与本地 Workflow 基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
+当前稳定发布版本是 `1.5.2`，最新 Alpha 为 `2.0.0a2`。1.x 工程底座继续保留，微内核、模型、工具、单 Agent 与本地 Workflow 基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力描述为现有能力。
 
 ## 状态标记
 
@@ -40,7 +40,7 @@ W-Agent 遵循以下原则：
 - Skill 加载、签名校验、MCP JWT 认证、Redis 分布式锁。
 - LangChain 工具适配、FastAPI 示例集成和测试辅助设施。
 
-以下 Phase 1 能力在当前 `2.0.0a1` 源码中为 `Implemented`：
+以下 Phase 1 能力在当前 `2.0.0a2` 源码中为 `Implemented`：
 
 - `PluginSpec`、装饰器、YAML 引用与 Python entry point 发现。
 - 统一、版本感知、分作用域的能力注册表与不可变快照。
@@ -62,12 +62,13 @@ W-Agent 遵循以下原则：
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
 - 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 绑定与 2026-07-28 stdio/Streamable HTTP 客户端、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、严格 Token 预算、JSONL RunEvent/尝试账本记录和审批断点恢复。
+- 应用提供的版本化价格表、普通/缓存输入与输出费用计量、失败关闭的 Run 费用预算，以及 Session/Checkpoint/评测费用可见性。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
 - Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
 - 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
-- 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认和可见 Token 预算/计量。
+- 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认、可见 Token/费用预算与计量。
 - 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放，以及本地评测运行器与脱敏 JSON 报告。
 
 当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
@@ -90,6 +91,12 @@ W-Agent 遵循以下原则：
 pip install wagent-framework
 ```
 
+安装最新 Alpha：
+
+```bash
+pip install --pre wagent-framework==2.0.0a2
+```
+
 可选依赖：
 
 ```bash
@@ -99,7 +106,7 @@ pip install "wagent-framework[wasm]"
 pip install "wagent-framework[tui]"
 ```
 
-PyPI 1.x 支持 Python 3.9+；当前 `2.0.0a1` 源码要求 Python 3.11+。
+PyPI 1.x 支持 Python 3.9+；`2.0.0a2` 与后续 2.x Alpha 要求 Python 3.11+。
 
 ## 1.x 最小示例
 
