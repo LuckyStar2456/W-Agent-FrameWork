@@ -95,7 +95,7 @@ class ModelProvider(Protocol):
 
 `OpenAICompatibleProvider` 已实现 `/models` 和流式 `/chat/completions`，其 `OpenAICompatibleTransport` 可以替换。通用 `HttpModelProvider` 公开 `HttpRequest`、`HttpStreamFrame`、`HttpProviderMapping`、`HttpStreamDecoder` 与 `HttpProviderTransport`；默认 `HttpxProviderTransport` 支持 JSON、SSE 和 NDJSON。
 
-`AnthropicMessagesMapping`、`GeminiGenerateContentMapping`、`OllamaChatMapping` 与 `QwenDashScopeMapping` 为原生协议映射。`ProviderTemplateRegistry` 提供 Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible 和 Turbo AI/SIAM.AI 模板。专用 OpenAI Responses 与 vLLM 差异适配仍为 `Planned`。默认 HTTPX 实现位于 `models` 可选依赖。
+`AnthropicMessagesMapping`、`GeminiGenerateContentMapping`、`OllamaChatMapping`、`QwenDashScopeMapping` 与 `OpenAIResponsesMapping` 为原生协议映射。`ProviderTemplateRegistry` 提供 OpenAI Responses、Anthropic、Gemini、Ollama、Qwen-native、DeepSeek、GLM、Qwen-compatible、vLLM 和 Turbo AI/SIAM.AI 模板；`VllmProvider` 扩展 Chat Completions 的 vLLM 专用参数。默认 HTTPX 实现位于 `models` 可选依赖。
 
 ## 5. 路由协议
 

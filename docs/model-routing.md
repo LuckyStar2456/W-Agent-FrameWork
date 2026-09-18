@@ -2,7 +2,7 @@
 
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（`2.0.0a1`）；OpenAI Responses、vLLM 专用适配与跨流断点恢复为 `Planned`。
+状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（当前 main）；跨流断点恢复为 `Planned`。
 
 ## 已实现边界
 
@@ -16,10 +16,11 @@
 - 可替换的 `HttpModelProvider`、请求/流帧、映射器、流解码器与 HTTP 传输协议；默认传输支持 JSON、SSE 和 NDJSON。
 - Anthropic Messages、Gemini `streamGenerateContent`、Ollama `/api/chat` 和 Qwen DashScope 原生模板。
 - DeepSeek、GLM、Qwen OpenAI-compatible 和 Turbo AI/SIAM.AI 模板及独立模板注册表。
+- OpenAI Responses `/responses` 请求/流事件映射，以及 vLLM Chat Completions 专用命名空间扩展。
 - `ModelExecutor` 收集式与逐事件透传调用、逐尝试超时、显式有界重试/故障转移和不含 Prompt 的尝试记录。
 - `ModelRegistrationProbeService` 注册安全探测路径，以及把未过期结果映射到外部 `CandidateState` 的 `ProbeHealthBridge`。
 
-当前仍未内置专用 OpenAI Responses 或 vLLM 差异适配器。模板经过模拟传输一致性测试，但仓库测试不携带真实凭据，也不把某一远程型号的在线可用性当作已验证事实。完整模板说明见 [HTTP Provider 与厂商模板](./provider-templates.md)。
+OpenAI Responses 与 vLLM 适配经过模拟传输一致性测试，但仓库测试不携带真实凭据，也不把某一远程型号或本机 GPU 服务的在线可用性当作已验证事实。完整模板、扩展字段和剩余限制见 [HTTP Provider 与厂商模板](./provider-templates.md)。
 
 ## 模型协议
 
@@ -102,7 +103,7 @@ provider = OpenAICompatibleProvider(
 
 `HttpModelProvider` 组合 `HttpProviderMapping` 与 `HttpProviderTransport`。映射器生成模型目录/推理请求并把厂商帧转换为标准事件；传输只处理 HTTP、SSE 或 NDJSON。应用可以替换其中任意一层，也可以把自己的 `ProviderTemplate` 注册到独立 `ProviderTemplateRegistry`。
 
-内置 key 为 `anthropic`、`gemini`、`ollama`、`qwen-native`、`deepseek`、`glm`、`qwen` 和 `turbo`。`turbo` 指 Turbo AI/SIAM.AI，要求显式提供部署地址。Qwen 同时提供原生 DashScope 与 OpenAI-compatible 两条入口。
+内置 key 为 `openai-responses`、`anthropic`、`gemini`、`ollama`、`qwen-native`、`deepseek`、`glm`、`qwen`、`vllm` 和 `turbo`。`turbo` 指 Turbo AI/SIAM.AI，要求显式提供部署地址。Qwen 同时提供原生 DashScope 与 OpenAI-compatible 两条入口。OpenAI Responses 走 `/responses` 类型化事件；vLLM 保持 Chat Completions 并通过 `vllm.*` 扩展暴露专用参数。
 
 ## 可解释路由
 
@@ -197,6 +198,6 @@ final_response = execution.response
 
 ## Phase 2B 后续计划
 
-- 专用 OpenAI Responses 与 vLLM 差异适配器；扩展现有模板的 Reasoning 增量和更多厂商特性。
+- 扩展现有模板的 Reasoning 内容增量、OpenAI 托管工具事件和更多厂商特性。
 - 跨流断点恢复，以及与限流器的可插拔反馈桥接。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

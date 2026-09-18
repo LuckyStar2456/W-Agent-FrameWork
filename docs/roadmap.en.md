@@ -28,7 +28,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Generic HTTP mapping layer and SSE/NDJSON transport | `Implemented` | Phase 2B / 2.0.0a1 |
 | Native Anthropic, Gemini, Ollama, and Qwen templates | `Implemented` | Phase 2B / 2.0.0a1 |
 | DeepSeek, GLM, Qwen-compatible, and Turbo template registry | `Implemented` | Phase 2B / 2.0.0a1 |
-| Dedicated OpenAI Responses and vLLM differences | `Planned` | Phase 2B |
+| Dedicated OpenAI Responses and vLLM differences | `Implemented` | Phase 2B / current main |
 | Python and YAML routing | `Implemented` | Phase 2A / 2.0.0a1 |
 | Manual probe API, cache, and periodic scheduler | `Implemented` | Phase 2A / 2.0.0a1 |
 | Automatic safe probing and health bridging through the explicit registration service | `Implemented` | Phase 2B / 2.0.0a1 |
@@ -102,7 +102,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - 2B implements collecting and event-pass-through executors with one call by default, explicit bounded retry/failover, per-attempt timeout, and audit records. Pass-through execution prohibits silent replay after any event becomes visible.
 - 2B normalizes provider-reported input, output, and cached-input tokens. `usage_reported` distinguishes a real zero-token report from missing provider metadata instead of presenting a zero value as complete metering.
 - 2B implements optional register-and-safe-probe through `ModelRegistrationProbeService` and `ProbeHealthBridge`; low-level `ModelRegistry.register()` keeps pure registration semantics.
-- 2B now includes credential-free L1 endpoint probes plus CLI/TUI provider probes assembled from strict local configuration. Provider-only assembly performs no registration or I/O; whether `safe` accesses a remote catalog is provider-defined, while explicitly authorized `active` verifies minimal generation and stream termination. Later work adds OpenAI Responses/vLLM differences and cross-stream recovery.
+- 2B now includes dedicated OpenAI Responses/vLLM handling, credential-free L1 endpoint probes, and CLI/TUI provider probes assembled from strict local configuration. Provider-only assembly performs no registration or I/O; whether `safe` accesses a remote catalog is provider-defined, while explicitly authorized `active` verifies minimal generation and stream termination. Later work adds cross-stream recovery and more vendor event mappings.
 
 ### Phase 3: agents and tools
 

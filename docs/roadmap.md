@@ -28,7 +28,7 @@
 | 通用 HTTP 映射层与 SSE/NDJSON 传输 | `Implemented` | Phase 2B / 2.0.0a1 |
 | Anthropic、Gemini、Ollama、Qwen 原生模板 | `Implemented` | Phase 2B / 2.0.0a1 |
 | DeepSeek、GLM、Qwen-compatible、Turbo 模板注册表 | `Implemented` | Phase 2B / 2.0.0a1 |
-| 专用 OpenAI Responses 与 vLLM 差异适配 | `Planned` | Phase 2B |
+| 专用 OpenAI Responses 与 vLLM 差异适配 | `Implemented` | Phase 2B / 当前 main |
 | Python/YAML 模型路由 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 手动探测 API、缓存与周期调度 | `Implemented` | Phase 2A / 2.0.0a1 |
 | 显式注册服务的自动安全探测与健康桥接 | `Implemented` | Phase 2B / 2.0.0a1 |
@@ -102,7 +102,7 @@
 - 2B 已实现默认单次调用、显式有界重试/故障转移、逐尝试超时与审计记录的收集式和逐事件透传执行器；透传一旦暴露任何事件便禁止静默重放。
 - 2B 已统一 Provider 上报的输入、输出和缓存输入 Token；`usage_reported` 明确区分真实零用量与 Provider 未上报，不用零值伪装完整计量。
 - 2B 已实现可选的 `ModelRegistrationProbeService` 注册安全探测路径和 `ProbeHealthBridge`；底层 `ModelRegistry.register()` 保持纯注册语义。
-- 2B 已提供 CLI/TUI 的无凭据 L1 安全端点探测，以及从严格本地配置装配 Provider 的安全目录/显式授权主动生成探测。Provider 单独装配不注册、不发起 I/O；`safe` 是否访问远程目录由具体 Provider 决定，`active` 才验证最小生成与流终止协议。后续提供 OpenAI Responses/vLLM 差异适配和跨流断点恢复。
+- 2B 已提供 OpenAI Responses/vLLM 专用适配、CLI/TUI 的无凭据 L1 安全端点探测，以及从严格本地配置装配 Provider 的安全目录/显式授权主动生成探测。Provider 单独装配不注册、不发起 I/O；`safe` 是否访问远程目录由具体 Provider 决定，`active` 才验证最小生成与流终止协议。后续提供跨流断点恢复及更多厂商事件映射。
 
 ### Phase 3：Agent 与工具
 

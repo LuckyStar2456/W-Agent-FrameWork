@@ -34,6 +34,7 @@ from .openai_compatible import (
     OpenAICompatibleProvider,
     OpenAICompatibleTransport,
 )
+from .openai_responses import OpenAIResponsesMapping
 from .probing import (
     EndpointProbe,
     ModelRegistrationProbeService,
@@ -87,9 +88,11 @@ from .templates import (
     gemini_provider,
     glm_provider,
     ollama_provider,
+    openai_responses_provider,
     qwen_compatible_provider,
     qwen_native_provider,
     turbo_provider,
+    vllm_provider,
 )
 from .types import (
     AudioContent,
@@ -119,6 +122,7 @@ from .types import (
     UsageEvent,
     collect_stream,
 )
+from .vllm import VllmProvider
 
 __all__ = [
     "MODEL_PROVIDER_CAPABILITY",
@@ -179,6 +183,7 @@ __all__ = [
     "OpenAICompatibleModelProfile",
     "OpenAICompatibleProvider",
     "OpenAICompatibleTransport",
+    "OpenAIResponsesMapping",
     "PeriodicProbeService",
     "ProbeCache",
     "ProbeCheck",
@@ -211,6 +216,7 @@ __all__ = [
     "ToolDefinition",
     "ToolResultContent",
     "UsageEvent",
+    "VllmProvider",
     "WeightedRoutingPolicy",
     "YamlRoutingPolicy",
     "anthropic_provider",
@@ -220,7 +226,9 @@ __all__ = [
     "gemini_provider",
     "glm_provider",
     "ollama_provider",
+    "openai_responses_provider",
     "qwen_compatible_provider",
     "qwen_native_provider",
     "turbo_provider",
+    "vllm_provider",
 ]

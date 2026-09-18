@@ -18,6 +18,7 @@ from .native_mappings import (
     OllamaChatMapping,
     QwenDashScopeMapping,
 )
+from .openai_responses import OpenAIResponsesMapping
 from .openai_compatible import (
     OpenAICompatibleModelProfile,
     OpenAICompatibleProvider,
@@ -25,6 +26,7 @@ from .openai_compatible import (
 )
 from .provider import ModelProvider
 from .types import ModelCapability
+from .vllm import VllmProvider
 
 
 _TEXT = frozenset(
@@ -37,6 +39,11 @@ _TEXT = frozenset(
 _TEXT_TOOLS_JSON = _TEXT | {
     ModelCapability.TOOL_CALLING,
     ModelCapability.STRUCTURED_OUTPUT,
+}
+_OPENAI_RESPONSES = _TEXT_TOOLS_JSON | {
+    ModelCapability.IMAGE_INPUT,
+    ModelCapability.REASONING,
+    ModelCapability.PROMPT_CACHE,
 }
 
 
@@ -207,6 +214,36 @@ def qwen_native_provider(
     )
 
 
+def openai_responses_provider(
+    *,
+    api_key: str | None = None,
+    name: str = "openai-responses",
+    base_url: str = "https://api.openai.com/v1",
+    default_model: str | None = None,
+    profiles: tuple[HttpModelProfile, ...] = (),
+    timeout: float = 60.0,
+    headers: Mapping[str, str] | None = None,
+    transport: HttpProviderTransport | None = None,
+) -> HttpModelProvider:
+    """Build an OpenAI Responses API provider on the generic HTTP runtime."""
+
+    request_headers = {
+        **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
+        **dict(headers or {}),
+    }
+    return HttpModelProvider(
+        name=name,
+        base_url=base_url,
+        mapping=OpenAIResponsesMapping(),
+        default_model=default_model,
+        profiles=profiles,
+        default_capabilities=_OPENAI_RESPONSES,
+        timeout=timeout,
+        headers=request_headers,
+        transport=transport,
+    )
+
+
 def deepseek_provider(
     *,
     api_key: str | None = None,
@@ -323,6 +360,40 @@ def turbo_provider(
     )
 
 
+def vllm_provider(
+    *,
+    api_key: str | None = None,
+    name: str = "vllm",
+    base_url: str = "http://127.0.0.1:8000/v1",
+    default_model: str | None = None,
+    profiles: tuple[OpenAICompatibleModelProfile, ...] = (),
+    discover_models: bool = True,
+    timeout: float = 60.0,
+    headers: Mapping[str, str] | None = None,
+    transport: OpenAICompatibleTransport | None = None,
+) -> VllmProvider:
+    """Build a vLLM Chat Completions provider with namespaced extensions."""
+
+    if not discover_models and not profiles and default_model is not None:
+        profiles = (
+            OpenAICompatibleModelProfile(default_model, _TEXT_TOOLS_JSON),
+        )
+    return VllmProvider(
+        name=name,
+        base_url=base_url,
+        api_key=api_key,
+        default_model=default_model,
+        profiles=profiles,
+        default_capabilities=_TEXT_TOOLS_JSON,
+        discover_models=discover_models,
+        timeout=timeout,
+        headers=headers,
+        max_tokens_field="max_tokens",
+        include_stream_usage=True,
+        transport=transport,
+    )
+
+
 def _compatible_provider(
     *,
     name: str,
@@ -365,6 +436,13 @@ BUILTIN_PROVIDER_TEMPLATES: Mapping[str, ProviderTemplate] = MappingProxyType(
     {
         template.key: template
         for template in (
+            ProviderTemplate(
+                "openai-responses",
+                "OpenAI Responses",
+                "openai-responses",
+                "https://api.openai.com/v1",
+                openai_responses_provider,
+            ),
             ProviderTemplate(
                 "anthropic",
                 "Anthropic",
@@ -413,6 +491,13 @@ BUILTIN_PROVIDER_TEMPLATES: Mapping[str, ProviderTemplate] = MappingProxyType(
                 "openai-compatible",
                 "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
                 qwen_compatible_provider,
+            ),
+            ProviderTemplate(
+                "vllm",
+                "vLLM",
+                "openai-compatible-vllm",
+                "http://127.0.0.1:8000/v1",
+                vllm_provider,
             ),
             ProviderTemplate(
                 "turbo",

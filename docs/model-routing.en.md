@@ -2,7 +2,7 @@
 
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` in `2.0.0a1`; dedicated OpenAI Responses/vLLM handling and cross-stream recovery are `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` on current main; cross-stream recovery remains `Planned`.
 
 ## Implemented boundary
 
@@ -16,10 +16,11 @@ Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, Op
 - Replaceable `HttpModelProvider`, request/frame, mapper, stream-decoder, and transport protocols; the default transport supports JSON, SSE, and NDJSON.
 - Native templates for Anthropic Messages, Gemini `streamGenerateContent`, Ollama `/api/chat`, and Qwen DashScope.
 - DeepSeek, GLM, Qwen OpenAI-compatible, and Turbo AI/SIAM.AI templates plus an independent template registry.
+- OpenAI Responses `/responses` request/stream-event mapping and vLLM-specific namespaced Chat Completions extensions.
 - `ModelExecutor` collecting and event-pass-through invocation, per-attempt timeouts, explicit bounded retry/failover, and prompt-free attempt records.
 - `ModelRegistrationProbeService` register-and-safe-probe wiring plus `ProbeHealthBridge` projection of fresh observations into external `CandidateState`.
 
-Dedicated OpenAI Responses and vLLM-specific adapters are not built in yet. Templates have fake-transport conformance tests, but repository tests contain no live credentials and do not claim that any individual remote model has been validated online. See [HTTP providers and vendor templates](./provider-templates.en.md) for details.
+OpenAI Responses and vLLM adapters have fake-transport conformance tests, but repository tests contain no live credentials and do not claim that any individual remote model or local GPU server has been validated online. See [HTTP providers and vendor templates](./provider-templates.en.md) for extension fields and remaining limits.
 
 ## Model protocol
 
@@ -102,7 +103,7 @@ Capabilities are never guessed from model names; developers explicitly declare e
 
 `HttpModelProvider` composes an `HttpProviderMapping` with an `HttpProviderTransport`. A mapper creates catalog/inference requests and converts vendor frames to standard events; a transport only handles HTTP, SSE, or NDJSON. Applications may replace either layer and register their own `ProviderTemplate` in an independent `ProviderTemplateRegistry`.
 
-Built-in keys are `anthropic`, `gemini`, `ollama`, `qwen-native`, `deepseek`, `glm`, `qwen`, and `turbo`. `turbo` means Turbo AI/SIAM.AI and requires an explicit deployment URL. Qwen provides both native DashScope and OpenAI-compatible paths.
+Built-in keys are `openai-responses`, `anthropic`, `gemini`, `ollama`, `qwen-native`, `deepseek`, `glm`, `qwen`, `vllm`, and `turbo`. `turbo` means Turbo AI/SIAM.AI and requires an explicit deployment URL. Qwen provides both native DashScope and OpenAI-compatible paths. OpenAI Responses uses typed `/responses` events; vLLM stays on Chat Completions and exposes server-specific parameters through `vllm.*` extensions.
 
 ## Explainable routing
 
@@ -197,6 +198,6 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 
 ## Remaining Phase 2B plan
 
-- Dedicated OpenAI Responses and vLLM differences, plus reasoning deltas and more vendor-specific features in existing templates.
+- Reasoning-content deltas, OpenAI hosted-tool events, and more vendor-specific features in existing templates.
 - Cross-stream recovery and pluggable feedback bridges to rate limiters.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

@@ -129,7 +129,7 @@ result = await app.agent("coding").run("修复失败的测试")
 
 ## 8. 当前模型协议与探测 API
 
-状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、首批厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务，以及 CLI/TUI 无凭据 L1 和配置化 Provider 探测入口为 `Implemented`/`Experimental`；OpenAI Responses、vLLM 差异适配与跨流恢复为 `Planned`。
+状态：Python API、OpenAI-compatible Provider、通用 HTTP 映射层、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式注册安全探测服务，以及 CLI/TUI 无凭据 L1 和配置化 Provider 探测入口为 `Implemented`/`Experimental`；跨流恢复为 `Planned`。
 
 自定义 Provider 实现 `list_models()`、`resolve()` 和 `stream()` 后可注册到 `ModelRegistry`。路由和安全端点嗅探使用公开 API：
 

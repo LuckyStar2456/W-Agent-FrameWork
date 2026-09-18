@@ -95,7 +95,7 @@ class ModelProvider(Protocol):
 
 `OpenAICompatibleProvider` implements `/models` and streaming `/chat/completions` with a replaceable `OpenAICompatibleTransport`. Generic `HttpModelProvider` exposes `HttpRequest`, `HttpStreamFrame`, `HttpProviderMapping`, `HttpStreamDecoder`, and `HttpProviderTransport`; the default `HttpxProviderTransport` supports JSON, SSE, and NDJSON.
 
-`AnthropicMessagesMapping`, `GeminiGenerateContentMapping`, `OllamaChatMapping`, and `QwenDashScopeMapping` implement native protocols. `ProviderTemplateRegistry` includes Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo AI/SIAM.AI templates. Dedicated OpenAI Responses and vLLM differences remain `Planned`. Default HTTPX implementations are in the `models` extra.
+`AnthropicMessagesMapping`, `GeminiGenerateContentMapping`, `OllamaChatMapping`, `QwenDashScopeMapping`, and `OpenAIResponsesMapping` implement native protocols. `ProviderTemplateRegistry` includes OpenAI Responses, Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, vLLM, and Turbo AI/SIAM.AI templates; `VllmProvider` adds vLLM-specific Chat Completions parameters. Default HTTPX implementations are in the `models` extra.
 
 ## 5. Routing protocol
 

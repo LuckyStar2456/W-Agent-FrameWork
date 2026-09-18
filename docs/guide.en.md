@@ -129,7 +129,7 @@ The same composition may come from decorators, YAML, or Python entry points; eve
 
 ## 8. Current model and probe APIs
 
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, initial vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and credential-free L1 plus configured provider CLI/TUI probe entry points are `Implemented`/`Experimental`; dedicated OpenAI Responses/vLLM differences and cross-stream recovery are `Planned`.
+Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, explicit register-and-safe-probe service, and credential-free L1 plus configured provider CLI/TUI probe entry points are `Implemented`/`Experimental`; cross-stream recovery remains `Planned`.
 
 After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
 

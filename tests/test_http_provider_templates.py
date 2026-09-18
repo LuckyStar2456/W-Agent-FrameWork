@@ -332,9 +332,11 @@ def test_compatible_vendor_templates_and_registry_are_replaceable():
         "gemini",
         "glm",
         "ollama",
+        "openai-responses",
         "qwen",
         "qwen-native",
         "turbo",
+        "vllm",
     }
 
     replacement = ProviderTemplate(

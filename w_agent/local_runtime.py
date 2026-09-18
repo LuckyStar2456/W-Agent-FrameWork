@@ -47,7 +47,9 @@ from w_agent.sessions import (
 )
 from w_agent.tools import ToolBinding, ToolExecutionContext, ToolExecutor, ToolRegistry
 
-_COMPATIBLE_TEMPLATES = frozenset({"deepseek", "glm", "qwen", "turbo"})
+_COMPATIBLE_TEMPLATES = frozenset(
+    {"deepseek", "glm", "qwen", "turbo", "vllm"}
+)
 _SENSITIVE_PARTS = ("secret", "password", "api_key", "token", "credential")
 
 
