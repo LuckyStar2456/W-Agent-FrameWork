@@ -3,9 +3,12 @@ import json
 import pytest
 
 from w_agent import (
+    CUSTOMER_SUPPORT_EVALUATION_SUITE,
+    CaseContractScorer,
     ContainsTextScorer,
     EvaluationCase,
     EvaluationDatasetError,
+    EvaluationSuite,
     ExactTextScorer,
     JsonEvaluationReporter,
     LocalEvaluationRunner,
@@ -18,11 +21,21 @@ from w_agent import (
     StopReason,
     TokenUsage,
     evaluation_report_to_dict,
+    evaluation_suite_to_dict,
+    load_evaluation_dataset,
     load_evaluation_cases,
 )
 
 
-def _result(name, output, *, reason=StopReason.COMPLETED, events=(), cost=None):
+def _result(
+    name,
+    output,
+    *,
+    reason=StopReason.COMPLETED,
+    events=(),
+    cost=None,
+    tool_calls=0,
+):
     return RunResult(
         f"run-{name}",
         reason,
@@ -30,7 +43,7 @@ def _result(name, output, *, reason=StopReason.COMPLETED, events=(), cost=None):
         (ModelMessage.text(MessageRole.ASSISTANT, output or "empty"),),
         events,
         steps=1,
-        tool_calls=0,
+        tool_calls=tool_calls,
         usage=TokenUsage(4, 2),
         model_calls=1,
         reported_usage_calls=1,
@@ -201,3 +214,74 @@ def test_load_evaluation_cases_uses_strict_bounded_schema(tmp_path):
     )
     with pytest.raises(EvaluationDatasetError, match="unique"):
         load_evaluation_cases(source)
+
+
+def test_builtin_evaluation_suite_is_versioned_and_json_exportable(tmp_path):
+    dataset = load_evaluation_dataset("builtin:customer-support@1.0.0")
+    exported = evaluation_suite_to_dict(CUSTOMER_SUPPORT_EVALUATION_SUITE)
+    path = tmp_path / "suite.json"
+    path.write_text(json.dumps(exported), encoding="utf-8")
+    reloaded = load_evaluation_dataset(path)
+
+    assert dataset.name == "customer-support"
+    assert dataset.version == "1.0.0"
+    assert dataset.scorers == ("case-contract",)
+    assert len(dataset.cases) == 3
+    assert reloaded == dataset
+    with pytest.raises(EvaluationDatasetError, match="unavailable"):
+        load_evaluation_dataset("builtin:missing")
+
+
+def test_evaluation_suite_is_fully_replaceable():
+    custom = EvaluationSuite(
+        "custom",
+        "2026.1",
+        "Custom suite",
+        "custom-agent",
+        (EvaluationCase("case", "prompt", "answer"),),
+        scorers=("contains-text",),
+    )
+
+    assert custom.reference == "builtin:custom@2026.1"
+    assert custom.dataset().scorers == ("contains-text",)
+
+
+def test_case_contract_scorer_checks_tools_stop_reason_and_text():
+    case = EvaluationCase(
+        "write",
+        "prompt",
+        metadata={
+            "contract": {
+                "required_tools": ["ticket_update"],
+                "forbidden_tools": ["unsafe_write"],
+                "allowed_stop_reasons": ["needs-approval"],
+                "expected_contains_any": ["approval", "authorize"],
+                "min_tool_calls": 1,
+                "max_tool_calls": 1,
+            }
+        },
+        accepted_stop_reasons=("needs-approval",),
+    )
+    events = (
+        RunEvent(
+            1,
+            RunEventType.TOOL_REQUESTED,
+            "run-write",
+            {"call_id": "one", "name": "ticket_update"},
+        ),
+    )
+    result = _result(
+        "write",
+        "Approval is required.",
+        reason=StopReason.NEEDS_APPROVAL,
+        events=events,
+        tool_calls=1,
+    )
+
+    score = CaseContractScorer().score(case, result)
+
+    assert score.passed is True
+    assert CaseContractScorer().score(
+        case,
+        _result("write", "done"),
+    ).passed is False

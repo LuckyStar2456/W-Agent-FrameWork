@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, confirmed general-plugin lifecycle operations, Responses/vLLM model adapters, verified-prefix text-stream recovery, and pre-call token estimation. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
+The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, confirmed general-plugin lifecycle operations, Responses/vLLM model adapters, verified-prefix text-stream recovery, pre-call token estimation, and versioned support/coding evaluation suites. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -309,7 +309,7 @@ Status: the API, CLI, and TUI are `Experimental`.
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-Datasets use strict JSON. The CLI/TUI execute a configured agent sequentially, use disposable state by default, and expose input/output tokens, metering completeness, latency, errors, and tool outcomes. The TUI requires typing `EVALUATE` and never retains that authorization. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+Datasets use strict JSON or `builtin:customer-support@1.0.0` / `builtin:coding@1.0.0`. The CLI/TUI execute a configured agent sequentially, use disposable state by default, and expose input/output tokens, metering completeness, latency, errors, and tool outcomes. The TUI requires `EVALUATE`; importing evaluation tool code separately requires `LOAD EVAL TOOLS`, and neither authorization is retained. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 16. Next steps
 

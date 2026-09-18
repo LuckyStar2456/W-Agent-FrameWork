@@ -74,7 +74,7 @@
 | 脚本化模型 Mock、显式录制/回放和本地评测指标 | `Experimental` | Phase 6 / 2.0.0a1 |
 | CLI/TUI 本地评测入口与安全报告 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 评测价格/费用指标 | `Experimental` | Phase 6 / 2.0.0a2 |
-| 客服/编码内置基准集 | `Planned` | Phase 6 |
+| 版本化客服/编码内置基准集与用例契约评分 | `Experimental`（当前 main） | Phase 6 |
 | 1.x 最小 `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## 实施阶段
@@ -155,7 +155,7 @@
 - 已实现从显式选择的本地 State Root 汇总和恢复 Workflow Checkpoint；不会自动复制、合并或迁移 Store。
 - 当前 main 已实现配置值脱敏的插件引用预览、`--confirm-plugin-code` 短生命周期 CLI 验证，以及绑定 `LOAD PLUGINS` / `UNLOAD <name>` 的 TUI 生命周期操作；第三方包安装/升级仍为 `Planned`。
 - 当前 main 已实现可替换 `CompositionDependencyResolver`、严格 JSON 候选清单、环境约束检查和逐插件离线动作计划；CLI/TUI 不会查询网络、安装包或把 Ready 视为代码加载授权。
-- 已实现评测报告、CLI 与 TUI 的版本化费用汇总；客服与编码内置基准任务仍为 `Planned`。
+- 已实现评测报告、CLI 与 TUI 的版本化费用汇总；当前 main 新增可替换 `EvaluationSuiteRegistry`、版本化客服/编码套件、声明式 `CaseContractScorer`、`builtin:` 解析与无网络 CLI 导出。套件不附带工具实现或权限；CLI/TUI 的模型调用、工具代码导入与本次权限仍分别授权。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 
 ## 保留但未排期

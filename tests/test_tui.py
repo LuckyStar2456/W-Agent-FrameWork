@@ -667,6 +667,23 @@ async def test_tui_evaluation_requires_explicit_confirmation(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_tui_evaluation_requires_separate_tool_import_confirmation(tmp_path):
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 65)) as pilot:
+        app.query_one(TabbedContent).active = "evaluation"
+        await pilot.pause()
+        app.query_one("#evaluation-confirm").value = "EVALUATE"
+        app.query_one("#evaluation-tool-entries").value = "tools:catalog"
+        await pilot.click("#evaluation-button")
+        await pilot.pause()
+
+        rendered = str(app.query_one("#evaluation-result").content)
+        assert "LOAD EVAL TOOLS" in rendered
+        assert app.query_one("#evaluation-confirm").value == ""
+
+
+@pytest.mark.asyncio
 async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypatch):
     dataset = tmp_path / "cases.json"
     dataset.write_text(
@@ -709,7 +726,7 @@ async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypa
     monkeypatch.setattr(
         tui_module,
         "assemble_local_runtime",
-        lambda config, state_root: runtime,
+        lambda config, state_root, tool_bindings: runtime,
     )
     app = WAgentTui(tmp_path)
     report = tmp_path / "report.json"

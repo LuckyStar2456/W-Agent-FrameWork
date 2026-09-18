@@ -29,15 +29,78 @@ class EvaluationCase:
     prompt: str
     expected_output: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    accepted_stop_reasons: tuple[str, ...] = (StopReason.COMPLETED.value,)
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.prompt:
             raise ValueError("evaluation case name and prompt are required")
+        reasons = tuple(self.accepted_stop_reasons)
+        known_reasons = {item.value for item in StopReason}
+        if (
+            not reasons
+            or any(not isinstance(item, str) or item not in known_reasons for item in reasons)
+            or len(set(reasons)) != len(reasons)
+        ):
+            raise ValueError("evaluation case accepted stop reasons are invalid")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "accepted_stop_reasons", reasons)
 
 
-def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
-    """Load a bounded strict JSON dataset without executing code."""
+@dataclass(frozen=True, slots=True)
+class EvaluationDataset:
+    """Versioned cases plus scorer recommendations, never execution authority."""
+
+    cases: tuple[EvaluationCase, ...]
+    name: str | None = None
+    version: str | None = None
+    scorers: tuple[str, ...] = ("exact-text",)
+
+    def __post_init__(self) -> None:
+        cases = tuple(self.cases)
+        raw_scorers = tuple(self.scorers)
+        if not all(isinstance(case, EvaluationCase) for case in cases):
+            raise ValueError("evaluation dataset cases are invalid")
+        if not all(isinstance(item, str) for item in raw_scorers):
+            raise ValueError("evaluation dataset scorers must be strings")
+        if self.name is not None and not isinstance(self.name, str):
+            raise ValueError("evaluation dataset name must be a string or null")
+        if self.version is not None and not isinstance(self.version, str):
+            raise ValueError("evaluation dataset version must be a string or null")
+        scorers = tuple(item.strip().lower() for item in raw_scorers)
+        if not cases:
+            raise ValueError("evaluation dataset needs at least one case")
+        if len(cases) > _MAX_DATASET_CASES:
+            raise ValueError("evaluation dataset has too many cases")
+        names = tuple(case.name for case in cases)
+        if len(set(names)) != len(names):
+            raise ValueError("evaluation case names must be unique")
+        if not scorers or any(not item for item in scorers):
+            raise ValueError("evaluation dataset needs scorer recommendations")
+        if len(set(scorers)) != len(scorers):
+            raise ValueError("evaluation dataset scorers must be unique")
+        if (self.name is None) != (self.version is None):
+            raise ValueError("evaluation dataset name/version must be paired")
+        if self.name is not None and (not self.name.strip() or not self.version.strip()):
+            raise ValueError("evaluation dataset name/version must not be empty")
+        object.__setattr__(self, "cases", cases)
+        object.__setattr__(self, "scorers", scorers)
+
+
+def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
+    """Load a bounded strict JSON or registered built-in dataset."""
+
+    source_text = str(path)
+    if source_text.startswith("builtin:"):
+        from .evaluation_suites import builtin_evaluation_suite_registry
+
+        reference = source_text.removeprefix("builtin:")
+        try:
+            suite = builtin_evaluation_suite_registry().resolve_reference(reference)
+        except ValueError as exc:
+            raise EvaluationDatasetError(
+                "built-in evaluation suite is unavailable"
+            ) from exc
+        return suite.dataset()
 
     source = Path(path)
     try:
@@ -52,7 +115,7 @@ def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
         raise EvaluationDatasetError("evaluation dataset is not valid JSON") from exc
     if not isinstance(data, Mapping):
         raise EvaluationDatasetError("evaluation dataset must be an object")
-    unknown = set(data) - {"schema_version", "cases"}
+    unknown = set(data) - {"schema_version", "name", "version", "scorers", "cases"}
     if unknown:
         raise EvaluationDatasetError("evaluation dataset has unsupported fields")
     if data.get("schema_version", 1) != 1:
@@ -62,6 +125,19 @@ def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
         raise EvaluationDatasetError("evaluation dataset needs a non-empty cases list")
     if len(raw_cases) > _MAX_DATASET_CASES:
         raise EvaluationDatasetError("evaluation dataset has too many cases")
+    dataset_name = data.get("name")
+    dataset_version = data.get("version")
+    raw_scorers = data.get("scorers", ["exact-text"])
+    if dataset_name is not None and not isinstance(dataset_name, str):
+        raise EvaluationDatasetError("evaluation dataset name must be a string or null")
+    if dataset_version is not None and not isinstance(dataset_version, str):
+        raise EvaluationDatasetError(
+            "evaluation dataset version must be a string or null"
+        )
+    if not isinstance(raw_scorers, list) or not all(
+        isinstance(item, str) for item in raw_scorers
+    ):
+        raise EvaluationDatasetError("evaluation dataset scorers must be strings")
     cases: list[EvaluationCase] = []
     names: set[str] = set()
     for raw_case in raw_cases:
@@ -72,6 +148,7 @@ def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
             "prompt",
             "expected_output",
             "metadata",
+            "accepted_stop_reasons",
         }
         if unknown:
             raise EvaluationDatasetError("evaluation case has unsupported fields")
@@ -79,6 +156,10 @@ def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
         prompt = raw_case.get("prompt")
         expected = raw_case.get("expected_output")
         metadata = raw_case.get("metadata", {})
+        accepted_stop_reasons = raw_case.get(
+            "accepted_stop_reasons",
+            [StopReason.COMPLETED.value],
+        )
         if not isinstance(name, str) or not isinstance(prompt, str):
             raise EvaluationDatasetError("evaluation case name/prompt must be strings")
         if expected is not None and not isinstance(expected, str):
@@ -87,15 +168,41 @@ def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
             )
         if not isinstance(metadata, Mapping):
             raise EvaluationDatasetError("evaluation case metadata must be an object")
+        if not isinstance(accepted_stop_reasons, list) or not all(
+            isinstance(item, str) for item in accepted_stop_reasons
+        ):
+            raise EvaluationDatasetError(
+                "evaluation case accepted_stop_reasons must be strings"
+            )
         if name in names:
             raise EvaluationDatasetError("evaluation case names must be unique")
         try:
-            case = EvaluationCase(name, prompt, expected, metadata)
+            case = EvaluationCase(
+                name,
+                prompt,
+                expected,
+                metadata,
+                tuple(accepted_stop_reasons),
+            )
         except (TypeError, ValueError) as exc:
             raise EvaluationDatasetError("evaluation case is invalid") from exc
         names.add(name)
         cases.append(case)
-    return tuple(cases)
+    try:
+        return EvaluationDataset(
+            tuple(cases),
+            name=dataset_name,
+            version=dataset_version,
+            scorers=tuple(raw_scorers),
+        )
+    except ValueError as exc:
+        raise EvaluationDatasetError("evaluation dataset is invalid") from exc
+
+
+def load_evaluation_cases(path: str | Path) -> tuple[EvaluationCase, ...]:
+    """Compatibility helper returning only cases from an evaluation dataset."""
+
+    return load_evaluation_dataset(path).cases
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +254,70 @@ class ContainsTextScorer:
         if not self.case_sensitive:
             actual, expected = actual.casefold(), expected.casefold()
         return EvaluationScore(self.name, float(expected in actual))
+
+
+@dataclass(frozen=True, slots=True)
+class CaseContractScorer:
+    """Evaluate declarative text, tool, and stop-reason rules from metadata."""
+
+    name: str = "case-contract"
+    case_sensitive: bool = False
+
+    def score(self, case: EvaluationCase, result: RunResult) -> EvaluationScore:
+        contract = case.metadata.get("contract")
+        if not isinstance(contract, Mapping):
+            return EvaluationScore(self.name, 0)
+        allowed_fields = {
+            "required_tools",
+            "required_any_tools",
+            "forbidden_tools",
+            "allowed_stop_reasons",
+            "expected_contains_all",
+            "expected_contains_any",
+            "min_tool_calls",
+            "max_tool_calls",
+        }
+        if set(contract) - allowed_fields:
+            return EvaluationScore(self.name, 0)
+        try:
+            required = _contract_strings(contract, "required_tools")
+            required_any = _contract_strings(contract, "required_any_tools")
+            forbidden = _contract_strings(contract, "forbidden_tools")
+            allowed_reasons = _contract_strings(contract, "allowed_stop_reasons")
+            contains_all = _contract_strings(contract, "expected_contains_all")
+            contains_any = _contract_strings(contract, "expected_contains_any")
+            minimum = _contract_count(contract, "min_tool_calls")
+            maximum = _contract_count(contract, "max_tool_calls")
+        except ValueError:
+            return EvaluationScore(self.name, 0)
+        if minimum is not None and maximum is not None and minimum > maximum:
+            return EvaluationScore(self.name, 0)
+        requested = {
+            str(event.data["name"])
+            for event in result.events
+            if event.type is RunEventType.TOOL_REQUESTED
+            and isinstance(event.data.get("name"), str)
+        }
+        output = result.output if self.case_sensitive else result.output.casefold()
+        normalize = (lambda value: value) if self.case_sensitive else str.casefold
+        checks: list[bool] = []
+        if required:
+            checks.append(set(required).issubset(requested))
+        if required_any:
+            checks.append(bool(set(required_any) & requested))
+        if forbidden:
+            checks.append(not bool(set(forbidden) & requested))
+        if allowed_reasons:
+            checks.append(result.stop_reason.value in allowed_reasons)
+        if contains_all:
+            checks.append(all(normalize(item) in output for item in contains_all))
+        if contains_any:
+            checks.append(any(normalize(item) in output for item in contains_any))
+        if minimum is not None:
+            checks.append(result.tool_calls >= minimum)
+        if maximum is not None:
+            checks.append(result.tool_calls <= maximum)
+        return EvaluationScore(self.name, float(bool(checks) and all(checks)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,8 +435,9 @@ class LocalEvaluationRunner:
                 result = await target(case)
                 scores = tuple(scorer.score(case, result) for scorer in scorers)
                 tool_successes, tool_failures = _tool_outcomes(result)
-                passed = result.stop_reason is StopReason.COMPLETED and all(
-                    score.passed for score in scores
+                passed = (
+                    result.stop_reason.value in case.accepted_stop_reasons
+                    and all(score.passed for score in scores)
                 )
                 results.append(
                     EvaluationCaseResult(
@@ -428,3 +600,24 @@ def _tool_outcomes(result: RunResult) -> tuple[int, int]:
             latest[call_id] = outcome
     successes = sum(outcome == "succeeded" for outcome in latest.values())
     return successes, len(latest) - successes
+
+
+def _contract_strings(contract: Mapping[str, Any], field: str) -> tuple[str, ...]:
+    value = contract.get(field, ())
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ValueError("contract string list is invalid")
+    normalized = tuple(item.strip() for item in value)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("contract string list contains duplicates")
+    return normalized
+
+
+def _contract_count(contract: Mapping[str, Any], field: str) -> int | None:
+    value = contract.get(field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("contract count is invalid")
+    return value

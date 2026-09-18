@@ -2,7 +2,7 @@
 
 [English](./testing-evaluation.en.md) | 简体中文
 
-状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告、版本化费用指标和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a2`）。客服/编码内置基准集仍为 `Planned`。
+状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告、版本化费用指标和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a2`）；当前 main 另含版本化客服/编码内置基准集、可替换套件注册表与声明式用例契约评分。
 
 ## 确定性模型测试
 
@@ -18,7 +18,7 @@ Cassette 的请求指纹只保存模型名、消息角色、内容块类型、�
 
 ## 本地评测
 
-`LocalEvaluationRunner` 顺序执行 `EvaluationCase`，目标函数返回公开 `RunResult`。内置 `ExactTextScorer` 和 `ContainsTextScorer` 可替换或组合；普通异常按异常类型记为失败，取消继续向上传播。
+`LocalEvaluationRunner` 顺序执行 `EvaluationCase`，目标函数返回公开 `RunResult`。内置 `ExactTextScorer`、`ContainsTextScorer` 和 `CaseContractScorer` 可替换或组合；普通异常按异常类型记为失败，取消继续向上传播。`CaseContractScorer` 只读取 `metadata.contract`，可检查必需/任选/禁止工具、允许的停止原因、全部/任一文本片段和工具调用数量范围；未知字段或非法类型失败关闭，不执行代码。
 
 `EvaluationReport` 汇总：
 
@@ -32,31 +32,57 @@ Cassette 的请求指纹只保存模型名、消息角色、内容块类型、�
 
 ## CLI 用例集
 
-`load_evaluation_cases()` 读取有大小和数量上限的严格 JSON，不导入或执行代码。用例名必须唯一：
+`load_evaluation_dataset()` 读取有大小和数量上限的严格 JSON，保留可选的名称、版本和推荐 Scorer；`load_evaluation_cases()` 是只返回 Cases 的兼容便捷函数。两者都不导入或执行代码，用例名必须唯一：
 
 ```json
 {
   "schema_version": 1,
+  "name": "smoke",
+  "version": "1.0.0",
+  "scorers": ["case-contract"],
   "cases": [
     {
       "name": "hello",
       "prompt": "Say hello",
-      "expected_output": "hello",
-      "metadata": {"suite": "smoke"}
+      "expected_output": null,
+      "accepted_stop_reasons": ["completed"],
+      "metadata": {
+        "contract": {
+          "allowed_stop_reasons": ["completed"],
+          "expected_contains_any": ["hello", "hi"],
+          "max_tool_calls": 0
+        }
+      }
     }
   ]
 }
 ```
 
-CLI 顺序运行用例；默认使用 `exact-text`，可重复传入 `--scorer exact-text` / `--scorer contains-text`，或单独使用 `--scorer none` 只检查 Run 是否完成。命令必须显式授权可能计费的模型调用：
+`accepted_stop_reasons` 默认只有 `completed`；需要验证审批边界的用例可显式设为 `needs-approval`。Runner 先检查停止原因，再应用所有 Scorer，因此声明式契约不能绕过用例自己的终止条件。
+
+CLI 顺序运行用例；未传 `--scorer` 时使用数据集推荐值（普通旧格式默认为 `exact-text`），也可重复传入 `exact-text`、`contains-text`、`case-contract`，或单独使用 `none` 只检查 Run 是否完成。命令必须显式授权可能计费的模型调用：
 
 ```text
 wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --report report.json
 ```
 
+## 内置客服/编码套件
+
+`EvaluationSuite` 是普通不可变数据；`EvaluationSuiteRegistry` 可由应用新建、注册或完全替换。当前 main 提供 `customer-support@1.0.0` 与 `coding@1.0.0`，分别引用首批 Agent 模板推荐的工具名，验证缺失标识符处理、知识证据、写入审批，以及 inspect-first、受审批补丁和沙箱验证。审批用例通过显式 `accepted_stop_reasons=["needs-approval"]` 把安全暂停视为预期结果。它们不是厂商模型排行榜，也不内置工具实现、权限、审批或测试数据。
+
+```text
+wagent benchmark list --json
+wagent benchmark export customer-support@1.0.0 support-suite.json
+wagent evaluate builtin:customer-support@1.0.0 --config .wagent/config.json \
+  --tool-entry my_tools:support_catalog --confirm-tool-code \
+  --grant-permission tickets.read --confirm-model-call
+```
+
+`builtin:<name>[@version]` 只解析进程内已注册套件，不访问网络。省略版本使用该注册表最后注册的版本；需要可复现评测时应固定版本。`benchmark export` 产生同一严格 JSON 格式，目标已存在时必须显式 `--force`。内置用例多数要求宿主提供同名工具；未提供时失败是正确结果，不会自动下载或授予工具。
+
 默认使用一次性运行状态，结束后删除可能包含 Prompt 的 Session/Run 文件。只有传入 `--state-root` 才持久化它们。`--report` 写入安全默认报告；`--include-outputs` 会同时让报告与 `--json` 输出包含潜在敏感模型输出。只要任一用例失败，命令在输出报告后以状态码 1 结束。工具代码加载与工具权限继续使用 `--confirm-tool-code`、`--tool-entry` 和 `--grant-permission` 独立授权；需要人工批准的工具调用当前记为未通过，不会由评测命令自动批准。
 
-TUI Evaluation 页读取同一用例集与 Runtime 配置，输入 `EVALUATE` 后才运行；确认立即清空，不会持久化。它始终使用一次性状态与 `exact-text` Scorer，可选写入默认脱敏报告，只展示汇总和逐用例状态。自定义 Scorer、输出持久化与开发者工具入口目前使用 Python API/CLI。
+TUI Evaluation 页读取相同 JSON 或 `builtin:` 引用与 Runtime 配置，输入 `EVALUATE` 后才运行；确认立即清空，不会持久化。它使用一次性状态和数据集推荐 Scorer，可选写入默认脱敏报告，只展示汇总和逐用例状态。开发者工具条目与本次权限可单独填写；只有再次输入 `LOAD EVAL TOOLS` 才导入工具代码，模型调用确认不能替代代码导入授权。自定义 Python Scorer 与输出持久化仍使用 Python API/CLI。
 
 ## 最小示例
 

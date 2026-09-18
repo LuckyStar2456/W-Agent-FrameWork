@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a3`；main 在该发布之后继续加入 Workflow Checkpoint 恢复、离线装配依赖计划、通用插件确认生命周期、Responses/vLLM 模型适配、验证前缀的文本流恢复和调用前 Token 估算。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、在线插件来源目录与包安装仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a3`；main 在该发布之后继续加入 Workflow Checkpoint 恢复、离线装配依赖计划、通用插件确认生命周期、Responses/vLLM 模型适配、验证前缀的文本流恢复、调用前 Token 估算和版本化客服/编码评测套件。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、在线插件来源目录与包安装仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -309,7 +309,7 @@ TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检�
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-用例集是严格 JSON。CLI/TUI 顺序运行配置化 Agent，默认使用一次性状态，并显示输入/输出 Token、计量完整性、延迟、错误和工具结果。TUI 需要输入 `EVALUATE`，不会保存授权。报告默认排除 Prompt 与模型输出。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+用例集是严格 JSON，也可使用 `builtin:customer-support@1.0.0` / `builtin:coding@1.0.0`。CLI/TUI 顺序运行配置化 Agent，默认使用一次性状态，并显示输入/输出 Token、计量完整性、延迟、错误和工具结果。TUI 需要输入 `EVALUATE`；若加载评测工具代码还需独立输入 `LOAD EVAL TOOLS`，两种授权都不会保存。报告默认排除 Prompt 与模型输出。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 16. 下一步
 

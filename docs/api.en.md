@@ -27,7 +27,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Models/pricing | `ModelProvider`, `ModelRegistry`, `ModelRequest`, `StreamEvent`, `OpenAICompatibleProvider`, `HttpModelProvider`, vendor mappings/templates, `ModelPrice`, `PriceTable`, `PricingResolver`, `PricingCatalog`, `ModelCost`, and related types |
 | Routing/invocation/probing | `ModelRouter`, `ModelExecutor`, `InvocationPolicy`, `YamlRoutingPolicy`, `EndpointProbe`, `ModelProviderProbe`, and related types |
 | Workflow | `WorkflowEngineProtocol`, `LocalWorkflowEngine`, all three definitions, `WorkflowStore`, `JsonlWorkflowStore`, and related types |
-| Testing/evaluation | `ScriptedModelProvider`, `RecordingModelProvider`, `ReplayModelProvider`, `LocalEvaluationRunner`, scorers, and the JSON reporter |
+| Testing/evaluation | `ScriptedModelProvider`, `RecordingModelProvider`, `ReplayModelProvider`, `EvaluationDataset`, `EvaluationSuite`, `EvaluationSuiteRegistry`, `LocalEvaluationRunner`, scorers, and the JSON reporter |
 
 The only accurate current agent protocol is:
 
@@ -213,7 +213,7 @@ Decode, preview, and planning perform no network access, install no dependency, 
 
 Status: `Experimental` in `2.0.0a2`.
 
-`ScriptedModelProvider` supplies finite deterministic network-free model turns. `RecordingModelProvider` and `ReplayModelProvider` use `JsonlModelCassette` for complete-turn recording and sequential replay behind explicit sensitive-content authorization. `load_evaluation_cases()` loads uniquely named `EvaluationCase` values from bounded strict JSON. `LocalEvaluationRunner` executes cases sequentially against asynchronous targets returning the public `RunResult`, with `ExactTextScorer`, `ContainsTextScorer`, or custom `EvaluationScorer` implementations. `EvaluationReport`/`JsonEvaluationReporter` aggregate pass rate, token/cost values and completeness, latency, errors, and tool outcomes; reports do not persist prompts, metadata, outputs, or exception bodies by default. The `wagent evaluate` CLI runs only after explicit model-call authorization and uses disposable state by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
+`ScriptedModelProvider` supplies finite deterministic network-free model turns. `RecordingModelProvider` and `ReplayModelProvider` use `JsonlModelCassette` for complete-turn recording and sequential replay behind explicit sensitive-content authorization. `load_evaluation_dataset()` loads versions and scorer recommendations from bounded strict JSON or a `builtin:` reference; `load_evaluation_cases()` preserves the cases-only compatibility API. `EvaluationSuite`/`EvaluationSuiteRegistry` are replaceable ordinary data and registry contracts; built-in support/coding suites can be exported through `evaluation_suite_to_dict()` or `wagent benchmark export`. `LocalEvaluationRunner` executes cases sequentially against asynchronous targets returning public `RunResult`, with `ExactTextScorer`, `ContainsTextScorer`, declarative `CaseContractScorer`, or custom `EvaluationScorer` implementations. `EvaluationReport`/`JsonEvaluationReporter` aggregate pass rate, token/cost values and completeness, latency, errors, and tool outcomes; reports do not persist prompts, metadata, outputs, or exception bodies by default. CLI/TUI model calls, tool-code imports, and permissions are separately authorized. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
 
 ## 13. Compatibility API
 

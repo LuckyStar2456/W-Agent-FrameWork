@@ -41,6 +41,7 @@ from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
 from w_agent.core.doctor import Doctor
 from w_agent.evaluation import (
+    CaseContractScorer,
     ContainsTextScorer,
     EvaluationCase,
     EvaluationDatasetError,
@@ -50,7 +51,11 @@ from w_agent.evaluation import (
     JsonEvaluationReporter,
     LocalEvaluationRunner,
     evaluation_report_to_dict,
-    load_evaluation_cases,
+    load_evaluation_dataset,
+)
+from w_agent.evaluation_suites import (
+    builtin_evaluation_suite_registry,
+    evaluation_suite_to_dict,
 )
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
@@ -106,6 +111,7 @@ session_app = typer.Typer(help="Manage local persistent agent sessions.")
 config_app = typer.Typer(help="Compatibility configuration commands.")
 bean_app = typer.Typer(help="Compatibility IOC-container commands.")
 checkpoint_app = typer.Typer(help="Inspect local prompt-free checkpoint summaries.")
+benchmark_app = typer.Typer(help="Inspect and export built-in evaluation suites.")
 app.add_typer(profile_app, name="profile")
 app.add_typer(plugin_app, name="plugin")
 app.add_typer(composition_app, name="composition")
@@ -113,6 +119,7 @@ app.add_typer(session_app, name="session")
 app.add_typer(config_app, name="config")
 app.add_typer(bean_app, name="bean")
 app.add_typer(checkpoint_app, name="checkpoint")
+app.add_typer(benchmark_app, name="benchmark")
 console = Console()
 error_console = Console(stderr=True)
 
@@ -393,12 +400,18 @@ def run_resume_command(
 
 @app.command("evaluate")
 def evaluate_command(
-    dataset: Path = typer.Argument(..., help="Strict local JSON evaluation dataset."),
+    dataset: Path = typer.Argument(
+        ...,
+        help="Strict local JSON dataset or builtin:<name>[@version].",
+    ),
     config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
     scorer: list[str] = typer.Option(
-        ["exact-text"],
+        [],
         "--scorer",
-        help="exact-text, contains-text, or none; may repeat.",
+        help=(
+            "exact-text, contains-text, case-contract, or none; may repeat. "
+            "Omitted uses dataset recommendations."
+        ),
     ),
     case_sensitive: bool = typer.Option(
         True,
@@ -444,8 +457,10 @@ def evaluate_command(
     if tool_entry and not confirm_tool_code:
         _fail("tool code not authorized; pass --confirm-tool-code")
     try:
-        cases = load_evaluation_cases(dataset)
-        scorers = _evaluation_scorers(scorer, case_sensitive=case_sensitive)
+        evaluation_dataset = load_evaluation_dataset(dataset)
+        cases = evaluation_dataset.cases
+        scorer_names = scorer or list(evaluation_dataset.scorers)
+        scorers = _evaluation_scorers(scorer_names, case_sensitive=case_sensitive)
         catalog = load_tool_entries(tool_entry) if tool_entry else {}
         config_value = load_local_runtime_config(config)
         root_context = (
@@ -486,6 +501,56 @@ def evaluate_command(
     _emit_evaluation(payload, json_output=json_output)
     if report.passed != report.total:
         raise typer.Exit(1)
+
+
+@benchmark_app.command("list")
+def benchmark_list(
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """List versioned built-in suites without running models or tools."""
+
+    payload = [
+        {
+            "key": suite.key,
+            "version": suite.version,
+            "reference": suite.reference,
+            "description": suite.description,
+            "agent_template": suite.agent_template,
+            "cases": len(suite.cases),
+            "scorers": list(suite.scorers),
+        }
+        for suite in builtin_evaluation_suite_registry().list()
+    ]
+    _emit(payload, json_output)
+
+
+@benchmark_app.command("export")
+def benchmark_export(
+    reference: str = typer.Argument(..., help="Suite name or name@version."),
+    destination: Path = typer.Argument(..., help="Destination JSON file."),
+    force: bool = typer.Option(False, "--force", help="Replace an existing file."),
+) -> None:
+    """Export a built-in suite to the ordinary strict JSON dataset format."""
+
+    try:
+        suite = builtin_evaluation_suite_registry().resolve_reference(reference)
+        target = destination.resolve()
+        if target.exists() and not force:
+            raise ValueError("destination exists; pass --force to replace it")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(
+                evaluation_suite_to_dict(suite),
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except (OSError, ValueError) as error:
+        _fail(str(error))
+    console.print(str(target), markup=False)
 
 
 @profile_app.command("list")
@@ -1035,6 +1100,7 @@ def _evaluation_scorers(
     available: dict[str, EvaluationScorer] = {
         "exact-text": ExactTextScorer(case_sensitive=case_sensitive),
         "contains-text": ContainsTextScorer(case_sensitive=case_sensitive),
+        "case-contract": CaseContractScorer(case_sensitive=case_sensitive),
     }
     unknown = [name for name in normalized if name not in available]
     if unknown:

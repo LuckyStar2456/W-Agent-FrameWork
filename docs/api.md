@@ -27,7 +27,7 @@
 | 模型/价格 | `ModelProvider`、`ModelRegistry`、`ModelRequest`、`StreamEvent`、`OpenAICompatibleProvider`、`HttpModelProvider`、厂商映射与模板、`ModelPrice`、`PriceTable`、`PricingResolver`、`PricingCatalog`、`ModelCost` 等 |
 | 路由/调用/探测 | `ModelRouter`、`ModelExecutor`、`InvocationPolicy`、`YamlRoutingPolicy`、`EndpointProbe`、`ModelProviderProbe` 等 |
 | Workflow | `WorkflowEngineProtocol`、`LocalWorkflowEngine`、三种 Definition、`WorkflowStore`、`JsonlWorkflowStore` 等 |
-| 测试与评测 | `ScriptedModelProvider`、`RecordingModelProvider`、`ReplayModelProvider`、`LocalEvaluationRunner`、Scorer 与 JSON Reporter |
+| 测试与评测 | `ScriptedModelProvider`、`RecordingModelProvider`、`ReplayModelProvider`、`EvaluationDataset`、`EvaluationSuite`、`EvaluationSuiteRegistry`、`LocalEvaluationRunner`、Scorer 与 JSON Reporter |
 
 当前准确的 Agent 协议只有：
 
@@ -213,7 +213,7 @@ plan = plan_composition(manifest, environment, resolver)
 
 状态：`Experimental`（`2.0.0a2`）。
 
-`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`load_evaluation_cases()` 从有界严格 JSON 加载唯一命名的 `EvaluationCase`。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行用例，支持 `ExactTextScorer`、`ContainsTextScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token/费用与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。CLI `wagent evaluate` 仅在显式模型调用授权后运行，默认使用一次性状态。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
+`ScriptedModelProvider` 提供有限、确定性、无网络的模型 Turn；`RecordingModelProvider` 和 `ReplayModelProvider` 通过 `JsonlModelCassette` 完成显式敏感内容授权下的完整 Turn 录制与顺序回放。`load_evaluation_dataset()` 从有界严格 JSON 或 `builtin:` 引用加载版本与推荐 Scorer，`load_evaluation_cases()` 保留只取 Cases 的兼容接口。`EvaluationSuite`/`EvaluationSuiteRegistry` 是可替换普通数据与注册表；内置客服/编码套件可通过 `evaluation_suite_to_dict()` 或 `wagent benchmark export` 导出。`LocalEvaluationRunner` 对返回公开 `RunResult` 的异步目标顺序执行用例，支持 `ExactTextScorer`、`ContainsTextScorer`、声明式 `CaseContractScorer` 和自定义 `EvaluationScorer`。`EvaluationReport`/`JsonEvaluationReporter` 汇总通过率、Token/费用与完整性、延迟、错误和工具结果；报告默认不持久化 Prompt、Metadata、输出或异常正文。CLI/TUI 的模型调用、工具代码导入和权限分别授权。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 
 ## 13. 兼容接口
 

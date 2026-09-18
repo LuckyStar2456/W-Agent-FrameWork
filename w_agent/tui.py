@@ -42,12 +42,15 @@ from w_agent.composition_planning import (
     plan_composition,
 )
 from w_agent.evaluation import (
+    CaseContractScorer,
+    ContainsTextScorer,
     EvaluationCase,
     EvaluationDatasetError,
+    EvaluationScorer,
     ExactTextScorer,
     JsonEvaluationReporter,
     LocalEvaluationRunner,
-    load_evaluation_cases,
+    load_evaluation_dataset,
 )
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
@@ -338,10 +341,22 @@ class WAgentTui(App[None]):
             with TabPane("Evaluation", id="evaluation"):
                 yield Label("Sequential local evaluation with disposable run state")
                 yield Input(
-                    placeholder="Evaluation dataset JSON",
+                    placeholder="Evaluation JSON or builtin:<name>[@version]",
                     id="evaluation-dataset",
                 )
                 yield Input(value=".wagent/config.json", id="evaluation-config")
+                yield Input(
+                    placeholder="Tool entries, comma-separated module:attribute",
+                    id="evaluation-tool-entries",
+                )
+                yield Input(
+                    placeholder="Permissions for this evaluation only, comma-separated",
+                    id="evaluation-permissions",
+                )
+                yield Input(
+                    placeholder="Type LOAD EVAL TOOLS to authorize Python imports",
+                    id="evaluation-tool-confirm",
+                )
                 yield Input(
                     placeholder="Optional privacy-safe report JSON path",
                     id="evaluation-report",
@@ -1002,8 +1017,33 @@ class WAgentTui(App[None]):
             target.update("Rejected: type EVALUATE to authorize model calls")
             return
         confirmation.value = ""
-        dataset = self._workspace_path(
-            self.query_one("#evaluation-dataset", Input).value
+        try:
+            tool_entries = _split_values(
+                self.query_one("#evaluation-tool-entries", Input).value
+            )
+            permissions = frozenset(
+                _split_values(
+                    self.query_one("#evaluation-permissions", Input).value
+                )
+            )
+        except ValueError as error:
+            target.update(f"Rejected: {error}")
+            return
+        tool_confirmation = self.query_one("#evaluation-tool-confirm", Input)
+        if (
+            tool_entries
+            and tool_confirmation.value.strip() != "LOAD EVAL TOOLS"
+        ):
+            target.update(
+                "Rejected: type LOAD EVAL TOOLS to authorize developer Python imports"
+            )
+            return
+        tool_confirmation.value = ""
+        dataset_value = self.query_one("#evaluation-dataset", Input).value.strip()
+        dataset = (
+            dataset_value
+            if dataset_value.startswith("builtin:")
+            else self._workspace_path(dataset_value)
         )
         config_path = self._workspace_path(
             self.query_one("#evaluation-config", Input).value
@@ -1012,17 +1052,22 @@ class WAgentTui(App[None]):
         report_path = self._workspace_path(report_value) if report_value else None
         target.update("Running evaluation…")
         try:
-            cases = load_evaluation_cases(dataset)
+            evaluation_dataset = load_evaluation_dataset(dataset)
+            cases = evaluation_dataset.cases
+            scorers = _tui_evaluation_scorers(evaluation_dataset.scorers)
+            catalog = load_tool_entries(tool_entries) if tool_entries else {}
             with TemporaryDirectory(prefix="wagent-tui-eval-") as state_root:
                 runtime = assemble_local_runtime(
                     load_local_runtime_config(config_path),
                     state_root,
+                    tool_bindings=catalog,
                 )
 
                 async def run_case(case: EvaluationCase):
                     run = await runtime.run(
                         case.prompt,
                         session_title=f"Evaluation: {case.name}",
+                        permissions=permissions,
                     )
                     return run.result
 
@@ -1030,7 +1075,7 @@ class WAgentTui(App[None]):
                     report = await LocalEvaluationRunner().run(
                         cases,
                         run_case,
-                        scorers=(ExactTextScorer(),),
+                        scorers=scorers,
                     )
             if report_path is not None:
                 await JsonEvaluationReporter().write(report, report_path)
@@ -1038,6 +1083,7 @@ class WAgentTui(App[None]):
             EvaluationDatasetError,
             LocalRuntimeConfigError,
             OSError,
+            ToolEntryLoadError,
             ValueError,
         ) as error:
             target.update(f"Rejected: {error}")
@@ -1106,6 +1152,22 @@ def _split_values(value: str) -> tuple[str, ...]:
     if len(values) != len(set(values)):
         raise ValueError("list entries must be unique")
     return values
+
+
+def _tui_evaluation_scorers(
+    names: tuple[str, ...],
+) -> tuple[EvaluationScorer, ...]:
+    if names == ("none",):
+        return ()
+    available: dict[str, EvaluationScorer] = {
+        "exact-text": ExactTextScorer(),
+        "contains-text": ContainsTextScorer(),
+        "case-contract": CaseContractScorer(),
+    }
+    try:
+        return tuple(available[name] for name in names)
+    except KeyError as error:
+        raise ValueError(f"unsupported evaluation scorer: {error.args[0]}") from error
 
 
 def _event_text(event: RunEvent) -> str:

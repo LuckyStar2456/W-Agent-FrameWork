@@ -74,7 +74,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Scripted model mocks, explicit record/replay, and local evaluation metrics | `Experimental` | Phase 6 / 2.0.0a1 |
 | CLI/TUI local-evaluation entry points and privacy-safe reports | `Experimental` | Phase 6 / 2.0.0a1 |
 | Evaluation pricing/cost metrics | `Experimental` | Phase 6 / 2.0.0a2 |
-| Built-in support/coding suites | `Planned` | Phase 6 |
+| Versioned support/coding suites and case-contract scoring | `Experimental` (current main) | Phase 6 |
 | Minimal 1.x `LegacyAgentAdapter` | `Implemented` | Phase 6 / 2.0.0a1 |
 
 ## Delivery phases
@@ -155,7 +155,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented workflow-checkpoint discovery and recovery from an explicitly selected local state root; stores are never copied, merged, or migrated automatically.
 - Current main implements configuration-value-free plugin-reference preview, ephemeral CLI validation bound to `--confirm-plugin-code`, and TUI lifecycle controls bound to `LOAD PLUGINS` / `UNLOAD <name>`. Third-party package installation and upgrades remain `Planned`.
 - Current main implements a replaceable `CompositionDependencyResolver`, strict JSON candidate inventories, environment-constraint checks, and per-plugin offline actions. CLI/TUI never query the network, install packages, or treat Ready as code-load authorization.
-- Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
+- Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI. Current main adds a replaceable `EvaluationSuiteRegistry`, versioned support/coding suites, declarative `CaseContractScorer`, `builtin:` resolution, and network-free CLI export. Suites bundle no tool implementations or authority; CLI/TUI model calls, tool-code imports, and one-run permissions remain separately authorized.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 
 ## Reserved without a release phase

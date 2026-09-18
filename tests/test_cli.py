@@ -17,6 +17,8 @@ from w_agent import (
     ModelDescriptor,
     ModelMessage,
     ModelCost,
+    RunEvent,
+    RunEventType,
     RunResult,
     StopReason,
     TokenUsage,
@@ -43,6 +45,30 @@ def test_cli_version_and_profile_json_are_machine_readable():
         "customer-support",
         "coding",
     ]
+
+
+def test_cli_lists_and_exports_builtin_evaluation_suites(tmp_path):
+    listed = runner.invoke(app, ["benchmark", "list", "--json"])
+    target = tmp_path / "customer-support.json"
+    exported = runner.invoke(
+        app,
+        ["benchmark", "export", "customer-support@1.0.0", str(target)],
+    )
+    refused = runner.invoke(
+        app,
+        ["benchmark", "export", "customer-support", str(target)],
+    )
+
+    assert listed.exit_code == 0
+    payload = json.loads(listed.stdout)
+    assert [item["key"] for item in payload] == ["customer-support", "coding"]
+    assert payload[0]["reference"] == "builtin:customer-support@1.0.0"
+    assert exported.exit_code == 0
+    dataset = json.loads(target.read_text(encoding="utf-8"))
+    assert dataset["scorers"] == ["case-contract"]
+    assert len(dataset["cases"]) == 3
+    assert refused.exit_code == 2
+    assert "--force" in refused.stderr
 
 
 def test_cli_init_is_idempotent_and_never_overwrites_config(tmp_path):
@@ -646,3 +672,84 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
     assert "secret prompt" not in persisted
     assert "VISIBLE_OUTPUT" not in persisted
     assert runtime.closed is True
+
+
+def test_cli_evaluate_uses_builtin_suite_recommended_contract_scorer(
+    tmp_path,
+    monkeypatch,
+):
+    class Runtime:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
+
+        async def run(self, prompt, **kwargs):
+            del kwargs
+            if "status of my support ticket" in prompt:
+                output = "Please provide a ticket identifier."
+                reason = StopReason.COMPLETED
+                events = ()
+                tool_calls = 0
+            elif "refund policy" in prompt:
+                output = "Policy evidence checked."
+                reason = StopReason.COMPLETED
+                events = (
+                    RunEvent(
+                        1,
+                        RunEventType.TOOL_REQUESTED,
+                        "eval-policy",
+                        {"call_id": "one", "name": "knowledge_search"},
+                    ),
+                )
+                tool_calls = 1
+            else:
+                output = "Approval required."
+                reason = StopReason.NEEDS_APPROVAL
+                events = (
+                    RunEvent(
+                        1,
+                        RunEventType.TOOL_REQUESTED,
+                        "eval-write",
+                        {"call_id": "two", "name": "ticket_update"},
+                    ),
+                )
+                tool_calls = 1
+            result = RunResult(
+                "eval-run",
+                reason,
+                output,
+                (ModelMessage.text(MessageRole.ASSISTANT, output),),
+                events,
+                steps=1,
+                tool_calls=tool_calls,
+            )
+            return SimpleNamespace(result=result)
+
+    monkeypatch.setattr(cli_module, "load_local_runtime_config", lambda path: object())
+    monkeypatch.setattr(
+        cli_module,
+        "assemble_local_runtime",
+        lambda config, state_root, tool_bindings: Runtime(),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "builtin:customer-support@1.0.0",
+            "--config",
+            str(tmp_path / "config.json"),
+            "--confirm-model-call",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["passed"] == 3
+    assert all(
+        case["scores"][0]["name"] == "case-contract"
+        for case in payload["cases"]
+    )
