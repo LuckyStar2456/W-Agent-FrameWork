@@ -46,7 +46,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Explicit opt-in agent text-delta RunEvents | `Experimental` (current main) | Phase 3/6 |
 | Versioned price tables, cost metering, and hard run cost budgets | `Implemented` | Phase 3/6 / 2.0.0a2 |
 | Pluggable pre-call token estimators and soft-threshold events | `Experimental` (current main) | Phase 3/6 |
-| Cross-session agent aggregation and pre-call monetary estimation | `Planned` | Phase 3/6 |
+| Cross-session per-agent usage/cost summaries | `Experimental` (current main) | Phase 3/6 |
+| Pre-call monetary estimation | `Planned` | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -116,7 +117,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. A `TokenEstimator` may be injected to estimate input before the call, tighten that request's output allowance, and block an obvious overrun; `require_estimate=True` fails closed when estimation is unavailable, while `soft_limit_ratio` emits an observable warning without changing stop policy. Estimates cannot predict retry/failover accounting, so provider usage remains authoritative.
 - Implemented session totals, `AttemptRecord` token ledgers covering retry/failover, and RunEvent/CLI visibility. Missing usage for failed attempts remains unknown and makes strict accounting fail closed.
 - Implemented application-supplied versioned price tables, normal/cached-input and output cost metering, pricing completeness, approval-checkpoint persistence, and hard run cost budgets. Missing prices or usage fail closed, and money is never silently inferred from token counts.
-- Later work adds cross-session agent aggregation, pre-call monetary estimation, and more application-policy templates that consume soft-threshold events.
+- Current main implements `SessionManager.agent_usage()`, CLI/TUI cross-session summaries by agent, and completeness semantics that never disguise unknown usage or cost as zero. Later work adds pre-call monetary estimation and more application-policy templates that consume soft-threshold events.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Current main implements agent text-delta RunEvents behind explicit `emit_text_deltas`; later work adds multimodal blocks, tool-argument deltas, and general cross-process projection/replay for arbitrary RunEvents.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
@@ -146,7 +147,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 
 - Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
 - Composition preview performs no network access, installation, import, or plugin execution. Current main implements Python/W-Agent compatibility and plugin dependency plans over an explicit candidate inventory, plus import-free preview of independent YAML references, explicitly confirmed transactional batch loading, and persistent in-process TUI unload. Online source catalogs, package-install confirmation, and the execution bridge from a plan to plugin references remain `Planned`.
-- An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
+- An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive, safe cross-session per-agent usage/cost summaries, and offline TUI composition inspection.
 - Implemented strict local JSON assembly into provider/routing/ReAct/run/session components for text runs. CLI/TUI require explicit authorization for every call, and credentials resolve only through environment-variable references.
 - Implemented host-catalog-bounded configured tool selection, per-command authority grants, separate Python tool-code load confirmation, and CLI approval resume by known session/run/call IDs. Configuration itself cannot import, authorize, or approve a tool.
 - Implemented prompt-free agent approval-checkpoint listing in the API, CLI, and TUI. Summaries exclude prompts, argument values, outputs, and credentials.

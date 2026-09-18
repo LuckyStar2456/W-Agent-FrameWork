@@ -688,6 +688,7 @@ class WAgentTui(App[None]):
 
     async def _refresh_sessions(self, *, prefix: str = "") -> None:
         sessions = await self.sessions.list(include_archived=True)
+        summaries = await self.sessions.agent_usage(include_archived=True)
         lines = [
             (
                 f"{item.session_id} | {item.status.value} | {item.title} | "
@@ -699,6 +700,18 @@ class WAgentTui(App[None]):
             for item in sessions
         ]
         body = "\n".join(lines) if lines else "No local sessions."
+        if summaries:
+            usage_lines = [
+                (
+                    f"{summary.agent_name} | sessions={summary.session_count} | "
+                    f"runs={summary.run_count} | attempts={summary.model_calls} | "
+                    f"tokens={summary.usage.total_tokens} | "
+                    f"usage_complete={str(summary.usage_complete).lower()} | "
+                    f"cost={_cost_text(summary.cost, complete=summary.cost_complete)}"
+                )
+                for summary in summaries
+            ]
+            body += "\n\nAgent usage:\n" + "\n".join(usage_lines)
         self.query_one("#session-result", Static).update(prefix + body)
 
     async def _refresh_checkpoints(self) -> None:

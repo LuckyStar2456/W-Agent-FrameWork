@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements guided workflow-checkpoint recovery plus import-free preview, confirmed loading, and TUI unload for general plugins. These main capabilities are unpublished. Plugin package installation and upgrades remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements cross-session per-agent usage/cost summaries, guided workflow-checkpoint recovery, and import-free preview, confirmed loading, and TUI unload for general plugins. These main capabilities are unpublished. Plugin package installation and upgrades remain `Planned`.
 
 ## Principles
 
@@ -22,7 +22,7 @@ wagent plugin inspect --config <plugins.yml> [--json]
 wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
 wagent composition plan <code> [--inventory <plugins.json>] [--json]
-wagent session create|list|show|archive|unarchive
+wagent session create|list|show|usage|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent checkpoint workflow-list [--state-root <path>]
 wagent checkpoint workflow-resume <run-id> --workflow-entry <module:attribute> --confirm-workflow-code --confirm-resume
@@ -33,7 +33,7 @@ wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens plus versioned cost when available, and mark whether metering is complete. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` performs credential-free L1 probing; `provider-probe` assembles a provider from strict configuration and requires the additional `--confirm-active-probe` flag for active mode.
+These commands are implemented. The CLI prints human-readable text by default; template, initialization, probe, composition, list, session-lifecycle, and evaluation commands offer structured JSON. `session show` and `evaluate` expose input, output, and cached-input tokens plus versioned cost when available, and mark whether metering is complete. `session usage` aggregates metering across sessions by agent without emitting prompts, messages, model outputs, or tool results; archived data is opt-in. Evaluation uses disposable state by default, and reports omit prompts and outputs by default. Failures return stable nonzero exit codes. `probe` performs credential-free L1 probing; `provider-probe` assembles a provider from strict configuration and requires the additional `--confirm-active-probe` flag for active mode.
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
@@ -73,7 +73,7 @@ The current screen can read strict local configuration, start a text agent, and 
 
 ### Sessions
 
-Creates, lists, archives, and unarchives local sessions through the same `JsonSessionStore` used by the Python API. Details show run count, cumulative tokens, and aggregate cost when table version and currency match; configured agents start from the Run screen.
+Creates, lists, archives, and unarchives local sessions through the same `JsonSessionStore` used by the Python API. Details show run count, cumulative tokens, aggregate cost when table version and currency match, and prompt/output-free cross-session agent summaries. Configured agents start from the Run screen.
 
 ### Checkpoints
 

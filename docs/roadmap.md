@@ -46,7 +46,8 @@
 | Agent 显式可选文本增量 RunEvent | `Experimental`（当前 main） | Phase 3/6 |
 | 版本化价格表、费用计量与 Run 费用硬预算 | `Implemented` | Phase 3/6 / 2.0.0a2 |
 | 可插拔调用前 Token 预估器与软阈值事件 | `Experimental`（当前 main） | Phase 3/6 |
-| Agent 跨 Session 聚合与调用前费用预估 | `Planned` | Phase 3/6 |
+| Agent 跨 Session 用量/费用汇总 | `Experimental`（当前 main） | Phase 3/6 |
+| 调用前费用预估 | `Planned` | Phase 3/6 |
 | 本地 JSONL RunEvent 与审批断点恢复 | `Implemented` | Phase 3 / 2.0.0a1 |
 | 工具定义、策略和执行器分离 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python 函数工具模板 | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -116,7 +117,7 @@
 - 当前预算依据成功响应中 Provider 返回的实际用量在响应后核算，并用剩余输出/总量收紧下一次请求上限；可用 `require_usage=True` 在 Provider 不上报时失败关闭。可注入 `TokenEstimator` 在调用前估算输入、收紧本次输出额度并阻止明显越限请求；`require_estimate=True` 可在估算不可用时失败关闭，`soft_limit_ratio` 产生不改变停止策略的可观察警告。估算无法预知重试/故障转移，最终仍以 Provider 实报为准。
 - 已实现 Session 级累计、覆盖重试/故障转移的 `AttemptRecord` Token 账本，以及 RunEvent/CLI 可见性；未报告的失败尝试保持未知并使严格计量失败关闭。
 - 已实现应用提供的版本化价格表、普通/缓存输入与输出费用计量、费用完整性、审批断点持久化和 Run 费用硬预算；缺少价格或用量时失败关闭，不从 Token 数静默推断金额。
-- 后续实现 Agent 跨 Session 聚合、调用前费用预估，以及由应用策略消费软阈值事件的更多动作模板。
+- 当前 main 已实现 `SessionManager.agent_usage()`、CLI/TUI 按 Agent 跨 Session 汇总，以及未知用量/费用不伪装为零的完整性语义；后续实现调用前费用预估和由应用策略消费软阈值事件的更多动作模板。
 - 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
 - 当前 main 已实现显式 `emit_text_deltas` 的 Agent 文本增量 RunEvent；后续实现多模态、工具参数增量和任意 RunEvent 的通用跨进程投影/回放。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
@@ -146,7 +147,7 @@
 
 - 已实现命名和版本化的 `CompositionManifest`、确定性编码/解码、大小限制、完整性校验、安全预览与冲突安全的本地版本/别名库。
 - 装配预览阶段不访问网络、不安装、不导入也不执行插件。当前 main 已实现显式候选清单上的 Python/W-Agent 兼容性与插件依赖计划，以及独立 YAML 引用的无导入预览、明确确认后的事务化批量加载和 TUI 持久进程内卸载。在线来源目录、包安装确认和计划到插件引用的执行桥仍为 `Planned`。
-- 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复和可见 Token 汇总，以及 TUI 离线装配检查。
+- 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复、按 Agent 跨 Session 的安全用量/费用汇总，以及 TUI 离线装配检查。
 - 已实现严格本地 JSON 到 Provider/路由/ReAct/Run/Session 的文本运行装配；CLI/TUI 每次调用均要求显式授权，凭据只从环境变量引用读取。
 - 已实现由宿主 Catalog 限定的配置化工具选择、逐次权限授予、独立 Python 工具代码加载确认，以及已知 Session/Run/Call ID 的 CLI 审批恢复；配置本身不能导入、授权或批准工具。
 - 已实现 Agent 审批 Checkpoint 的 API/CLI/TUI 脱敏列表；摘要不含 Prompt、参数值、输出或凭据。

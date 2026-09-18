@@ -112,7 +112,7 @@ An adapter declares whether each extension is consumed, forwarded, or rejected. 
 
 Implemented protocols include `PluginSpec`, `PluginHandle`, `Registry`, `RegistryView`, `ScopePath`, `Contribution`, `Registration`, `EventDispatcher`, model/routing and tool contracts, agent run/loop contracts, and workflow definition/engine/checkpoint contracts. Later `Planned` protocols include:
 
-- Durable `Session`, `AgentHandle`, and resume handles.
+- General durable `AgentHandle` and arbitrary-position resume handles (local sessions plus approval/workflow-node resume are implemented).
 
 ## 6. Models, routing, and probing
 
@@ -134,7 +134,7 @@ The runtime defines run lifecycle, context, events, cancellation, budgets, and r
 
 The current `ReactAgentLoop` uses public `ModelExecutor`, `ToolRegistry`, and `ToolExecutorProtocol` contracts to complete model → tool → result → model, enforce step/tool-call/run-token budgets plus cost budgets based on application-supplied versioned price tables, and stop safely for approval. A replaceable `TokenEstimator` sits between the neutral request and network call to provide pre-call estimates, output-allowance tightening, and soft-threshold events. The kernel binds no vendor tokenizer; `TokenBudget.require_estimate` explicitly decides whether estimation failure stops the run, and provider-reported usage remains authoritative afterward. When `emit_text_deltas` is explicitly enabled, the loop uses the public safe model stream and projects text chunks as persisted-before-visible `MODEL_TEXT_DELTA`; collecting mode stays the default. `RunStore` appends events before visibility; `JsonlRunStore` resumes from an approval boundary after restart without repeating the earlier model request, while checkpoints preserve cumulative tokens, costs, and attempt ledgers. Checkpoints are atomically claimed before side effects, and uncertain state rejects automatic replay. Complete multimodal/tool-event projection and general cross-process recovery remain later work. See [Agent runtime and ReAct loop](./agents.en.md).
 
-`SessionManager` sits outside the loop and uses public contracts to manage create/list/archive, cross-run text projection, and approval resume with memory/JSON stores. It reads no private loop state and never presents tool or multimodal events as replayed content.
+`SessionManager` sits outside the loop and uses public contracts to manage create/list/archive, cross-run text projection, and approval resume with memory/JSON stores. `agent_usage()` derives prompt/output-free cross-session usage, cost, and completeness views by agent name from immutable run summaries; callers explicitly choose whether archived sessions participate. It reads no private loop state and never presents tool or multimodal events as replayed content.
 
 ## 8. Workflow
 

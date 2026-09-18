@@ -62,12 +62,12 @@ W-Agent 遵循以下原则：
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
 - 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 绑定与 2026-07-28 stdio/Streamable HTTP 客户端、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
 - 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、显式可选文本增量 RunEvent、调用前可插拔 Token 估算、实报 Token/费用预算、软阈值事件、JSONL RunEvent/尝试账本记录和审批断点恢复。
-- 应用提供的版本化价格表、普通/缓存输入与输出费用计量、失败关闭的 Run 费用预算，以及 Session/Checkpoint/评测费用可见性。
+- 应用提供的版本化价格表、普通/缓存输入与输出费用计量、失败关闭的 Run 费用预算，以及 Session/Checkpoint/评测和按 Agent 跨 Session 的费用可见性。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
 - Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
 - `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
-- 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文与审批恢复协调。
+- 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文、审批恢复协调，以及不含 Prompt/输出的按 Agent 跨 Session 用量/费用汇总。
 - 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认、可见 Token/费用预算与计量。
 - 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放、本地评测运行器、版本化客服/编码套件与脱敏 JSON 报告。
 
@@ -147,12 +147,12 @@ wagent doctor
 wagent tui
 wagent composition export
 wagent composition inspect|save|list
-wagent session create|list|show|archive|unarchive
+wagent session create|list|show|usage|archive|unarchive
 wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览与依赖计划、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent/Workflow Checkpoint 脱敏列表、Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复、精确版本 Workflow 恢复、通用插件无导入预览/确认加载/TUI 卸载、脱敏实时 RunEvent，以及支持版本化内置套件与独立评测工具加载确认的本地评测。Workflow 恢复、离线依赖计划、内置评测套件与通用插件操作属于 main 的未发布能力；插件包安装/升级仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览与依赖计划、本地 Session 生命周期、按 Agent 跨 Session 的安全用量/费用汇总、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent/Workflow Checkpoint 脱敏列表、Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复、精确版本 Workflow 恢复、通用插件无导入预览/确认加载/TUI 卸载、脱敏实时 RunEvent，以及支持版本化内置套件与独立评测工具加载确认的本地评测。Workflow 恢复、离线依赖计划、内置评测套件、跨 Session 汇总与通用插件操作属于 main 的未发布能力；插件包安装/升级仍为 `Planned`。
 
 ## 工程装配分享
 

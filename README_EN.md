@@ -62,12 +62,12 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - `ModelRegistrationProbeService` for register-and-safe-probe workflows plus an external routing-health bridge; direct `ModelRegistry.register()` remains side-effect free.
 - Tool definition/binding/registry separation, Python/HTTP/shell-free command templates, MCP binding and 2026-07-28 stdio/Streamable HTTP clients, argument validation, permission/per-call approval, timeout/cancellation, and prompt-free audit.
 - A replaceable `AgentLoop` protocol and bounded single-agent `ReactAgentLoop` covering model → tool → result → model, explicit opt-in text-delta RunEvents, pluggable pre-call token estimation, reported token/cost budgets, soft-threshold events, JSONL RunEvent/attempt-ledger recording, and approval-checkpoint resume.
-- Application-supplied versioned price tables, normal/cached-input and output cost metering, fail-closed run cost budgets, and cost visibility across sessions, checkpoints, and evaluation.
+- Application-supplied versioned price tables, normal/cached-input and output cost metering, fail-closed run cost budgets, and cost visibility across sessions, checkpoints, evaluation, and cross-session per-agent summaries.
 - A unified `WorkflowRegistry`, replaceable `WorkflowEngineProtocol`, and `LocalWorkflowEngine` with static DAG, state-graph, and Python entry points, node events, cancellation, and in-memory/JSONL node-boundary pause and resume.
 - Unified `SandboxProvider`/`SandboxRegistry` contracts, a Docker/OCI lifecycle backend, an explicitly runtime-authorized `UnsafeLocalSandboxProvider`, and policy-protected `sandbox_command_tool()`.
 - Bidirectional agent/workflow adapters plus fully overridable customer-support/RAG and coding-agent templates.
 - Deterministic `CompositionManifest` encoding, safe preview, and conflict-safe local version and alias management.
-- Local session create/list/archive, JSON persistence, cross-run text context, and approval-resume coordination.
+- Local session create/list/archive, JSON persistence, cross-run text context, approval-resume coordination, and prompt/output-free cross-session per-agent usage/cost summaries.
 - A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token/cost budgets and metering.
 - Deterministic scripted model providers, explicitly authorized JSONL recording/sequential replay, a local evaluation runner, versioned support/coding suites, and privacy-safe JSON reports.
 
@@ -147,12 +147,12 @@ wagent doctor
 wagent tui
 wagent composition export
 wagent composition inspect|save|list
-wagent session create|list|show|archive|unarchive
+wagent session create|list|show|usage|archive|unarchive
 wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview and dependency planning, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, privacy-safe agent/workflow checkpoint listing, catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, exact-version workflow recovery, import-free general-plugin preview/confirmed loading/TUI unload, privacy-safe live RunEvents, and local evaluation with versioned built-in suites plus separate evaluation-tool loading confirmation. Workflow recovery, offline dependency planning, built-in evaluation suites, and general plugin operations are unpublished main capabilities; plugin package installation/upgrades remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview and dependency planning, local session lifecycle, safe cross-session per-agent usage/cost summaries, per-call-confirmed configured agent runs with visible token totals, privacy-safe agent/workflow checkpoint listing, catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, exact-version workflow recovery, import-free general-plugin preview/confirmed loading/TUI unload, privacy-safe live RunEvents, and local evaluation with versioned built-in suites plus separate evaluation-tool loading confirmation. Workflow recovery, offline dependency planning, built-in evaluation suites, cross-session summaries, and general plugin operations are unpublished main capabilities; plugin package installation/upgrades remain `Planned`.
 
 ## Portable project compositions
 

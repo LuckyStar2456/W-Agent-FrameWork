@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现 Workflow Checkpoint 引导恢复，以及通用插件的无导入预览、确认加载和 TUI 卸载；这些 main 能力尚未发布。插件包安装/升级仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现按 Agent 跨 Session 用量/费用汇总、Workflow Checkpoint 引导恢复，以及通用插件的无导入预览、确认加载和 TUI 卸载；这些 main 能力尚未发布。插件包安装/升级仍为 `Planned`。
 
 ## 原则
 
@@ -22,7 +22,7 @@ wagent plugin inspect --config <plugins.yml> [--json]
 wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
 wagent composition plan <code> [--inventory <plugins.json>] [--json]
-wagent session create|list|show|archive|unarchive
+wagent session create|list|show|usage|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent checkpoint workflow-list [--state-root <path>]
 wagent checkpoint workflow-resume <run-id> --workflow-entry <module:attribute> --confirm-workflow-code --confirm-resume
@@ -33,7 +33,7 @@ wagent evaluate <cases.json> --confirm-model-call [--report <report.json>]
 wagent tui
 ```
 
-以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，以及可用时的版本化费用，并明确标记计量是否完整。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 执行不带凭据和请求体的 L1 探测；`provider-probe` 从严格配置装配 Provider，主动模式必须额外传入 `--confirm-active-probe`。
+以上命令已实现。CLI 默认输出适合人阅读的文本；模板、初始化、探测、装配检查、列表、Session 生命周期和评测提供结构化 JSON。`session show` 与 `evaluate` 展示输入、输出与缓存输入 Token，以及可用时的版本化费用，并明确标记计量是否完整。`session usage` 按 Agent 汇总多个 Session 的计量，不输出 Prompt、消息、模型输出或工具结果；归档数据必须显式选择。评测默认使用一次性状态，报告默认不含 Prompt 与输出。失败返回稳定非零退出码。`probe` 执行不带凭据和请求体的 L1 探测；`provider-probe` 从严格配置装配 Provider，主动模式必须额外传入 `--confirm-active-probe`。
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
@@ -73,7 +73,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Sessions
 
-使用与 Python API 相同的 `JsonSessionStore` 创建、列出、归档和恢复本地 Session。详情显示每个 Session 的 Run 数、累计 Token 和同版本/币种时的累计费用；配置化 Agent 启动属于 Run 页面。
+使用与 Python API 相同的 `JsonSessionStore` 创建、列出、归档和恢复本地 Session。详情显示每个 Session 的 Run 数、累计 Token 和同版本/币种时的累计费用，并显示不含 Prompt/输出的跨 Session Agent 汇总；配置化 Agent 启动属于 Run 页面。
 
 ### Checkpoints
 

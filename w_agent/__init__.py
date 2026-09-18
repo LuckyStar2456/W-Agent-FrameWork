@@ -135,6 +135,7 @@ from w_agent.sandbox import (
     WorkspaceAccess,
 )
 from w_agent.sessions import (
+    AgentUsageSummary,
     InMemorySessionStore,
     JsonSessionStore,
     RunEventCallback,
@@ -821,6 +822,7 @@ __all__ = [
     "load_workflow_entries",
     "load_workflow_entry",
     "InMemorySessionStore",
+    "AgentUsageSummary",
     "JsonSessionStore",
     "RunEventCallback",
     "SessionError",

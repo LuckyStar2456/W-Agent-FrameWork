@@ -2,13 +2,14 @@
 
 [English](./sessions.en.md) | 简体中文
 
-状态：本地 Session 创建、列表、归档/取消归档、JSON 持久化、跨 Run 文本投影，以及 Agent Run 启动/审批恢复为 `Implemented`（Phase 3 / `2.0.0a1`）。多模态、工具事件和任意 RunEvent 的通用回放仍为 `Planned`。
+状态：本地 Session 创建、列表、归档/取消归档、JSON 持久化、跨 Run 文本投影，以及 Agent Run 启动/审批恢复为 `Implemented`（Phase 3 / `2.0.0a1`）。按 Agent 跨 Session 用量/费用汇总为 `Experimental`（当前 main）。多模态、工具事件和任意 RunEvent 的通用回放仍为 `Planned`。
 
 ## 公共 API
 
 - `SessionManager`：协调生命周期、文本历史和普通 `AgentLoop`。
 - `SessionRecord`：不可变 Session 快照，包含消息、Run 摘要和元数据。
 - `SessionRunRecord`：保存停止原因、输出、步骤/工具计数和 Token 用量。
+- `AgentUsageSummary`：不含 Prompt/输出的单 Agent 跨 Session 用量、费用与完整性摘要。
 - `InMemorySessionStore`：测试和短期本地开发。
 - `JsonSessionStore`：单一本地生命周期所有者使用的原子 JSON 存储。
 - `RunEventCallback`：可选同步/异步应用投影；按 Agent Loop 的公开事件流顺序调用，内置 ReAct Loop 会先写 RunStore 再暴露事件。
@@ -39,11 +40,12 @@ result = await sessions.run_agent(
 wagent session create "Support case" --id case-1 --json
 wagent session list --include-archived --json
 wagent session show case-1 --json
+wagent session usage --agent support --include-archived --json
 wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量/计价计数、输入/输出/缓存 Token、版本化费用及完整性，不会启动模型或产生费用。不同价格表版本或币种不会被静默合并。TUI 当前提供创建、刷新、归档和恢复；Run 页面支持经独立确认的工具代码加载、权限输入和脱敏实时事件。CLI/TUI 均支持通过已知 Session/Run/Call ID 审批恢复。
+CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量/计价计数、输入/输出/缓存 Token、版本化费用及完整性，不会启动模型或产生费用。`SessionManager.agent_usage()` 与 `wagent session usage` 按精确 Agent 名称汇总多个 Session；默认排除归档 Session，可显式纳入。汇总不读取或输出 Prompt、消息、模型输出和工具结果。未上报的用量保持不完整，缺失费用以及价格表版本/币种不一致时费用保持不可用，不会被当作零或静默合并。TUI 的 Session 页面显示同一安全摘要，并继续提供创建、刷新、归档和恢复；Run 页面支持经独立确认的工具代码加载、权限输入和脱敏实时事件。CLI/TUI 均支持通过已知 Session/Run/Call ID 审批恢复。
 
 下一次 `run_agent()` 默认把此前投影的文本消息放在本次消息之前。设置 `include_history=False` 可关闭自动上下文拼接，但本次输入与结果仍会记入 Session。
 

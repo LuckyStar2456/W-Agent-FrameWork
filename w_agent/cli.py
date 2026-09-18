@@ -82,6 +82,7 @@ from w_agent.models import (
     ProbeResult,
 )
 from w_agent.sessions import (
+    AgentUsageSummary,
     JsonSessionStore,
     SessionError,
     SessionManager,
@@ -1037,6 +1038,56 @@ def session_show(
     _emit(_session_payload(session, include_details=True), json_output)
 
 
+@session_app.command("usage")
+def session_usage(
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root"),
+    agent_name: str | None = typer.Option(
+        None,
+        "--agent",
+        help="Optional exact agent name filter.",
+    ),
+    include_archived: bool = typer.Option(False, "--include-archived"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Summarize known usage and cost across local sessions by agent."""
+
+    manager = SessionManager(JsonSessionStore(root))
+    try:
+        summaries = asyncio.run(
+            manager.agent_usage(
+                agent_name,
+                include_archived=include_archived,
+            )
+        )
+    except ValueError as error:
+        _fail(str(error))
+    payload = [_agent_usage_payload(item) for item in summaries]
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Agent usage across local sessions")
+    table.add_column("Agent")
+    table.add_column("Sessions", justify="right")
+    table.add_column("Runs", justify="right")
+    table.add_column("Model calls", justify="right")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Usage complete")
+    table.add_column("Cost")
+    for item, summary in zip(payload, summaries, strict=True):
+        usage = item["usage"]
+        assert isinstance(usage, dict)
+        table.add_row(
+            str(item["agent_name"]),
+            str(item["session_count"]),
+            str(item["run_count"]),
+            str(item["model_calls"]),
+            str(usage["total_tokens"]),
+            str(item["usage_complete"]),
+            _cost_text(summary.cost, complete=summary.cost_complete),
+        )
+    console.print(table)
+
+
 @session_app.command("archive")
 def session_archive(
     session_id: str = typer.Argument(...),
@@ -1364,6 +1415,27 @@ def _session_payload(
     return payload
 
 
+def _agent_usage_payload(summary: AgentUsageSummary) -> dict[str, Any]:
+    return {
+        "agent_name": summary.agent_name,
+        "session_count": summary.session_count,
+        "session_ids": list(summary.session_ids),
+        "run_count": summary.run_count,
+        "usage": {
+            "input_tokens": summary.usage.input_tokens,
+            "output_tokens": summary.usage.output_tokens,
+            "cached_input_tokens": summary.usage.cached_input_tokens,
+            "total_tokens": summary.usage.total_tokens,
+        },
+        "model_calls": summary.model_calls,
+        "reported_usage_calls": summary.reported_usage_calls,
+        "usage_complete": summary.usage_complete,
+        "cost": _cost_payload(summary.cost),
+        "priced_usage_calls": summary.priced_usage_calls,
+        "cost_complete": summary.cost_complete,
+    }
+
+
 def _attempt_payload(attempt: AttemptRecord) -> dict[str, Any]:
     return {
         "ordinal": attempt.ordinal,
@@ -1541,6 +1613,13 @@ def _cost_payload(cost: ModelCost | None) -> dict[str, str] | None:
         "cached_input_cost": str(cost.cached_input_cost),
         "total": str(cost.total),
     }
+
+
+def _cost_text(cost: ModelCost | None, *, complete: bool) -> str:
+    if cost is None:
+        return "unavailable"
+    suffix = "" if complete else " (incomplete)"
+    return f"{cost.total} {cost.currency}@{cost.price_table_version}{suffix}"
 
 
 def _aggregate_costs(costs: tuple[ModelCost | None, ...]) -> ModelCost | None:

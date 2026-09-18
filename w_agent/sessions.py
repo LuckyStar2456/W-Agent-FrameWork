@@ -34,6 +34,7 @@ from w_agent.models import (
     ModelMessage,
     TextContent,
     TokenUsage,
+    PricingError,
 )
 from w_agent.tools import ToolExecutionContext
 
@@ -116,6 +117,53 @@ class SessionRecord:
         object.__setattr__(self, "runs", tuple(self.runs))
         _validate_json(self.metadata, "session metadata")
         object.__setattr__(self, "metadata", _freeze_json(self.metadata))
+
+
+@dataclass(frozen=True, slots=True)
+class AgentUsageSummary:
+    """Prompt-free aggregate across local sessions for one agent name."""
+
+    agent_name: str
+    session_ids: tuple[str, ...]
+    run_count: int
+    usage: TokenUsage
+    model_calls: int
+    reported_usage_calls: int
+    cost: ModelCost | None = None
+    priced_usage_calls: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.agent_name.strip():
+            raise ValueError("agent usage summary name must not be empty")
+        session_ids = tuple(self.session_ids)
+        if len(set(session_ids)) != len(session_ids):
+            raise ValueError("agent usage summary session ids must be unique")
+        for session_id in session_ids:
+            _validate_id(session_id, "session")
+        if min(
+            self.run_count,
+            self.model_calls,
+            self.reported_usage_calls,
+            self.priced_usage_calls,
+        ) < 0:
+            raise ValueError("agent usage summary counters must not be negative")
+        if self.reported_usage_calls > self.model_calls:
+            raise ValueError("reported usage calls cannot exceed model calls")
+        if self.priced_usage_calls > self.reported_usage_calls:
+            raise ValueError("priced usage calls cannot exceed reported usage calls")
+        object.__setattr__(self, "session_ids", session_ids)
+
+    @property
+    def session_count(self) -> int:
+        return len(self.session_ids)
+
+    @property
+    def usage_complete(self) -> bool:
+        return self.reported_usage_calls == self.model_calls
+
+    @property
+    def cost_complete(self) -> bool:
+        return self.cost is not None and self.priced_usage_calls == self.model_calls
 
 
 class SessionStore(Protocol):
@@ -255,6 +303,49 @@ class SessionManager:
 
     async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]:
         return await self.store.list(include_archived=include_archived)
+
+    async def agent_usage(
+        self,
+        agent_name: str | None = None,
+        *,
+        include_archived: bool = False,
+    ) -> tuple[AgentUsageSummary, ...]:
+        """Aggregate known usage/cost without reading prompts or running models."""
+
+        if agent_name is not None and not agent_name.strip():
+            raise ValueError("agent name filter must not be empty")
+        sessions = await self.store.list(include_archived=include_archived)
+        grouped: dict[str, list[tuple[str, SessionRunRecord]]] = {}
+        for session in sessions:
+            for run in session.runs:
+                if agent_name is not None and run.agent_name != agent_name:
+                    continue
+                grouped.setdefault(run.agent_name, []).append(
+                    (session.session_id, run)
+                )
+        summaries: list[AgentUsageSummary] = []
+        for name, entries in grouped.items():
+            runs = tuple(run for _, run in entries)
+            usage = TokenUsage(
+                sum(run.usage.input_tokens for run in runs),
+                sum(run.usage.output_tokens for run in runs),
+                sum(run.usage.cached_input_tokens for run in runs),
+            )
+            summaries.append(
+                AgentUsageSummary(
+                    name,
+                    tuple(dict.fromkeys(session_id for session_id, _ in entries)),
+                    len(runs),
+                    usage,
+                    sum(run.model_calls for run in runs),
+                    sum(run.reported_usage_calls for run in runs),
+                    cost=_aggregate_run_cost(runs),
+                    priced_usage_calls=sum(
+                        run.priced_usage_calls for run in runs
+                    ),
+                )
+            )
+        return tuple(sorted(summaries, key=lambda item: item.agent_name))
 
     async def archive(self, session_id: str, *, archived: bool = True) -> SessionRecord:
         async with self._lock:
@@ -457,6 +548,23 @@ def _visible_sessions(
         if include_archived or item.status is SessionStatus.ACTIVE
     )
     return tuple(sorted(values, key=lambda item: item.updated_at, reverse=True))
+
+
+def _aggregate_run_cost(
+    runs: tuple[SessionRunRecord, ...],
+) -> ModelCost | None:
+    costs = tuple(run.cost for run in runs)
+    if not costs or any(cost is None for cost in costs):
+        return None
+    total = costs[0]
+    assert total is not None
+    try:
+        for cost in costs[1:]:
+            assert cost is not None
+            total = total.add(cost)
+    except PricingError:
+        return None
+    return total
 
 
 def _validate_id(value: str, label: str) -> None:

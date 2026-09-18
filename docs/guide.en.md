@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, confirmed general-plugin lifecycle operations, Responses/vLLM model adapters, verified-prefix text-stream recovery, pre-call token estimation, agent text-delta RunEvents, and versioned support/coding evaluation suites. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
+The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, confirmed general-plugin lifecycle operations, Responses/vLLM model adapters, verified-prefix text-stream recovery, pre-call token estimation, agent text-delta RunEvents, cross-session per-agent usage/cost summaries, and versioned support/coding evaluation suites. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -299,7 +299,7 @@ Status: the launchable local Textual foundation is `Experimental`.
 wagent tui
 ```
 
-The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection/dependency planning, general-plugin preview/confirmed load/unload, local session lifecycle, configured text-agent runs, privacy-safe agent/workflow checkpoint listing, exact tool/workflow recovery, privacy-safe live events, and local evaluation. It uses public Python APIs and needs no hosted backend; workflow recovery, dependency planning, and general-plugin screens are unpublished main capabilities.
+The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection/dependency planning, general-plugin preview/confirmed load/unload, local session lifecycle and cross-session per-agent summaries, configured text-agent runs, privacy-safe agent/workflow checkpoint listing, exact tool/workflow recovery, privacy-safe live events, and local evaluation. It uses public Python APIs and needs no hosted backend; cross-session summaries, workflow recovery, dependency planning, and general-plugin screens are unpublished main capabilities.
 
 ## 15. Current local evaluation
 

@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 import w_agent.cli as cli_module
 from w_agent import (
     CompositionManifest,
+    JsonSessionStore,
     LocalProviderAssembly,
     JsonlWorkflowStore,
     LocalWorkflowEngine,
@@ -20,6 +21,9 @@ from w_agent import (
     RunEvent,
     RunEventType,
     RunResult,
+    SessionRecord,
+    SessionRunRecord,
+    SessionStatus,
     StopReason,
     TokenUsage,
     PythonWorkflowDefinition,
@@ -340,6 +344,67 @@ def test_cli_session_missing_id_has_stable_failure(tmp_path):
 
     assert result.exit_code == 2
     assert "session does not exist" in result.stderr
+
+
+def test_cli_session_usage_is_prompt_free_and_includes_archived(tmp_path):
+    root = tmp_path / "sessions"
+    store = JsonSessionStore(root)
+    asyncio.run(
+        store.save(
+            SessionRecord(
+                "case-usage",
+                "Hidden title",
+                status=SessionStatus.ARCHIVED,
+                runs=(
+                    SessionRunRecord(
+                        "run-usage",
+                        "support",
+                        "completed",
+                        "secret model output",
+                        TokenUsage(8, 3, 2),
+                        True,
+                        1,
+                        0,
+                        model_calls=1,
+                        reported_usage_calls=1,
+                        cost=ModelCost("USD", "prices-v1", "0.25"),
+                        cost_complete=True,
+                        priced_usage_calls=1,
+                    ),
+                ),
+            )
+        )
+    )
+
+    hidden = runner.invoke(
+        app,
+        ["session", "usage", "--root", str(root), "--json"],
+    )
+    visible = runner.invoke(
+        app,
+        [
+            "session",
+            "usage",
+            "--root",
+            str(root),
+            "--include-archived",
+            "--json",
+        ],
+    )
+
+    assert hidden.exit_code == visible.exit_code == 0
+    assert json.loads(hidden.stdout) == []
+    payload = json.loads(visible.stdout)[0]
+    assert payload["agent_name"] == "support"
+    assert payload["usage"] == {
+        "input_tokens": 8,
+        "output_tokens": 3,
+        "cached_input_tokens": 2,
+        "total_tokens": 11,
+    }
+    assert payload["cost"]["total"] == "0.25"
+    assert "secret model output" not in visible.stdout
+    assert "Hidden title" not in visible.stdout
 
 
 def test_cli_run_requires_explicit_model_call_authorization():

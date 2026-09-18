@@ -2,12 +2,16 @@ import pytest
 
 from w_agent import (
     AgentDefinition,
+    InMemorySessionStore,
     JsonSessionStore,
     MessageRole,
     ModelMessage,
+    ModelCost,
     RunResult,
     SessionError,
     SessionManager,
+    SessionRecord,
+    SessionRunRecord,
     SessionStatus,
     StopReason,
     TokenUsage,
@@ -172,3 +176,75 @@ async def test_session_store_rejects_unsafe_ids_and_corrupt_records(tmp_path):
     (tmp_path / "broken.json").write_text("not-json", encoding="utf-8")
     with pytest.raises(SessionError, match="corrupt"):
         await store.get("broken")
+
+
+@pytest.mark.asyncio
+async def test_agent_usage_aggregates_across_sessions_without_hiding_gaps():
+    store = InMemorySessionStore()
+    await store.save(
+        SessionRecord(
+            "active-1",
+            "Active",
+            runs=(
+                SessionRunRecord(
+                    "run-a",
+                    "support",
+                    "completed",
+                    "secret output",
+                    TokenUsage(10, 2, 3),
+                    True,
+                    1,
+                    0,
+                    model_calls=1,
+                    reported_usage_calls=1,
+                    cost=ModelCost("USD", "prices-v1", "0.1"),
+                    cost_complete=True,
+                    priced_usage_calls=1,
+                ),
+            ),
+        )
+    )
+    await store.save(
+        SessionRecord(
+            "archived-1",
+            "Archived",
+            status=SessionStatus.ARCHIVED,
+            runs=(
+                SessionRunRecord(
+                    "run-b",
+                    "support",
+                    "model-error",
+                    "other secret",
+                    TokenUsage(5, 1),
+                    False,
+                    1,
+                    0,
+                    model_calls=2,
+                    reported_usage_calls=1,
+                    cost=ModelCost("USD", "prices-v1", "0.05"),
+                    cost_complete=False,
+                    priced_usage_calls=1,
+                ),
+            ),
+        )
+    )
+    manager = SessionManager(store)
+
+    active = await manager.agent_usage("support")
+    all_sessions = await manager.agent_usage(
+        "support",
+        include_archived=True,
+    )
+
+    assert active[0].session_ids == ("active-1",)
+    assert active[0].usage == TokenUsage(10, 2, 3)
+    summary = all_sessions[0]
+    assert summary.session_count == 2
+    assert summary.run_count == 2
+    assert summary.usage == TokenUsage(15, 3, 3)
+    assert summary.model_calls == 3
+    assert summary.reported_usage_calls == 2
+    assert summary.usage_complete is False
+    assert summary.cost is not None
+    assert str(summary.cost.total) == "0.15"
+    assert summary.cost_complete is False

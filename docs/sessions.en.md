@@ -2,13 +2,14 @@
 
 English | [简体中文](./sessions.md)
 
-Status: local session create/list/archive/unarchive, JSON persistence, cross-run text projection, and agent run start/approval resume are `Implemented` in Phase 3 / `2.0.0a1`. General replay for multimodal content, tool events, and arbitrary RunEvents remains `Planned`.
+Status: local session create/list/archive/unarchive, JSON persistence, cross-run text projection, and agent run start/approval resume are `Implemented` in Phase 3 / `2.0.0a1`. Per-agent cross-session usage/cost summaries are `Experimental` on current main. General replay for multimodal content, tool events, and arbitrary RunEvents remains `Planned`.
 
 ## Public APIs
 
 - `SessionManager`: coordinates lifecycle, text history, and ordinary `AgentLoop` values.
 - `SessionRecord`: immutable session snapshot with messages, run summaries, and metadata.
 - `SessionRunRecord`: stores stop reason, output, step/tool counts, and token usage.
+- `AgentUsageSummary`: prompt/output-free cross-session usage, cost, and completeness for one agent.
 - `InMemorySessionStore`: tests and short-lived local development.
 - `JsonSessionStore`: atomic JSON storage for one local lifecycle owner.
 - `RunEventCallback`: optional synchronous/asynchronous application projection invoked in public stream order; the built-in ReAct loop appends each event to its run store before exposing it.
@@ -39,11 +40,12 @@ result = await sessions.run_agent(
 wagent session create "Support case" --id case-1 --json
 wagent session list --include-archived --json
 wagent session show case-1 --json
+wagent session usage --agent support --include-archived --json
 wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, model-attempt/usage/pricing counts, input/output/cached tokens, versioned cost, and completeness without starting a model or incurring cost. Different price-table versions or currencies are never silently combined. The TUI supports create, refresh, archive, and unarchive; its Run screen supports separately confirmed tool-code loading, authority input, and privacy-safe live events. Both CLI and TUI can resume approval with known session/run/call IDs.
+The CLI and TUI use the same public `SessionManager`/`JsonSessionStore`, defaulting to `.wagent/sessions`. `show` returns messages, run summaries, model-attempt/usage/pricing counts, input/output/cached tokens, versioned cost, and completeness without starting a model or incurring cost. `SessionManager.agent_usage()` and `wagent session usage` aggregate multiple sessions by exact agent name; archived sessions are excluded by default and can be included explicitly. The summary never reads or emits prompts, messages, model output, or tool results. Unreported usage remains incomplete, while missing cost or mixed price-table/currency identities leave cost unavailable instead of treating it as zero or silently combining it. The TUI Sessions screen shows the same safe summary and continues to support create, refresh, archive, and unarchive; its Run screen supports separately confirmed tool-code loading, authority input, and privacy-safe live events. Both CLI and TUI can resume approval with known session/run/call IDs.
 
 The next `run_agent()` prepends previously projected text messages by default. Set `include_history=False` to disable automatic context assembly; the current input and result are still recorded.
 

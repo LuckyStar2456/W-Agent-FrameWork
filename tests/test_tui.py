@@ -21,6 +21,8 @@ from w_agent import (
     RunEvent,
     RunEventType,
     RunResult,
+    SessionRecord,
+    SessionRunRecord,
     StopReason,
     TokenUsage,
     PythonWorkflowDefinition,
@@ -117,6 +119,43 @@ async def test_tui_creates_archives_and_unarchives_local_session(tmp_path):
         await pilot.click("#session-unarchive")
         await pilot.pause()
         assert "| active | Coding task" in str(app.query_one("#session-result").content)
+
+
+@pytest.mark.asyncio
+async def test_tui_shows_prompt_free_cross_session_agent_usage(tmp_path):
+    app = WAgentTui(tmp_path)
+    await app.sessions.store.save(
+        SessionRecord(
+            "usage-1",
+            "Private support case",
+            runs=(
+                SessionRunRecord(
+                    "usage-run-1",
+                    "support",
+                    "completed",
+                    "private answer",
+                    TokenUsage(9, 4),
+                    True,
+                    1,
+                    0,
+                    model_calls=1,
+                    reported_usage_calls=1,
+                    cost=ModelCost("USD", "prices-v1", "0.30"),
+                    cost_complete=True,
+                    priced_usage_calls=1,
+                ),
+            ),
+        )
+    )
+
+    async with app.run_test(size=(140, 55)) as pilot:
+        app.query_one(TabbedContent).active = "sessions"
+        await pilot.pause()
+        rendered = str(app.query_one("#session-result").content)
+
+    assert "Agent usage:" in rendered
+    assert "support | sessions=1 | runs=1 | attempts=1 | tokens=13" in rendered
+    assert "private answer" not in rendered
 
 
 @pytest.mark.asyncio
