@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现按 Agent 跨 Session 用量/费用汇总、Workflow Checkpoint 引导恢复，以及通用插件的无导入预览、确认加载和 TUI 卸载；这些 main 能力尚未发布。插件包安装/升级仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现调用前费用包络的安全事件投影、按 Agent 跨 Session 用量/费用汇总、Workflow Checkpoint 引导恢复，以及通用插件的无导入预览、确认加载和 TUI 卸载；这些 main 能力尚未发布。插件包安装/升级仍为 `Planned`。
 
 ## 原则
 
@@ -69,7 +69,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Run
 
-当前可读取严格本地配置并启动文本 Agent，显示最终输出、输入/输出 Token 与版本化费用；用户必须输入 `RUN` 才会发起模型调用。工具入口仅在另行输入 `LOAD TOOLS` 后导入，权限仅对本次运行有效。界面通过公开 `RunEventCallback` 实时投影已持久化事件，不读取 Loop 私有状态，也不显示 Prompt、模型文本或工具参数。
+当前可读取严格本地配置并启动文本 Agent，显示最终输出、输入/输出 Token 与版本化费用；用户必须输入 `RUN` 才会发起模型调用。显式启用费用预估时，事件面板显示估算器、路由/尝试计数、费用包络和预计累计费用，不显示 Prompt。工具入口仅在另行输入 `LOAD TOOLS` 后导入，权限仅对本次运行有效。界面通过公开 `RunEventCallback` 实时投影已持久化事件，不读取 Loop 私有状态，也不显示 Prompt、模型文本或工具参数。
 
 ### Sessions
 

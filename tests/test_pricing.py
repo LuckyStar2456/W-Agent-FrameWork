@@ -3,13 +3,70 @@ from decimal import Decimal
 import pytest
 
 from w_agent import (
+    CostBudget,
+    CostEstimateRequest,
+    CostEstimateRoute,
     ModelPrice,
     PriceNotFoundError,
     PriceTable,
     PricingCatalog,
+    PricingCostEstimator,
     PricingError,
     TokenUsage,
 )
+
+
+def test_cost_budget_preflight_options_are_explicit_and_normalized():
+    budget = CostBudget(
+        "1.25",
+        "v1",
+        estimate_before_call=True,
+        require_estimate=True,
+        soft_limit_ratio="0.8",
+    )
+
+    assert budget.max_cost == Decimal("1.25")
+    assert budget.soft_limit_ratio == Decimal("0.8")
+    with pytest.raises(ValueError, match="preflight enabled"):
+        CostBudget("1", "v1", require_estimate=True)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        CostBudget("1", "v1", soft_limit_ratio="1.1")
+
+
+@pytest.mark.asyncio
+async def test_pricing_cost_estimator_covers_bounded_retry_and_failover():
+    catalog = PricingCatalog(
+        (
+            PriceTable(
+                "v1",
+                "USD",
+                (
+                    ModelPrice("primary", "chat", "1000000", "2000000"),
+                    ModelPrice("fallback", "chat", "3000000", "4000000"),
+                ),
+            ),
+        )
+    )
+
+    estimate = await PricingCostEstimator(catalog).estimate(
+        CostEstimateRequest(
+            (
+                CostEstimateRoute("primary", "chat", attempts=2),
+                CostEstimateRoute("fallback", "chat", attempts=1),
+            ),
+            estimated_input_tokens=10,
+            max_output_tokens=5,
+            price_table_version="v1",
+            token_estimator="exact:test",
+            input_exact=True,
+        )
+    )
+
+    assert estimate.primary_attempt.total == Decimal("20")
+    assert estimate.replay_envelope.total == Decimal("90")
+    assert estimate.route_count == 2
+    assert estimate.attempt_count == 3
+    assert estimate.conservative is True
 
 
 def test_versioned_price_table_quotes_cached_and_uncached_tokens_exactly():

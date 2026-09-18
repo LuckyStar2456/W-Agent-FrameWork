@@ -20,6 +20,7 @@ from w_agent.models import (
     ModelRequest,
     PricingError,
     PricingResolver,
+    RouteDecision,
     TextDelta,
     TokenUsage,
     ToolCallContent,
@@ -34,7 +35,15 @@ from w_agent.tools import (
 )
 
 from .persistence import InMemoryRunStore, RunStore
-from .budgeting import TokenEstimate, TokenEstimator
+from .budgeting import (
+    CostEstimate,
+    CostEstimateRequest,
+    CostEstimateRoute,
+    CostEstimator,
+    PricingCostEstimator,
+    TokenEstimate,
+    TokenEstimator,
+)
 from .types import (
     AgentDefinition,
     CheckpointStatus,
@@ -191,6 +200,7 @@ class ReactAgentLoop:
         store: RunStore | None = None,
         pricing: PricingResolver | None = None,
         token_estimator: TokenEstimator | None = None,
+        cost_estimator: CostEstimator | None = None,
     ) -> None:
         self.models = models
         self.tools = tools
@@ -198,6 +208,11 @@ class ReactAgentLoop:
         self.store = store if store is not None else InMemoryRunStore()
         self.pricing = pricing
         self.token_estimator = token_estimator
+        self.cost_estimator = (
+            cost_estimator
+            if cost_estimator is not None
+            else (PricingCostEstimator(pricing) if pricing is not None else None)
+        )
 
     def stream(
         self,
@@ -455,9 +470,13 @@ class ReactAgentLoop:
                 extensions=definition.extensions,
             )
             budget = definition.token_budget
+            cost_budget = definition.cost_budget
+            cost_preflight = (
+                cost_budget is not None and cost_budget.estimate_before_call
+            )
             if self.token_estimator is not None or (
                 budget is not None and budget.require_estimate
-            ):
+            ) or cost_preflight:
                 estimate, estimate_error = await self._estimate_request(request)
             else:
                 estimate, estimate_error = None, None
@@ -540,6 +559,97 @@ class ReactAgentLoop:
                     )
                     return
                 request = replace(request, max_output_tokens=estimated_limit)
+            decision: RouteDecision | None = None
+            if cost_preflight:
+                cost_estimate: CostEstimate | None = None
+                cost_estimate_error: str | None = None
+                if estimate is None:
+                    cost_estimate_error = "token-estimate-unavailable"
+                elif request.max_output_tokens is None:
+                    cost_estimate_error = "output-token-cap-unavailable"
+                elif self.cost_estimator is None:
+                    cost_estimate_error = "cost-estimator-unavailable"
+                else:
+                    try:
+                        decision = await self.models.router.route(
+                            request,
+                            scope=context.scope,
+                        )
+                    except Exception:
+                        cost_estimate_error = "route-decision-unavailable"
+                    if decision is not None:
+                        cost_estimate, cost_estimate_error = (
+                            await self._estimate_cost(
+                                decision,
+                                estimate,
+                                request.max_output_tokens,
+                                cost_budget,
+                            )
+                        )
+                if cost_estimate_error is not None:
+                    yield await execution.emit(
+                        RunEventType.COST_ESTIMATE_UNAVAILABLE,
+                        step=state.steps,
+                        error=cost_estimate_error,
+                        required=cost_budget.require_estimate,
+                    )
+                    if cost_budget.require_estimate:
+                        yield await execution.emit(
+                            RunEventType.COST_BUDGET_STOPPED,
+                            step=state.steps,
+                            reason=StopReason.COST_ESTIMATE_UNAVAILABLE.value,
+                            max_cost=str(cost_budget.max_cost),
+                            estimated=True,
+                        )
+                        yield await self._finish_terminal(
+                            execution,
+                            state,
+                            StopReason.COST_ESTIMATE_UNAVAILABLE,
+                        )
+                        return
+                    decision = None
+                elif cost_estimate is not None:
+                    assert state.cost is not None
+                    projected_cost = state.cost.add(cost_estimate.replay_envelope)
+                    yield await execution.emit(
+                        RunEventType.COST_ESTIMATED,
+                        step=state.steps,
+                        primary_attempt_cost=_cost_payload(
+                            cost_estimate.primary_attempt
+                        ),
+                        cost=_cost_payload(cost_estimate.replay_envelope),
+                        projected_cost=_cost_payload(projected_cost),
+                        max_cost=str(cost_budget.max_cost),
+                        route_count=cost_estimate.route_count,
+                        attempt_count=cost_estimate.attempt_count,
+                        estimator=cost_estimate.estimator,
+                        conservative=cost_estimate.conservative,
+                    )
+                    if _cost_soft_limit_reached(cost_budget, projected_cost):
+                        yield await execution.emit(
+                            RunEventType.COST_BUDGET_WARNING,
+                            step=state.steps,
+                            phase="preflight",
+                            soft_limit_ratio=str(cost_budget.soft_limit_ratio),
+                            cost=_cost_payload(projected_cost),
+                            max_cost=str(cost_budget.max_cost),
+                            estimated=True,
+                        )
+                    if projected_cost.total > cost_budget.max_cost:
+                        yield await execution.emit(
+                            RunEventType.COST_BUDGET_STOPPED,
+                            step=state.steps,
+                            reason=StopReason.COST_BUDGET.value,
+                            max_cost=str(cost_budget.max_cost),
+                            cost=_cost_payload(projected_cost),
+                            estimated=True,
+                        )
+                        yield await self._finish_terminal(
+                            execution,
+                            state,
+                            StopReason.COST_BUDGET,
+                        )
+                        return
             yield await execution.emit(
                 RunEventType.MODEL_STARTED,
                 step=state.steps,
@@ -552,6 +662,7 @@ class ReactAgentLoop:
                 if definition.emit_text_deltas:
                     invocation = self.models.stream(
                         request,
+                        decision=decision,
                         scope=context.scope,
                         cancellation=cancellation,
                     )
@@ -566,6 +677,7 @@ class ReactAgentLoop:
                 else:
                     invocation = await self.models.invoke(
                         request,
+                        decision=decision,
                         scope=context.scope,
                         cancellation=cancellation,
                     )
@@ -672,6 +784,19 @@ class ReactAgentLoop:
                         and state.priced_usage_calls == state.model_calls
                     ),
                 )
+                if (
+                    state.cost is not None
+                    and _cost_soft_limit_reached(cost_budget, state.cost)
+                ):
+                    yield await execution.emit(
+                        RunEventType.COST_BUDGET_WARNING,
+                        step=state.steps,
+                        phase="reconciled",
+                        soft_limit_ratio=str(cost_budget.soft_limit_ratio),
+                        cost=_cost_payload(state.cost),
+                        max_cost=str(cost_budget.max_cost),
+                        estimated=False,
+                    )
                 if (
                     state.pricing_error is not None
                     or state.cost is None
@@ -981,6 +1106,49 @@ class ReactAgentLoop:
             return None, "invalid-estimator-result"
         return estimate, None
 
+    async def _estimate_cost(
+        self,
+        decision: RouteDecision,
+        token_estimate: TokenEstimate,
+        max_output_tokens: int,
+        budget: CostBudget,
+    ) -> tuple[CostEstimate | None, str | None]:
+        if self.cost_estimator is None:
+            return None, "cost-estimator-unavailable"
+        policy = self.models.policy
+        routes = (
+            (decision.provider, decision.model),
+            *decision.fallbacks,
+        )[: policy.max_routes]
+        request = CostEstimateRequest(
+            tuple(
+                CostEstimateRoute(
+                    provider,
+                    model,
+                    attempts=policy.max_attempts_per_route,
+                )
+                for provider, model in routes
+            ),
+            token_estimate.input_tokens,
+            max_output_tokens,
+            budget.price_table_version,
+            token_estimate.estimator,
+            input_exact=token_estimate.exact,
+        )
+        try:
+            estimate = await self.cost_estimator.estimate(request)
+        except Exception:
+            return None, "cost-estimator-failed"
+        if not isinstance(estimate, CostEstimate):
+            return None, "invalid-cost-estimator-result"
+        if (
+            estimate.replay_envelope.currency != budget.currency
+            or estimate.replay_envelope.price_table_version
+            != budget.price_table_version
+        ):
+            return None, "cost-estimate-identity-mismatch"
+        return estimate, None
+
     async def _save_ready_checkpoint(
         self,
         execution: ReactAgentExecution,
@@ -1173,6 +1341,18 @@ def _soft_budget_limits(
         if limit is not None and Decimal(current) / Decimal(limit) >= ratio:
             reached.append(name)
     return tuple(reached)
+
+
+def _cost_soft_limit_reached(
+    budget: CostBudget,
+    cost: ModelCost,
+) -> bool:
+    ratio = budget.soft_limit_ratio
+    if ratio is None:
+        return False
+    if not isinstance(ratio, Decimal):  # normalized by CostBudget
+        raise RuntimeError("soft cost limit ratio was not normalized")
+    return cost.total / budget.max_cost >= ratio
 
 
 def _exhausted_budget_limits(

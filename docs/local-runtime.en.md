@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental`. `2.0.0a3` includes strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI/TUI approval resume, prompt-free agent-checkpoint listing, application event callbacks, and CLI/TUI text-run entry points. Current main additionally implements privacy-safe workflow-checkpoint discovery and explicit recovery.
+Status: `Experimental`. `2.0.0a3` includes strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI/TUI approval resume, prompt-free agent-checkpoint listing, application event callbacks, and CLI/TUI text-run entry points. Current main additionally implements explicit pre-call cost estimation/replay envelopes plus privacy-safe workflow-checkpoint discovery and explicit recovery.
 
 ## Configuration
 
@@ -46,6 +46,9 @@ Example `.wagent/config.json`:
     "version": "my-prices-2026-09-18",
     "currency": "USD",
     "max_cost": "0.25",
+    "estimate_before_call": true,
+    "require_estimate": true,
+    "soft_limit_ratio": "0.8",
     "prices": [
       {
         "provider": "primary",
@@ -63,7 +66,7 @@ Example `.wagent/config.json`:
 
 `tools.enabled` only selects names from the `tool_bindings` catalog explicitly supplied by the host. JSON imports no code, registers no unknown tool, and grants no permission or approval. `agent.max_tool_calls` must be positive when tools are enabled. Catalog tools that are not selected never enter this run's `ToolRegistry` or model context.
 
-`pricing` is optional and entirely application supplied; the framework does not bundle vendor prices that may become stale. The version, currency, maximum run cost, and per-million-token rate for each exact provider/model must be explicit. JSON strings are recommended for amounts to avoid binary floating-point ambiguity. The example rates demonstrate structure only and are not current vendor prices. Cached input falls back conservatively to the normal input rate when omitted. With a cost budget enabled, a missing matching rate or missing attempt usage fails closed with `cost-unavailable`.
+`pricing` is optional and entirely application supplied; the framework does not bundle vendor prices that may become stale. The version, currency, maximum run cost, and per-million-token rate for each exact provider/model must be explicit. JSON strings are recommended for amounts to avoid binary floating-point ambiguity. The example rates demonstrate structure only and are not current vendor prices. Cached input falls back conservatively to the normal input rate when omitted. With a cost budget enabled, a missing matching rate or missing attempt usage fails closed with `cost-unavailable`. Pre-call cost estimation is opt-in through `estimate_before_call=true` and requires an agent token estimator plus a per-call output or cumulative-total cap. `require_estimate` controls whether an unavailable projection fails closed before the model-generation request.
 
 ## CLI
 
@@ -130,7 +133,8 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 - Pre-call estimation exposes `token-estimated`, tightens the output allowance against the total limit, and blocks the network request when estimated input leaves no generation space. `soft_limit_ratio` emits `token-budget-warning` without stopping the run.
 - The character estimator is marked inexact and rejects image/audio input. It does not include hidden vendor overhead, retry, or failover usage; provider-reported usage remains authoritative after the call.
 - `pricing.max_cost` is the cumulative run limit computed with the named price-table version. Decimal arithmetic is exact, and an over-limit response stops as `cost-budget` before its tool calls execute.
-- Cost budgets still reconcile actual reported usage after a call. Token estimates are never silently converted to money, and missing usage or price data never continues as zero cost.
+- Explicit cost preflight uses a replaceable `CostEstimator`. The default `PricingCostEstimator` builds a `cost-estimated` envelope from the selected routes, configured retry/failover counts, estimated input, and output cap, choosing the higher cached/uncached input quote. A projected cumulative overrun stops before the model-generation request; `pricing.soft_limit_ratio` emits `cost-budget-warning`. Whether route-catalog resolution itself uses network I/O remains provider-defined.
+- A heuristic token estimate makes the monetary envelope non-conservative; only an exact token estimate marks the default envelope conservative. In every case, the cost budget reconciles provider-reported actual usage again after the call, and missing usage or price data never continues as zero cost.
 - Setting `max_attempts_per_route` or `max_routes` above one authorizes additional, potentially billable retry or failover calls.
 
 ## Open assembly boundary

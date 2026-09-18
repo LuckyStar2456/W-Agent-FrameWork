@@ -32,6 +32,7 @@ class StopReason(StrEnum):
     TOKEN_ESTIMATE_UNAVAILABLE = "token-estimate-unavailable"
     COST_BUDGET = "cost-budget"
     COST_UNAVAILABLE = "cost-unavailable"
+    COST_ESTIMATE_UNAVAILABLE = "cost-estimate-unavailable"
     MODEL_ERROR = "model-error"
     CANCELLED = "cancelled"
 
@@ -48,6 +49,9 @@ class RunEventType(StrEnum):
     TOKEN_BUDGET_WARNING = "token-budget-warning"
     TOKEN_BUDGET_STOPPED = "token-budget-stopped"
     COST_USAGE = "cost-usage"
+    COST_ESTIMATED = "cost-estimated"
+    COST_ESTIMATE_UNAVAILABLE = "cost-estimate-unavailable"
+    COST_BUDGET_WARNING = "cost-budget-warning"
     COST_BUDGET_STOPPED = "cost-budget-stopped"
     TOOL_REQUESTED = "tool-requested"
     TOOL_COMPLETED = "tool-completed"
@@ -130,6 +134,9 @@ class CostBudget:
     max_cost: Decimal | str | int | float
     price_table_version: str
     currency: str = "USD"
+    estimate_before_call: bool = False
+    require_estimate: bool = False
+    soft_limit_ratio: Decimal | str | int | float | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.max_cost, bool):
@@ -148,9 +155,28 @@ class CostBudget:
         currency = self.currency.strip().upper()
         if not version or not currency:
             raise ValueError("cost budget version and currency must not be empty")
+        if not isinstance(self.estimate_before_call, bool) or not isinstance(
+            self.require_estimate, bool
+        ):
+            raise ValueError("cost estimate flags must be booleans")
+        if self.require_estimate and not self.estimate_before_call:
+            raise ValueError("required cost estimates need preflight enabled")
+        ratio = self.soft_limit_ratio
+        if ratio is not None:
+            if isinstance(ratio, bool):
+                raise ValueError("soft cost limit ratio must be between 0 and 1")
+            try:
+                ratio = ratio if isinstance(ratio, Decimal) else Decimal(str(ratio))
+            except (InvalidOperation, ValueError) as error:
+                raise ValueError(
+                    "soft cost limit ratio must be between 0 and 1"
+                ) from error
+            if not ratio.is_finite() or ratio <= 0 or ratio > 1:
+                raise ValueError("soft cost limit ratio must be between 0 and 1")
         object.__setattr__(self, "max_cost", amount)
         object.__setattr__(self, "price_table_version", version)
         object.__setattr__(self, "currency", currency)
+        object.__setattr__(self, "soft_limit_ratio", ratio)
 
 
 @dataclass(frozen=True, slots=True)

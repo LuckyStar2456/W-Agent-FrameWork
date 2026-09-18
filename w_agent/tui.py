@@ -712,7 +712,11 @@ class WAgentTui(App[None]):
                 for summary in summaries
             ]
             body += "\n\nAgent usage:\n" + "\n".join(usage_lines)
-        self.query_one("#session-result", Static).update(prefix + body)
+        targets = list(self.query("#session-result"))
+        if targets:
+            target = targets[0]
+            if isinstance(target, Static):
+                target.update(prefix + body)
 
     async def _refresh_checkpoints(self) -> None:
         target = self.query_one("#checkpoint-result", Static)
@@ -1208,6 +1212,9 @@ def _event_text(event: RunEvent) -> str:
         "max_output_tokens",
         "estimator",
         "exact",
+        "conservative",
+        "route_count",
+        "attempt_count",
         "phase",
         "soft_limit_ratio",
         "error",
@@ -1229,6 +1236,13 @@ def _event_text(event: RunEvent) -> str:
         currency = cost.get("currency")
         if total is not None and currency is not None:
             details.append(f"cost={total} {currency}")
+    for name in ("primary_attempt_cost", "projected_cost"):
+        value = event.data.get(name)
+        if isinstance(value, Mapping):
+            total = value.get("total")
+            currency = value.get("currency")
+            if total is not None and currency is not None:
+                details.append(f"{name}={total} {currency}")
     prefix = f"{event.sequence:03d} {event.type.value}"
     return prefix if not details else f"{prefix} | {' | '.join(details)}"
 

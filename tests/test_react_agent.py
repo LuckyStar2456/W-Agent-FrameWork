@@ -21,7 +21,9 @@ from w_agent import (
     ModelRouter,
     JsonlRunStore,
     CostBudget,
+    CostEstimate,
     CharacterTokenEstimator,
+    ModelCost,
     ModelPrice,
     PriceTable,
     PricingCatalog,
@@ -96,6 +98,7 @@ def _loop(
     policy=None,
     pricing=None,
     token_estimator=None,
+    cost_estimator=None,
 ):
     provider = AgentProvider(responses)
     models = ModelRegistry()
@@ -115,6 +118,7 @@ def _loop(
         store=store,
         pricing=pricing,
         token_estimator=token_estimator,
+        cost_estimator=cost_estimator,
     ), provider
 
 
@@ -645,6 +649,160 @@ async def test_react_loop_enforces_versioned_cost_budget_before_tools():
 
 
 @pytest.mark.asyncio
+async def test_cost_preflight_stops_before_model_from_replay_envelope():
+    class FixedTokenEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(3, "exact:test", exact=True)
+
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1000000", "1000000"),),
+            ),
+        )
+    )
+    loop, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP, TokenUsage(3, 1))],
+        python_tool(lambda: "unused", name="unused"),
+        pricing=pricing,
+        token_estimator=FixedTokenEstimator(),
+        policy=InvocationPolicy(max_attempts_per_route=2),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "cost-preflight",
+            max_output_tokens=4,
+            cost_budget=CostBudget(
+                "10",
+                "prices-v1",
+                estimate_before_call=True,
+                require_estimate=True,
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COST_BUDGET
+    assert provider.requests == []
+    estimated = next(
+        event for event in result.events if event.type is RunEventType.COST_ESTIMATED
+    )
+    assert estimated.data["primary_attempt_cost"]["total"] == "7"
+    assert estimated.data["cost"]["total"] == "14"
+    assert estimated.data["projected_cost"]["total"] == "14"
+    assert estimated.data["attempt_count"] == 2
+    assert estimated.data["conservative"] is True
+
+
+@pytest.mark.asyncio
+async def test_required_cost_preflight_fails_closed_without_token_estimate():
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1", "1"),),
+            ),
+        )
+    )
+    loop, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP, TokenUsage(1, 1))],
+        python_tool(lambda: "unused", name="unused"),
+        pricing=pricing,
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "strict-cost-preflight",
+            max_output_tokens=4,
+            cost_budget=CostBudget(
+                "1",
+                "prices-v1",
+                estimate_before_call=True,
+                require_estimate=True,
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COST_ESTIMATE_UNAVAILABLE
+    assert provider.requests == []
+    unavailable = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.COST_ESTIMATE_UNAVAILABLE
+    )
+    assert unavailable.data["error"] == "token-estimate-unavailable"
+
+
+@pytest.mark.asyncio
+async def test_custom_cost_estimator_and_soft_warning_are_visible():
+    class FixedTokenEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(2, "fixed-token:v1")
+
+    class FixedCostEstimator:
+        def __init__(self):
+            self.requests = []
+
+        async def estimate(self, request):
+            self.requests.append(request)
+            return CostEstimate(
+                ModelCost("USD", "prices-v1", "0.2"),
+                ModelCost("USD", "prices-v1", "0.6"),
+                route_count=1,
+                attempt_count=1,
+                estimator="application-cost:v1",
+            )
+
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1", "1"),),
+            ),
+        )
+    )
+    cost_estimator = FixedCostEstimator()
+    loop, provider = _loop(
+        [((TextContent("done"),), FinishReason.STOP, TokenUsage(2, 1))],
+        python_tool(lambda: "unused", name="unused"),
+        pricing=pricing,
+        token_estimator=FixedTokenEstimator(),
+        cost_estimator=cost_estimator,
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "custom-cost",
+            max_output_tokens=3,
+            cost_budget=CostBudget(
+                "1",
+                "prices-v1",
+                estimate_before_call=True,
+                soft_limit_ratio="0.5",
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COMPLETED
+    assert len(provider.requests) == 1
+    assert cost_estimator.requests[0].estimated_input_tokens == 2
+    warnings = [
+        event
+        for event in result.events
+        if event.type is RunEventType.COST_BUDGET_WARNING
+    ]
+    assert warnings[0].data["phase"] == "preflight"
+    assert warnings[0].data["cost"]["total"] == "0.6"
+
+
+@pytest.mark.asyncio
 async def test_react_cost_budget_fails_closed_without_usage_or_pricing():
     pricing = PricingCatalog(
         (
@@ -801,7 +959,13 @@ async def test_cost_ledger_survives_approval_checkpoint_resume(tmp_path):
     )
     definition = AgentDefinition(
         "priced-writer",
-        cost_budget=CostBudget("100", "prices-v1", "USD"),
+        cost_budget=CostBudget(
+            "100",
+            "prices-v1",
+            "USD",
+            estimate_before_call=True,
+            soft_limit_ratio="0.8",
+        ),
     )
     first_loop, _ = _loop(
         [
@@ -824,6 +988,9 @@ async def test_cost_ledger_survives_approval_checkpoint_resume(tmp_path):
     assert checkpoint.cost is not None
     assert checkpoint.cost.total == 8
     assert checkpoint.priced_usage_calls == 1
+    assert checkpoint.definition.cost_budget is not None
+    assert checkpoint.definition.cost_budget.estimate_before_call is True
+    assert str(checkpoint.definition.cost_budget.soft_limit_ratio) == "0.8"
 
     second_loop, _ = _loop(
         [((TextContent("saved"),), FinishReason.STOP, TokenUsage(7, 3))],

@@ -2,7 +2,7 @@
 
 [English](./local-runtime.en.md) | 简体中文
 
-状态：`Experimental`。`2.0.0a3` 已包含严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI/TUI 审批恢复、Agent Checkpoint 脱敏列表、应用事件回调，以及 CLI/TUI 文本运行入口。当前 main 另外实现 Workflow Checkpoint 脱敏汇总和显式恢复。
+状态：`Experimental`。`2.0.0a3` 已包含严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI/TUI 审批恢复、Agent Checkpoint 脱敏列表、应用事件回调，以及 CLI/TUI 文本运行入口。当前 main 另外实现显式调用前费用估算/重放包络，以及 Workflow Checkpoint 脱敏汇总和显式恢复。
 
 ## 配置
 
@@ -46,6 +46,9 @@
     "version": "my-prices-2026-09-18",
     "currency": "USD",
     "max_cost": "0.25",
+    "estimate_before_call": true,
+    "require_estimate": true,
+    "soft_limit_ratio": "0.8",
     "prices": [
       {
         "provider": "primary",
@@ -63,7 +66,7 @@
 
 `tools.enabled` 只从宿主明确提供的 `tool_bindings` Catalog 中选择名称。JSON 不导入代码、不注册未知工具，也不授予权限或审批；启用工具时 `agent.max_tool_calls` 必须大于零。未选择的 Catalog 工具不会进入本次 `ToolRegistry` 或模型上下文。
 
-`pricing` 可选且完全由本地开发者提供；框架不内置可能过期的厂商价格。`version`、币种、最大 Run 费用和每个精确 Provider/Model 的百万 Token 单价必须显式给出，金额建议使用 JSON 字符串避免浮点歧义。示例价格仅演示结构，不代表厂商实际价格。缓存输入未单独给价时按普通输入价保守计算；缺少匹配价格或任一尝试用量时，启用费用预算的 Run 会以 `cost-unavailable` 失败关闭。
+`pricing` 可选且完全由本地开发者提供；框架不内置可能过期的厂商价格。`version`、币种、最大 Run 费用和每个精确 Provider/Model 的百万 Token 单价必须显式给出，金额建议使用 JSON 字符串避免浮点歧义。示例价格仅演示结构，不代表厂商实际价格。缓存输入未单独给价时按普通输入价保守计算；缺少匹配价格或任一尝试用量时，启用费用预算的 Run 会以 `cost-unavailable` 失败关闭。调用前费用预估必须通过 `estimate_before_call=true` 显式启用，并要求 Agent 配置 Token 估算器以及单次输出或累计总量上限；`require_estimate` 控制估算不可用时是否在模型生成请求前失败关闭。
 
 ## CLI
 
@@ -130,7 +133,8 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 - 调用前估算会公开 `token-estimated`、收紧总量对应的输出额度，并在预计输入已无生成空间时阻止网络请求；`soft_limit_ratio` 只产生 `token-budget-warning`，不停止 Run。
 - 字符估算器标记为非精确并拒绝图片/音频。它不覆盖厂商隐藏开销、重试或故障转移；调用后仍以 Provider 实报用量核算。
 - `pricing.max_cost` 是使用指定价格表版本计算的累计 Run 费用上限；费用使用十进制精确计算，超限时在执行本次响应中的工具前以 `cost-budget` 停止。
-- 费用预算仍依据调用后实际报告值；当前 Token 估算不会被静默换算为费用，缺少用量或价格时不会按零费用继续。
+- 显式费用预估使用可替换 `CostEstimator`。默认 `PricingCostEstimator` 根据已选路由、配置允许的重试/故障转移次数、预计输入和输出上限生成 `cost-estimated` 包络；缓存/非缓存输入取较高报价。预计累计费用超限时在模型生成请求前停止，`pricing.soft_limit_ratio` 产生 `cost-budget-warning`。路由目录解析是否访问网络仍由 Provider 实现决定。
+- 启发式 Token 估算会使费用包络标记为非保守；只有精确 Token 估算才能把默认包络标记为保守。无论哪种情况，费用预算仍依据调用后 Provider 实际报告值再次核算；缺少用量或价格时不会按零费用继续。
 - 将 `max_attempts_per_route` 或 `max_routes` 设为大于 1 会授权额外、可能计费的重试或故障转移。
 
 ## 开放装配边界

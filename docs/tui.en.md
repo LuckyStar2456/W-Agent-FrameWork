@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements cross-session per-agent usage/cost summaries, guided workflow-checkpoint recovery, and import-free preview, confirmed loading, and TUI unload for general plugins. These main capabilities are unpublished. Plugin package installation and upgrades remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements safe pre-call cost-envelope event projection, cross-session per-agent usage/cost summaries, guided workflow-checkpoint recovery, and import-free preview, confirmed loading, and TUI unload for general plugins. These main capabilities are unpublished. Plugin package installation and upgrades remain `Planned`.
 
 ## Principles
 
@@ -69,7 +69,7 @@ Displays a resolved profile, compares named versions, exports a code, and previe
 
 ### Run
 
-The current screen can read strict local configuration, start a text agent, and show final output, input/output tokens, and versioned cost. The user must type `RUN` before a model call. Tool entries are imported only after a separate `LOAD TOOLS` confirmation, and authority applies only to the current run. The screen projects persisted events live through the public `RunEventCallback`, never reads private loop state, and omits prompts, model text, and tool arguments.
+The current screen can read strict local configuration, start a text agent, and show final output, input/output tokens, and versioned cost. The user must type `RUN` before a model call. When cost preflight is enabled explicitly, the event panel shows the estimator, route/attempt counts, replay cost envelope, and projected cumulative cost without prompts. Tool entries are imported only after a separate `LOAD TOOLS` confirmation, and authority applies only to the current run. The screen projects persisted events live through the public `RunEventCallback`, never reads private loop state, and omits prompts, model text, and tool arguments.
 
 ### Sessions
 

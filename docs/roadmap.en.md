@@ -47,7 +47,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Versioned price tables, cost metering, and hard run cost budgets | `Implemented` | Phase 3/6 / 2.0.0a2 |
 | Pluggable pre-call token estimators and soft-threshold events | `Experimental` (current main) | Phase 3/6 |
 | Cross-session per-agent usage/cost summaries | `Experimental` (current main) | Phase 3/6 |
-| Pre-call monetary estimation | `Planned` | Phase 3/6 |
+| Replaceable pre-call cost estimation and replay envelope | `Experimental` (current main) | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -117,7 +117,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. A `TokenEstimator` may be injected to estimate input before the call, tighten that request's output allowance, and block an obvious overrun; `require_estimate=True` fails closed when estimation is unavailable, while `soft_limit_ratio` emits an observable warning without changing stop policy. Estimates cannot predict retry/failover accounting, so provider usage remains authoritative.
 - Implemented session totals, `AttemptRecord` token ledgers covering retry/failover, and RunEvent/CLI visibility. Missing usage for failed attempts remains unknown and makes strict accounting fail closed.
 - Implemented application-supplied versioned price tables, normal/cached-input and output cost metering, pricing completeness, approval-checkpoint persistence, and hard run cost budgets. Missing prices or usage fail closed, and money is never silently inferred from token counts.
-- Current main implements `SessionManager.agent_usage()`, CLI/TUI cross-session summaries by agent, and completeness semantics that never disguise unknown usage or cost as zero. Later work adds pre-call monetary estimation and more application-policy templates that consume soft-threshold events.
+- Current main implements `SessionManager.agent_usage()`, CLI/TUI cross-session summaries by agent, and completeness semantics that never disguise unknown usage or cost as zero.
+- Current main implements explicit pre-call `CostEstimator`, a default versioned-price/route/retry-failover envelope, cost soft-threshold events, and hard stops before model-generation requests; provider-reported cost remains authoritative afterward. Later work adds more application-policy templates that consume soft-threshold events.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Current main implements agent text-delta RunEvents behind explicit `emit_text_deltas`; later work adds multimodal blocks, tool-argument deltas, and general cross-process projection/replay for arbitrary RunEvents.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.

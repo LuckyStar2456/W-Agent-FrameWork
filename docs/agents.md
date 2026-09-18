@@ -84,7 +84,9 @@ Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际�
 
 内置 `CharacterTokenEstimator` 统计中立消息中的文本、工具调用/结果、工具与响应 Schema 和停止词；它明确标记 `exact=False`，不处理图片/音频，也不声称覆盖厂商隐藏格式开销。应用可替换为模型专用 tokenizer。估算只保护下一次初始请求，不能预知重试/故障转移或 Provider 最终记账，因此调用后仍始终以实际 Usage 核算。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。
 
-费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。Session 级累计、逐尝试账本、调用前 Token 估算、软阈值事件，以及按 Agent 跨 Session 的只读用量/费用汇总已实现；调用前费用预估仍在计划中。
+费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。
+
+`CostBudget(estimate_before_call=True)` 显式启用调用前费用预估。可替换 `CostEstimator` 接收不含 Prompt 的 `CostEstimateRequest`；默认 `PricingCostEstimator` 用已选路由、允许的重试/故障转移次数、Token 输入估算和本次输出上限生成 `CostEstimate`。`COST_ESTIMATED` 同时公开首选单次费用与完整重放包络，`COST_ESTIMATE_UNAVAILABLE` 公开降级，`require_estimate=True` 可在不可估算时以 `COST_ESTIMATE_UNAVAILABLE` 停止，`soft_limit_ratio` 产生 `COST_BUDGET_WARNING`。预估包络超出剩余预算时在模型生成请求前停止；调用后仍始终以 Provider 实报用量再次核算。Session 级累计、逐尝试账本、调用前 Token/费用估算、软阈值事件，以及按 Agent 跨 Session 的只读用量/费用汇总均已实现。
 
 `emit_text_deltas=False` 是兼容默认值，ReAct 使用收集式 `invoke()`。显式设为 `True` 后改用同一个 `ModelExecutor.stream()` 安全透传路径，并在 `MODEL_COMPLETED` 之前持久化/输出 `MODEL_TEXT_DELTA`（`step`、`block_index`、`text`）；最终 `RunResult`、Usage、Attempt 账本与工具循环语义不变。已经公开任何增量后的模型失败不会被普通重试/故障转移静默掩盖，是否启用模型层验证前缀恢复仍由调用者自己的执行器策略决定。TUI 只显示事件类型与安全元数据，不显示增量文本。工具参数增量、图片/音频块和任意 RunEvent 跨进程回放仍为后续能力。
 

@@ -196,10 +196,20 @@ class LocalPricingConfig:
     currency: str
     max_cost: Decimal | str | int | float
     prices: tuple[ModelPrice, ...]
+    estimate_before_call: bool = False
+    require_estimate: bool = False
+    soft_limit_ratio: Decimal | str | int | float | None = None
 
     def __post_init__(self) -> None:
         try:
-            budget = CostBudget(self.max_cost, self.version, self.currency)
+            budget = CostBudget(
+                self.max_cost,
+                self.version,
+                self.currency,
+                estimate_before_call=self.estimate_before_call,
+                require_estimate=self.require_estimate,
+                soft_limit_ratio=self.soft_limit_ratio,
+            )
             table = PriceTable(self.version, self.currency, tuple(self.prices))
         except (TypeError, ValueError, PricingError) as error:
             raise LocalRuntimeConfigError("pricing configuration is invalid") from error
@@ -207,6 +217,7 @@ class LocalPricingConfig:
         object.__setattr__(self, "currency", table.currency)
         object.__setattr__(self, "max_cost", budget.max_cost)
         object.__setattr__(self, "prices", table.prices)
+        object.__setattr__(self, "soft_limit_ratio", budget.soft_limit_ratio)
 
     def price_table(self) -> PriceTable:
         return PriceTable(self.version, self.currency, self.prices)
@@ -228,6 +239,22 @@ class LocalRuntimeConfig:
             raise LocalRuntimeConfigError(
                 "enabled tools require agent.max_tool_calls to be positive"
             )
+        if self.pricing is not None and self.pricing.estimate_before_call:
+            if self.agent.token_estimator is None:
+                raise LocalRuntimeConfigError(
+                    "pricing preflight needs an explicit token_estimator"
+                )
+            if all(
+                value is None
+                for value in (
+                    self.agent.max_output_tokens,
+                    self.agent.max_cumulative_output_tokens,
+                    self.agent.max_total_tokens,
+                )
+            ):
+                raise LocalRuntimeConfigError(
+                    "pricing preflight needs an output or total token limit"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,7 +458,15 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
         pricing_value = _mapping(pricing_raw, "pricing")
         _known_keys(
             pricing_value,
-            {"version", "currency", "max_cost", "prices"},
+            {
+                "version",
+                "currency",
+                "max_cost",
+                "prices",
+                "estimate_before_call",
+                "require_estimate",
+                "soft_limit_ratio",
+            },
             "pricing",
         )
         raw_prices = pricing_value.get("prices")
@@ -463,6 +498,12 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
                 currency=str(pricing_value.get("currency", "")),
                 max_cost=pricing_value.get("max_cost", ""),
                 prices=tuple(prices),
+                estimate_before_call=pricing_value.get(
+                    "estimate_before_call",
+                    False,
+                ),
+                require_estimate=pricing_value.get("require_estimate", False),
+                soft_limit_ratio=pricing_value.get("soft_limit_ratio"),
             )
         except (TypeError, ValueError) as error:
             if isinstance(error, LocalRuntimeConfigError):
@@ -556,6 +597,9 @@ def assemble_local_runtime(
             config.pricing.max_cost,
             config.pricing.version,
             config.pricing.currency,
+            estimate_before_call=config.pricing.estimate_before_call,
+            require_estimate=config.pricing.require_estimate,
+            soft_limit_ratio=config.pricing.soft_limit_ratio,
         )
     agent = config.agent
     loop = ReactAgentLoop(

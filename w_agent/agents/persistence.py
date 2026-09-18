@@ -368,6 +368,15 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
                         definition.cost_budget.price_table_version
                     ),
                     "currency": definition.cost_budget.currency,
+                    "estimate_before_call": (
+                        definition.cost_budget.estimate_before_call
+                    ),
+                    "require_estimate": definition.cost_budget.require_estimate,
+                    "soft_limit_ratio": (
+                        str(definition.cost_budget.soft_limit_ratio)
+                        if definition.cost_budget.soft_limit_ratio is not None
+                        else None
+                    ),
                 }
                 if definition.cost_budget is not None
                 else None
@@ -437,6 +446,13 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
                     max_cost=str(cost_budget["max_cost"]),
                     price_table_version=str(cost_budget["price_table_version"]),
                     currency=str(cost_budget.get("currency", "USD")),
+                    estimate_before_call=bool(
+                        cost_budget.get("estimate_before_call", False)
+                    ),
+                    require_estimate=bool(
+                        cost_budget.get("require_estimate", False)
+                    ),
+                    soft_limit_ratio=cost_budget.get("soft_limit_ratio"),
                 )
                 if isinstance(cost_budget, Mapping)
                 else None

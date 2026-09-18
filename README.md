@@ -61,7 +61,7 @@ W-Agent 遵循以下原则：
 - 同时支持完整收集和逐事件透传的 `ModelExecutor`；默认单次调用，可显式启用有界重试/故障转移，并记录不含 Prompt 的逐尝试 Token/失败审计。
 - 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
 - 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 绑定与 2026-07-28 stdio/Streamable HTTP 客户端、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
-- 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、显式可选文本增量 RunEvent、调用前可插拔 Token 估算、实报 Token/费用预算、软阈值事件、JSONL RunEvent/尝试账本记录和审批断点恢复。
+- 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、显式可选文本增量 RunEvent、调用前可插拔 Token/费用估算与重放包络、实报 Token/费用预算、软阈值事件、JSONL RunEvent/尝试账本记录和审批断点恢复。
 - 应用提供的版本化价格表、普通/缓存输入与输出费用计量、失败关闭的 Run 费用预算，以及 Session/Checkpoint/评测和按 Agent 跨 Session 的费用可见性。
 - 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
 - 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
@@ -71,7 +71,7 @@ W-Agent 遵循以下原则：
 - 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认、可见 Token/费用预算与计量。
 - 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放、本地评测运行器、版本化客服/编码套件与脱敏 JSON 报告。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。当前 main 已有可替换的离线装配依赖计划、独立 YAML 插件引用的安全预览/确认加载/TUI 卸载、专用 OpenAI Responses/vLLM 差异适配，以及显式有界的可替换文本流前缀恢复；在线来源目录/包安装、Provider 原生游标续传、多模态/工具事件通用回放、并行或嵌套 Workflow 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。当前 main 已有可替换的离线装配依赖计划、独立 YAML 插件引用的安全预览/确认加载/TUI 卸载、专用 OpenAI Responses/vLLM 差异适配、显式有界的可替换文本流前缀恢复，以及显式调用前费用估算/重放包络；在线来源目录/包安装、Provider 原生游标续传、多模态/工具事件通用回放、并行或嵌套 Workflow 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 

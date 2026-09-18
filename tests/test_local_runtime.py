@@ -222,6 +222,83 @@ async def test_local_runtime_loads_explicit_pricing_and_persists_cost(tmp_path):
     assert '"price_table_version":"prices-v1"' in persisted
 
 
+@pytest.mark.asyncio
+async def test_local_runtime_cost_preflight_is_explicit_and_visible(tmp_path):
+    config = local_runtime_config_from_mapping(
+        {
+            "provider": {
+                "template": "fake",
+                "name": "test-provider",
+                "model": "test-model",
+            },
+            "agent": {
+                "token_estimator": "character",
+                "max_output_tokens": 2,
+            },
+            "pricing": {
+                "version": "prices-v1",
+                "currency": "USD",
+                "max_cost": "1",
+                "estimate_before_call": True,
+                "require_estimate": True,
+                "soft_limit_ratio": "0.5",
+                "prices": [
+                    {
+                        "provider": "test-provider",
+                        "model": "test-model",
+                        "input_per_million": "1000000",
+                        "output_per_million": "1000000",
+                    }
+                ],
+            },
+        }
+    )
+    events = []
+    runtime = assemble_local_runtime(
+        config,
+        tmp_path / ".wagent",
+        templates=_templates({}),
+    )
+
+    run = await runtime.run("priced", event_callback=events.append)
+
+    assert run.result.stop_reason.value == "cost-budget"
+    assert run.result.model_calls == 0
+    estimate = next(event for event in events if event.type.value == "cost-estimated")
+    assert estimate.data["estimator"] == "pricing-replay-envelope:v1"
+    assert estimate.data["cost"]["total"] == "11"
+
+
+def test_local_runtime_cost_preflight_requires_estimator_and_output_cap():
+    base = {
+        "provider": {
+            "template": "fake",
+            "name": "test-provider",
+            "model": "test-model",
+        },
+        "pricing": {
+            "version": "prices-v1",
+            "currency": "USD",
+            "max_cost": "1",
+            "estimate_before_call": True,
+            "prices": [
+                {
+                    "provider": "test-provider",
+                    "model": "test-model",
+                    "input_per_million": "1",
+                    "output_per_million": "1",
+                }
+            ],
+        },
+    }
+    with pytest.raises(LocalRuntimeConfigError, match="explicit token_estimator"):
+        local_runtime_config_from_mapping(base)
+
+    base["agent"] = {"token_estimator": "character"}
+    with pytest.raises(LocalRuntimeConfigError, match="output or total token limit"):
+        local_runtime_config_from_mapping(base)
+
+
 def test_local_runtime_pricing_requires_configured_provider_model_rate(tmp_path):
     config = local_runtime_config_from_mapping(
         {

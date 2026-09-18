@@ -68,6 +68,25 @@ def test_tui_projects_token_estimate_metadata_without_prompt_content():
     assert "model-text-delta" in delta_rendered
     assert "secret-model-output" not in delta_rendered
 
+    cost = RunEvent(
+        3,
+        RunEventType.COST_ESTIMATED,
+        "run-1",
+        {
+            "route_count": 2,
+            "attempt_count": 3,
+            "estimator": "pricing-replay-envelope:v1",
+            "conservative": False,
+            "primary_attempt_cost": {"total": "0.1", "currency": "USD"},
+            "projected_cost": {"total": "0.4", "currency": "USD"},
+            "prompt": "must-not-render",
+        },
+    )
+    cost_rendered = tui_module._event_text(cost)
+    assert "route_count=2" in cost_rendered
+    assert "projected_cost=0.4 USD" in cost_rendered
+    assert "must-not-render" not in cost_rendered
+
 
 @pytest.mark.asyncio
 async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path):
