@@ -20,6 +20,7 @@ from w_agent.models import (
     ModelRequest,
     PricingError,
     PricingResolver,
+    TextDelta,
     TokenUsage,
     ToolCallContent,
     ToolResultContent,
@@ -548,11 +549,26 @@ class ReactAgentLoop:
                 ),
             )
             try:
-                invocation = await self.models.invoke(
-                    request,
-                    scope=context.scope,
-                    cancellation=cancellation,
-                )
+                if definition.emit_text_deltas:
+                    invocation = self.models.stream(
+                        request,
+                        scope=context.scope,
+                        cancellation=cancellation,
+                    )
+                    async for model_event in invocation:
+                        if isinstance(model_event, TextDelta):
+                            yield await execution.emit(
+                                RunEventType.MODEL_TEXT_DELTA,
+                                step=state.steps,
+                                block_index=model_event.index,
+                                text=model_event.text,
+                            )
+                else:
+                    invocation = await self.models.invoke(
+                        request,
+                        scope=context.scope,
+                        cancellation=cancellation,
+                    )
             except asyncio.CancelledError:
                 if cancellation is None or not cancellation.cancelled:
                     raise
@@ -585,6 +601,8 @@ class ReactAgentLoop:
                 return
 
             response = invocation.response
+            if response is None:
+                raise RuntimeError("model execution completed without a response")
             _record_attempt_usage(
                 state,
                 invocation.attempts,

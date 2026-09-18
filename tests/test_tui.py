@@ -56,6 +56,16 @@ def test_tui_projects_token_estimate_metadata_without_prompt_content():
     assert "estimator=custom:v1" in rendered
     assert "must-not-render" not in rendered
 
+    delta = RunEvent(
+        2,
+        RunEventType.MODEL_TEXT_DELTA,
+        "run-1",
+        {"step": 1, "block_index": 0, "text": "secret-model-output"},
+    )
+    delta_rendered = tui_module._event_text(delta)
+    assert "model-text-delta" in delta_rendered
+    assert "secret-model-output" not in delta_rendered
+
 
 @pytest.mark.asyncio
 async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path):

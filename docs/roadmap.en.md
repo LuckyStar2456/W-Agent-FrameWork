@@ -43,6 +43,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | In-process RunEvent stream and bounded budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Session totals and per-attempt token ledger | `Implemented` | Phase 3/6 / 2.0.0a1 |
+| Explicit opt-in agent text-delta RunEvents | `Experimental` (current main) | Phase 3/6 |
 | Versioned price tables, cost metering, and hard run cost budgets | `Implemented` | Phase 3/6 / 2.0.0a2 |
 | Pluggable pre-call token estimators and soft-threshold events | `Experimental` (current main) | Phase 3/6 |
 | Cross-session agent aggregation and pre-call monetary estimation | `Planned` | Phase 3/6 |
@@ -117,7 +118,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented application-supplied versioned price tables, normal/cached-input and output cost metering, pricing completeness, approval-checkpoint persistence, and hard run cost budgets. Missing prices or usage fail closed, and money is never silently inferred from token counts.
 - Later work adds cross-session agent aggregation, pre-call monetary estimation, and more application-policy templates that consume soft-threshold events.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
-- Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
+- Current main implements agent text-delta RunEvents behind explicit `emit_text_deltas`; later work adds multimodal blocks, tool-argument deltas, and general cross-process projection/replay for arbitrary RunEvents.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.
 - Implemented fixed-endpoint HTTP, shell-free command tools, transport-neutral MCP binding, and MCP 2026-07-28 stdio/Streamable HTTP JSON/SSE clients with paginated discovery, explicit binding, and `x-mcp-header`. Discovery never registers, authorizes, or approves a tool automatically.
 - Later work adds 2025-era `initialize` compatibility negotiation, automated MRTR input exchange, subscription streams, and MCP sandbox binding.

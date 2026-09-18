@@ -39,6 +39,7 @@ class StopReason(StrEnum):
 class RunEventType(StrEnum):
     RUN_STARTED = "run-started"
     MODEL_STARTED = "model-started"
+    MODEL_TEXT_DELTA = "model-text-delta"
     MODEL_COMPLETED = "model-completed"
     MODEL_FAILED = "model-failed"
     TOKEN_USAGE = "token-usage"
@@ -166,12 +167,15 @@ class AgentDefinition:
     extensions: Mapping[str, Any] = field(default_factory=dict)
     token_budget: TokenBudget | None = None
     cost_budget: CostBudget | None = None
+    emit_text_deltas: bool = False
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
             raise ValueError("agent name must not be empty")
         if self.max_steps <= 0 or self.max_tool_calls < 0:
             raise ValueError("agent budgets are invalid")
+        if not isinstance(self.emit_text_deltas, bool):
+            raise ValueError("emit_text_deltas must be a boolean")
         object.__setattr__(self, "extensions", MappingProxyType(dict(self.extensions)))
 
 

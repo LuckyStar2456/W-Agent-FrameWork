@@ -138,7 +138,7 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 - 动态选择下一步。
 - 从 Agent 调用 Workflow。
 
-当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用、Run 级 Token 预算和基于应用版本化价格表的费用预算，并在工具需要审批时安全停止。可替换 `TokenEstimator` 位于中立请求与网络调用之间，提供调用前估算、输出额度收紧和软阈值事件；内核不绑定厂商 tokenizer，估算失败是否停止由 `TokenBudget.require_estimate` 明确决定，调用后仍以 Provider 实报为准。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token、费用与尝试账本也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。模型调用目前采用收集模式；文本逐 Token 事件、完整多模态/工具事件投影和通用恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用、Run 级 Token 预算和基于应用版本化价格表的费用预算，并在工具需要审批时安全停止。可替换 `TokenEstimator` 位于中立请求与网络调用之间，提供调用前估算、输出额度收紧和软阈值事件；内核不绑定厂商 tokenizer，估算失败是否停止由 `TokenBudget.require_estimate` 明确决定，调用后仍以 Provider 实报为准。`emit_text_deltas` 显式启用时，Loop 使用公开安全模型流，把文本增量投影为先持久化后可见的 `MODEL_TEXT_DELTA`，默认收集模式不变。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token、费用与尝试账本也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。完整多模态/工具事件投影和通用跨进程恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
 
 `SessionManager` 在 Loop 外通过公开协议管理创建、列表、归档、跨 Run 文本投影和审批恢复，并提供内存/JSON Store。它不读取 Loop 私有状态，也不把工具或多模态事件伪装成已回放内容。
 

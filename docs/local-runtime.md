@@ -24,6 +24,7 @@
     "max_steps": 4,
     "max_tool_calls": 4,
     "max_output_tokens": 1024,
+    "emit_text_deltas": true,
     "max_input_tokens": 12000,
     "max_cumulative_output_tokens": 3000,
     "max_total_tokens": 15000,
@@ -122,6 +123,7 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 ## 预算语义
 
 - `max_output_tokens` 是单次模型请求的输出上限。
+- `emit_text_deltas=true` 显式启用 `model-text-delta` RunEvent；JSONL 会保存增量正文，TUI 只显示安全元数据，不展示正文。
 - `max_input_tokens`、`max_cumulative_output_tokens`、`max_total_tokens` 是一个 Run 内的累计上限。
 - `require_usage=true` 时，只要某次模型尝试未报告用量（包括成功重试之前的失败尝试），Run 就以 `token-usage-unavailable` 停止。
 - `token_estimator="character"` 是必须显式选择的本地启发式模板；`require_estimate=true` 在估算不可用时调用前失败关闭。Python API 可注入任意 `TokenEstimator`，不受该模板限制。

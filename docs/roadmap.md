@@ -43,6 +43,7 @@
 | 进程内 RunEvent 流与有界预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Run 级 Token 可见计量与硬预算 | `Implemented` | Phase 3 / 2.0.0a1 |
 | Session 累计与逐尝试 Token 账本 | `Implemented` | Phase 3/6 / 2.0.0a1 |
+| Agent 显式可选文本增量 RunEvent | `Experimental`（当前 main） | Phase 3/6 |
 | 版本化价格表、费用计量与 Run 费用硬预算 | `Implemented` | Phase 3/6 / 2.0.0a2 |
 | 可插拔调用前 Token 预估器与软阈值事件 | `Experimental`（当前 main） | Phase 3/6 |
 | Agent 跨 Session 聚合与调用前费用预估 | `Planned` | Phase 3/6 |
@@ -117,7 +118,7 @@
 - 已实现应用提供的版本化价格表、普通/缓存输入与输出费用计量、费用完整性、审批断点持久化和 Run 费用硬预算；缺少价格或用量时失败关闭，不从 Token 数静默推断金额。
 - 后续实现 Agent 跨 Session 聚合、调用前费用预估，以及由应用策略消费软阈值事件的更多动作模板。
 - 已实现 `SessionManager`、内存/JSON Store、创建/列表/归档/取消归档、跨 Run 文本投影，以及 Session 内 Agent 启动和审批恢复。
-- 后续实现多模态、工具和任意 RunEvent 的通用投影/回放，以及 Agent 逐 Token 文本事件。
+- 当前 main 已实现显式 `emit_text_deltas` 的 Agent 文本增量 RunEvent；后续实现多模态、工具参数增量和任意 RunEvent 的通用跨进程投影/回放。
 - 已实现 Python 工具模板、统一注册表、参数校验、权限/逐调用审批、超时/取消、标准结果和 Prompt-free 审计。
 - 已实现固定端点 HTTP、无 Shell 命令工具、传输中立的 MCP 绑定，以及 MCP 2026-07-28 stdio/Streamable HTTP JSON/SSE 客户端、分页发现、显式绑定与 `x-mcp-header`。发现不会自动注册、授权或批准工具。
 - 后续提供 2025 版 `initialize` 兼容协商、MRTR 自动输入交换、订阅流和 MCP Sandbox 绑定。

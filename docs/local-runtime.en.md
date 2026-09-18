@@ -24,6 +24,7 @@ Example `.wagent/config.json`:
     "max_steps": 4,
     "max_tool_calls": 4,
     "max_output_tokens": 1024,
+    "emit_text_deltas": true,
     "max_input_tokens": 12000,
     "max_cumulative_output_tokens": 3000,
     "max_total_tokens": 15000,
@@ -122,6 +123,7 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 ## Budget semantics
 
 - `max_output_tokens` bounds one model request's output.
+- `emit_text_deltas=true` explicitly enables `model-text-delta` RunEvents. JSONL persists delta bodies, while the TUI renders safe metadata only and never the body.
 - `max_input_tokens`, `max_cumulative_output_tokens`, and `max_total_tokens` are cumulative within one run.
 - With `require_usage=true`, any attempt without usage, including a failed attempt before a successful retry, stops the run as `token-usage-unavailable`.
 - `token_estimator="character"` is an explicitly selected local heuristic template; `require_estimate=true` fails closed before the call when estimation is unavailable. The Python API may inject any `TokenEstimator` and is not limited to this template.

@@ -54,6 +54,7 @@ from w_agent import AgentDefinition, CharacterTokenEstimator, TokenBudget
 definition = AgentDefinition(
     "assistant",
     max_output_tokens=2_000,
+    emit_text_deltas=True,
     token_budget=TokenBudget(
         max_input_tokens=20_000,
         max_output_tokens=6_000,
@@ -85,7 +86,7 @@ The built-in `CharacterTokenEstimator` counts neutral-message text, tool calls/r
 
 Cost metering uses an application-supplied `PriceTable`/`PricingResolver` and exact provider, model, table version, and currency identities. Normal input, cached input, and output costs use `Decimal`. `CostBudget` binds a run to one explicit table version, and `RunResult.cost_complete` becomes true only when every attempt was priced. An over-limit response stops with `COST_BUDGET` before its tools execute. Missing rates or usage and version/currency mismatches fail closed as `COST_UNAVAILABLE`. Cost and table identity flow through `COST_USAGE`, terminal events, results, sessions, and approval checkpoints so resumed runs continue the same ledger. The framework bundles no potentially stale vendor prices and never silently infers money from token counts. Session totals, per-attempt ledgers, pre-call token estimation, and soft-threshold events are implemented; cross-session agent aggregation and pre-call monetary estimation remain planned.
 
-The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain per-token text deltas. The model layer already supports safe pass-through; adapting text deltas into agent RunEvents is later work.
+`emit_text_deltas=False` is the compatibility default and keeps ReAct on collecting `invoke()`. Setting it to `True` uses the same safe `ModelExecutor.stream()` path and persists/yields `MODEL_TEXT_DELTA` (`step`, `block_index`, `text`) before `MODEL_COMPLETED`; final `RunResult`, usage, attempt-ledger, and tool-loop semantics stay unchanged. A failure after any visible delta is not silently hidden by ordinary retry/failover. Enabling model-layer verified-prefix recovery remains the caller's execution-policy choice. The TUI renders only the event type and safe metadata, never delta text. Tool-argument deltas, image/audio blocks, and arbitrary cross-process RunEvent replay remain later work.
 
 ## Initial templates
 

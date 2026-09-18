@@ -343,6 +343,7 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
             "max_tool_calls": definition.max_tool_calls,
             "temperature": definition.temperature,
             "max_output_tokens": definition.max_output_tokens,
+            "emit_text_deltas": definition.emit_text_deltas,
             "extensions": _json_value(definition.extensions),
             "token_budget": (
                 {
@@ -417,6 +418,7 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
             max_tool_calls=int(definition["max_tool_calls"]),
             temperature=definition.get("temperature"),
             max_output_tokens=definition.get("max_output_tokens"),
+            emit_text_deltas=bool(definition.get("emit_text_deltas", False)),
             extensions=definition.get("extensions", {}),
             token_budget=(
                 TokenBudget(

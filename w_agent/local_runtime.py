@@ -112,6 +112,7 @@ class LocalAgentConfig:
     require_estimate: bool = False
     soft_limit_ratio: Decimal | str | int | float | None = None
     extensions: Mapping[str, Any] = field(default_factory=dict)
+    emit_text_deltas: bool = False
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -120,6 +121,8 @@ class LocalAgentConfig:
             raise LocalRuntimeConfigError("agent step and tool limits are invalid")
         if self.temperature is not None and self.temperature < 0:
             raise LocalRuntimeConfigError("agent temperature must not be negative")
+        if not isinstance(self.emit_text_deltas, bool):
+            raise LocalRuntimeConfigError("emit_text_deltas must be a boolean")
         limits = (
             self.max_output_tokens,
             self.max_input_tokens,
@@ -401,6 +404,7 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
             "max_tool_calls",
             "temperature",
             "max_output_tokens",
+            "emit_text_deltas",
             "max_input_tokens",
             "max_cumulative_output_tokens",
             "max_total_tokens",
@@ -574,6 +578,7 @@ def assemble_local_runtime(
         max_tool_calls=agent.max_tool_calls,
         temperature=agent.temperature,
         max_output_tokens=agent.max_output_tokens,
+        emit_text_deltas=agent.emit_text_deltas,
         extensions=agent.extensions,
         token_budget=TokenBudget(
             max_input_tokens=agent.max_input_tokens,

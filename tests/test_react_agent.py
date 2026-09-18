@@ -178,6 +178,45 @@ async def test_react_stream_is_single_use_and_exposes_final_result():
 
 
 @pytest.mark.asyncio
+async def test_react_opt_in_projects_model_text_deltas_before_completion():
+    loop, _ = _loop(
+        [((TextContent("streamed"),), FinishReason.STOP, TokenUsage(3, 2))],
+        python_tool(lambda: "unused", name="unused"),
+    )
+
+    result = await loop.run(
+        AgentDefinition("streaming", emit_text_deltas=True),
+        _context(),
+    )
+
+    event_types = [event.type for event in result.events]
+    delta = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.MODEL_TEXT_DELTA
+    )
+    assert delta.data == {"step": 1, "block_index": 0, "text": "streamed"}
+    assert event_types.index(RunEventType.MODEL_TEXT_DELTA) < event_types.index(
+        RunEventType.MODEL_COMPLETED
+    )
+    assert result.output == "streamed"
+
+
+@pytest.mark.asyncio
+async def test_react_model_text_deltas_are_disabled_by_default():
+    loop, _ = _loop(
+        [((TextContent("collected"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+    )
+
+    result = await loop.run(AgentDefinition("collected"), _context())
+
+    assert all(
+        event.type is not RunEventType.MODEL_TEXT_DELTA for event in result.events
+    )
+
+
+@pytest.mark.asyncio
 async def test_react_loop_stops_for_explicit_tool_approval():
     calls = []
 
@@ -717,6 +756,7 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
     result = await loop.run(
         AgentDefinition(
             "writer",
+            emit_text_deltas=True,
             token_budget=TokenBudget(
                 require_estimate=True,
                 soft_limit_ratio="0.8",
@@ -734,6 +774,7 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
     assert len(checkpoint.attempts) == 2
     assert checkpoint.attempts[0].failure is not None
     assert checkpoint.definition.token_budget is not None
+    assert checkpoint.definition.emit_text_deltas is True
     assert checkpoint.definition.token_budget.require_estimate is True
     assert str(checkpoint.definition.token_budget.soft_limit_ratio) == "0.8"
     assert '"soft_limit_ratio":"0.8"' in persisted

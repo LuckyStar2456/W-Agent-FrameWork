@@ -54,6 +54,7 @@ from w_agent import AgentDefinition, CharacterTokenEstimator, TokenBudget
 definition = AgentDefinition(
     "assistant",
     max_output_tokens=2_000,
+    emit_text_deltas=True,
     token_budget=TokenBudget(
         max_input_tokens=20_000,
         max_output_tokens=6_000,
@@ -85,7 +86,7 @@ Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际�
 
 费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。Session 级累计、逐尝试账本、调用前 Token 估算与软阈值事件已实现；Agent 跨 Session 聚合与调用前费用预估仍在计划中。
 
-当前 ReAct 使用模型执行器的收集式 `invoke()`，所以 Run 事件尚不包含文本逐 Token 增量。模型层本身已经支持安全透传，接入 Agent 文本增量 RunEvent 是后续工作。
+`emit_text_deltas=False` 是兼容默认值，ReAct 使用收集式 `invoke()`。显式设为 `True` 后改用同一个 `ModelExecutor.stream()` 安全透传路径，并在 `MODEL_COMPLETED` 之前持久化/输出 `MODEL_TEXT_DELTA`（`step`、`block_index`、`text`）；最终 `RunResult`、Usage、Attempt 账本与工具循环语义不变。已经公开任何增量后的模型失败不会被普通重试/故障转移静默掩盖，是否启用模型层验证前缀恢复仍由调用者自己的执行器策略决定。TUI 只显示事件类型与安全元数据，不显示增量文本。工具参数增量、图片/音频块和任意 RunEvent 跨进程回放仍为后续能力。
 
 ## 首批模板
 

@@ -151,6 +151,7 @@ async def test_local_runtime_explicit_character_estimator_is_visible(tmp_path):
     runtime = assemble_local_runtime(
         _config(
             max_total_tokens=100,
+            emit_text_deltas=True,
             token_estimator="character",
             estimator_characters_per_token=4,
             require_estimate=True,
@@ -168,6 +169,9 @@ async def test_local_runtime_explicit_character_estimator_is_visible(tmp_path):
     assert estimate.data["estimator"].startswith("character-heuristic:v1")
     assert estimate.data["exact"] is False
     assert any(event.type.value == "token-budget-warning" for event in events)
+    assert next(
+        event for event in events if event.type.value == "model-text-delta"
+    ).data["text"] == "hello"
 
 
 def test_local_runtime_required_estimate_needs_explicit_estimator():
