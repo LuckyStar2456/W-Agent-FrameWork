@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 import w_agent.cli as cli_module
 from w_agent import (
+    CompositionManifest,
     LocalProviderAssembly,
     JsonlWorkflowStore,
     LocalWorkflowEngine,
@@ -20,8 +21,10 @@ from w_agent import (
     StopReason,
     TokenUsage,
     PythonWorkflowDefinition,
+    PluginRequirement,
     WorkflowContext,
     WorkflowNodeResult,
+    encode_composition,
     plugin,
 )
 from w_agent.cli import app
@@ -96,6 +99,60 @@ def test_cli_composition_inspect_has_stable_failure_exit():
 
     assert result.exit_code == 2
     assert "unsupported composition-code prefix" in result.stderr
+
+
+def test_cli_composition_plan_is_offline_explicit_and_machine_readable(tmp_path):
+    module_name = "cli_composition_plan_must_not_import"
+    code = encode_composition(
+        CompositionManifest(
+            "planned-stack",
+            "1.0.0",
+            requires_python=">=3.11,<3.13",
+            requires_wagent=">=2.0.0a1,<3",
+            plugins=(PluginRequirement("router", ">=1,<2", "pypi"),),
+            routing={"credential_ref": "SECRET_ENV_NAME"},
+        )
+    )
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "plugins": [
+                    {
+                        "name": "router",
+                        "version": "1.4.0",
+                        "source": "pypi",
+                        "entry": f"{module_name}:setup",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "composition",
+            "plan",
+            code,
+            "--inventory",
+            str(inventory),
+            "--python-version",
+            "3.11.9",
+            "--wagent-version",
+            "2.0.0a3",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["ready"] is True
+    assert payload["plugins"][0]["action"] == "use-installed"
+    assert payload["plugins"][0]["selected"]["version"] == "1.4.0"
+    assert module_name not in sys.modules
+    assert "SECRET_ENV_NAME" not in result.stdout
 
 
 def test_cli_keeps_basic_legacy_command_names():

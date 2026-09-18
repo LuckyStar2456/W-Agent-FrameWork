@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a3`；main 在该发布之后继续加入 Workflow Checkpoint 脱敏汇总、显式代码加载与精确版本恢复。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和通用插件操作仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a3`；main 在该发布之后继续加入 Workflow Checkpoint 恢复、离线装配依赖计划和通用插件确认生命周期。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、在线插件来源目录与包安装仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 
@@ -280,15 +280,16 @@ Docker 默认断网并限制资源。需要宿主执行时，必须先调用 `Un
 
 ## 13. 当前工程装配分享
 
-状态：编码、离线安全预览、保存、版本与别名管理为 `Implemented`；依赖安装和插件加载确认为 `Planned`。
+状态：编码、离线安全预览、保存、版本与别名管理为 `Implemented`；当前 main 的离线依赖计划与通用插件确认操作为 `Experimental`；在线来源目录和包安装仍为 `Planned`。
 
 ```text
 wagent composition export manifest.json
 wagent composition inspect <composition-code>
+wagent composition plan <composition-code> --inventory plugin-inventory.json --json
 wagent composition save <composition-code> --alias stable
 ```
 
-预览显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略，并且不访问网络、不导入插件、不执行代码。编码不包含密钥。缺失依赖安装和插件加载仍未实现。
+预览显示装配名称、版本、核心版本要求、插件依赖、权限和沙箱策略，并且不访问网络、不导入插件、不执行代码。编码不包含密钥。`composition plan` 通过显式候选清单检查环境和插件约束，并输出逐项动作；它不查询网络、不安装包，也不授予插件加载权。随后可独立使用 `plugin inspect` / `plugin validate-load --confirm-plugin-code` 或 TUI Plugins 页审查和加载用户选择的 YAML 引用。规划结果自动转为安装/加载引用仍未实现。
 
 ## 14. 当前 TUI 基础
 
@@ -298,7 +299,7 @@ wagent composition save <composition-code> --alias stable
 wagent tui
 ```
 
-TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检查、本地 Session 生命周期、配置化文本 Agent 运行、Agent/Workflow Checkpoint 脱敏列表、工具批准/精确恢复、脱敏实时事件和本地评测。通用插件操作仍为 `Planned`。它使用公开 Python API，不依赖后台托管服务；Workflow 恢复界面属于 main 的未发布能力。
+TUI 当前覆盖模板、无凭据/配置化 Provider 探测、离线装配检查/依赖计划、通用插件预览/确认加载/卸载、本地 Session 生命周期、配置化文本 Agent 运行、Agent/Workflow Checkpoint 脱敏列表、工具批准/精确恢复、脱敏实时事件和本地评测。它使用公开 Python API，不依赖后台托管服务；Workflow 恢复、依赖计划和通用插件页属于 main 的未发布能力。
 
 ## 15. 当前本地评测
 

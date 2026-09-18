@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds privacy-safe workflow-checkpoint discovery, explicitly authorized code loading, and exact-version recovery. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, composition install/load confirmation, and general plugin operations remain `Planned`.
+The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, and confirmed general-plugin lifecycle operations. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 
@@ -280,15 +280,16 @@ Docker defaults to no network and bounded resources. Host execution first requir
 
 ## 13. Current portable project compositions
 
-Status: encoding, offline safety preview, storage, versions, and aliases are `Implemented`; dependency installation and plugin-load confirmation remain `Planned`.
+Status: encoding, offline safety preview, storage, versions, and aliases are `Implemented`. Current main's offline dependency planning and general-plugin confirmation operations are `Experimental`; online source catalogs and package installation remain `Planned`.
 
 ```text
 wagent composition export manifest.json
 wagent composition inspect <composition-code>
+wagent composition plan <composition-code> --inventory plugin-inventory.json --json
 wagent composition save <composition-code> --alias stable
 ```
 
-Preview shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy without network access, plugin imports, or code execution. Codes contain no secrets. Missing-dependency installation and plugin loading are not implemented yet.
+Preview shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy without network access, plugin imports, or code execution. Codes contain no secrets. `composition plan` checks environment and plugin constraints against an explicit candidate inventory and emits per-item actions. It never queries the network, installs a package, or grants plugin-load authority. Users may then separately review and load selected YAML references through `plugin inspect`, `plugin validate-load --confirm-plugin-code`, or the TUI Plugins screen. Automatic conversion of a plan into install/load references is not implemented.
 
 ## 14. Current TUI foundation
 
@@ -298,7 +299,7 @@ Status: the launchable local Textual foundation is `Experimental`.
 wagent tui
 ```
 
-The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection, local session lifecycle, configured text-agent runs, privacy-safe agent/workflow checkpoint listing, exact tool/workflow recovery, privacy-safe live events, and local evaluation. General plugin operations remain `Planned`. It uses public Python APIs and needs no hosted backend; the workflow recovery screen is an unpublished main capability.
+The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection/dependency planning, general-plugin preview/confirmed load/unload, local session lifecycle, configured text-agent runs, privacy-safe agent/workflow checkpoint listing, exact tool/workflow recovery, privacy-safe live events, and local evaluation. It uses public Python APIs and needs no hosted backend; workflow recovery, dependency planning, and general-plugin screens are unpublished main capabilities.
 
 ## 15. Current local evaluation
 

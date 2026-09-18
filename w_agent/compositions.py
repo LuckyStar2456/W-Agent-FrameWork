@@ -139,7 +139,7 @@ def decode_composition(code: str) -> CompositionManifest:
 
 def inspect_composition(code: str) -> CompositionPreview:
     manifest = decode_composition(code)
-    digest = hashlib.sha256(_canonical(manifest)).hexdigest()
+    digest = composition_digest(manifest)
     risks = []
     if manifest.plugins:
         risks.append("third-party-plugins-require-confirmation")
@@ -154,6 +154,12 @@ def inspect_composition(code: str) -> CompositionPreview:
     )
 
 
+def composition_digest(manifest: CompositionManifest) -> str:
+    """Return the deterministic content digest for a validated manifest."""
+
+    return hashlib.sha256(_canonical(manifest)).hexdigest()
+
+
 class CompositionStore:
     """Local named/versioned manifest store with conflict-safe aliases."""
 
@@ -162,7 +168,7 @@ class CompositionStore:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def save(self, manifest: CompositionManifest, *, alias: str | None = None) -> str:
-        digest = hashlib.sha256(_canonical(manifest)).hexdigest()
+        digest = composition_digest(manifest)
         directory = self.root / manifest.name / manifest.version
         path = directory / "manifest.json"
         if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != digest:

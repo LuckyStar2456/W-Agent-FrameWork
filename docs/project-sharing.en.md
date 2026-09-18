@@ -2,7 +2,7 @@
 
 English | [简体中文](./project-sharing.md)
 
-Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`, while CLI and TUI offline preview are `Experimental`. Current main (unpublished) has independent generic YAML plugin preview/load confirmation and TUI unload controls. Composition dependency resolution, package installation, and generation of a confirmed plugin plan from a composition remain `Planned`.
+Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`, while CLI and TUI offline preview are `Experimental`. Current main (unpublished) additionally implements a replaceable offline dependency planner plus independent generic YAML plugin preview/load confirmation and TUI unload controls. Online source catalogs, package installation, and automatic generation of plugin-loading references from a plan remain `Planned`.
 
 Current public APIs are `CompositionManifest`, `PluginRequirement`, `encode_composition()`, `decode_composition()`, `inspect_composition()`, and `CompositionStore`. They operate on data only and perform no network access, package installation, plugin import, or execution.
 
@@ -88,7 +88,34 @@ Code
 
 Decode and preview perform no network access, install no package, import no plugin module, and execute no plugin code. Installation and loading are separate confirmation steps.
 
-Current main's `wagent plugin inspect` / `validate-load` commands and TUI Plugins screen can operate user-selected `module:attribute` YAML references, but they do not derive or execute those references from a `CompositionManifest`. The general plugin confirmation boundary is therefore available, while the bridge from a composition to dependencies, an installation plan, and plugin references is not.
+Current main's `wagent plugin inspect` / `validate-load` commands and TUI Plugins screen can operate user-selected `module:attribute` YAML references, but they do not derive or execute those references from a `CompositionManifest`. The general plugin confirmation boundary is available, while the execution bridge from a plan to package installation and plugin references is not.
+
+## Offline dependency plans
+
+Current main can build a plan without network access, package-index queries, module imports, or package installation:
+
+```text
+wagent composition plan <code> --inventory plugin-inventory.json --json
+```
+
+The explicit candidate inventory format is:
+
+```json
+{
+  "plugins": [
+    {
+      "name": "my-company-router",
+      "version": "0.4.3",
+      "source": "private-index",
+      "entry": "my_router.plugin:setup"
+    }
+  ]
+}
+```
+
+The plan checks Python and W-Agent constraints and emits `use-installed`, `install`, `change-version`, `review-source`, `select-source`, or `select-candidate` for each plugin. It describes the next step and contains no executable install command. The Python API accepts any `CompositionDependencyResolver`, so applications may connect their own lockfile, internal registry, or package format without changing the manifest core protocol.
+
+The TUI Composition screen can read the same candidate inventory. Without one, it considers only names and versions of plugins active in the current TUI process. It never guesses that an unknown source is trusted. Even a Ready plan still requires separate plugin-code load confirmation.
 
 ## Version management
 
@@ -103,4 +130,4 @@ An active run pins the composition digest captured at start. Updating a composit
 
 ## Third-party plugins
 
-A composition code declares dependencies and does not prove trust. The planned composition import view will show plugin source, version, hash, requested capabilities, and host/network execution requirements. Current generic plugin loading requires a separate one-shot code-execution confirmation. Automatic installation and automatic updates are not implemented.
+A composition code declares dependencies and does not prove trust. The offline plan shows declared source, candidate versions, and next actions but does not verify publisher identity. The planned installation view must additionally show hashes, requested capabilities, and host/network execution requirements. Current generic plugin loading requires a separate one-shot code-execution confirmation. Automatic installation and automatic updates are not implemented.

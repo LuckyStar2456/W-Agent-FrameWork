@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from collections.abc import Mapping
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -32,6 +33,13 @@ from w_agent.compositions import (
     CompositionStore,
     inspect_composition,
     manifest_to_dict,
+)
+from w_agent.composition_planning import (
+    CompositionEnvironment,
+    PluginCandidate,
+    StaticCompositionDependencyResolver,
+    load_plugin_candidates,
+    plan_composition,
 )
 from w_agent.evaluation import (
     EvaluationCase,
@@ -180,6 +188,16 @@ class WAgentTui(App[None]):
                     "Inspect without loading",
                     id="composition-button",
                     variant="primary",
+                )
+                yield Input(
+                    placeholder=(
+                        "Optional explicit plugin-candidate inventory JSON"
+                    ),
+                    id="composition-inventory",
+                )
+                yield Button(
+                    "Build offline dependency plan",
+                    id="composition-plan",
                 )
                 yield Static(
                     "No composition inspected.",
@@ -371,6 +389,8 @@ class WAgentTui(App[None]):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "composition-button":
             self._inspect_composition()
+        elif event.button.id == "composition-plan":
+            self._plan_composition()
         elif event.button.id == "plugin-preview":
             self._preview_plugins()
         elif event.button.id == "plugin-load":
@@ -425,6 +445,60 @@ class WAgentTui(App[None]):
                 indent=2,
             )
         )
+
+    def _plan_composition(self) -> None:
+        code = self.query_one("#composition-code", Input).value.strip()
+        target = self.query_one("#composition-result", Static)
+        inventory_value = self.query_one(
+            "#composition-inventory",
+            Input,
+        ).value.strip()
+        try:
+            preview = inspect_composition(code)
+            if inventory_value:
+                candidates = load_plugin_candidates(
+                    self._workspace_path(inventory_value)
+                )
+            else:
+                candidates = tuple(
+                    PluginCandidate(record.spec.name, record.spec.version)
+                    for record in self.plugin_manager.records()
+                    if record.state.value == "active"
+                )
+            plan = plan_composition(
+                preview.manifest,
+                CompositionEnvironment(platform.python_version(), __version__),
+                StaticCompositionDependencyResolver(candidates),
+            )
+        except (CompositionError, OSError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        lines = [
+            f"Composition: {plan.name}@{plan.version}",
+            f"Digest: {plan.digest}",
+            (
+                f"Python {plan.environment.python_version}: "
+                f"compatible={plan.python_compatible}"
+            ),
+            (
+                f"W-Agent {plan.environment.wagent_version}: "
+                f"compatible={plan.wagent_compatible}"
+            ),
+            f"Ready: {plan.ready}",
+            f"Plugin load confirmation required: {plan.load_confirmation_required}",
+        ]
+        lines.extend(
+            (
+                f"{item.requirement.name}{item.requirement.version} | "
+                f"source={item.requirement.source or '-'} | "
+                f"action={item.action.value} | "
+                "selected="
+                f"{item.candidate.version if item.candidate is not None else '-'}"
+            )
+            for item in plan.plugins
+        )
+        lines.append("No package was installed and no plugin code was imported.")
+        target.update("\n".join(lines))
 
     def _preview_plugins(self) -> None:
         target = self.query_one("#plugin-preview-result", Static)

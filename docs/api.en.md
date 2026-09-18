@@ -194,16 +194,20 @@ class SandboxProvider(Protocol):
 
 ## 11. Composition protocol
 
-Status: encoding, decoding, safe preview, and the local version store are `Implemented`; dependency installation and plugin-load confirmers remain `Planned`.
+Status: encoding, decoding, safe preview, and the local version store are `Implemented`. Current main's offline dependency planning and general-plugin confirmation lifecycle are `Experimental`; package installation remains `Planned`.
 
 ```python
 code = encode_composition(manifest)
 manifest = decode_composition(code)
 preview = inspect_composition(code)
 CompositionStore(".wagent/compositions").save(manifest, alias="stable")
+
+environment = CompositionEnvironment("3.11.9", "2.0.0a3")
+resolver = StaticCompositionDependencyResolver(plugin_candidates)
+plan = plan_composition(manifest, environment, resolver)
 ```
 
-Decode and preview perform no network access, install no dependency, load no plugin, and execute no code. Manifests reject secrets, absolute local paths, embedded code, and `UnsafeLocalSandbox` authority; the codec bounds compressed and expanded sizes. Separate post-confirmation install and load operations are not implemented yet.
+Decode, preview, and planning perform no network access, install no dependency, load no plugin, and execute no code. Manifests reject secrets, absolute local paths, embedded code, and `UnsafeLocalSandbox` authority; the codec bounds compressed and expanded sizes. `CompositionDependencyResolver` is replaceable, and the built-in static resolver reads only caller-supplied candidates. Generic YAML plugins may be previewed, confirmed, loaded, and unloaded separately, but automatic conversion of a plan into package installation or load references is not implemented.
 
 ## 12. Testing and evaluation API
 

@@ -194,16 +194,20 @@ class SandboxProvider(Protocol):
 
 ## 11. 工程装配协议
 
-状态：编码、解码、安全预览和本地版本库为 `Implemented`；依赖安装与插件加载确认器为 `Planned`。
+状态：编码、解码、安全预览和本地版本库为 `Implemented`；当前 main 的离线依赖规划与通用插件确认生命周期为 `Experimental`；包安装为 `Planned`。
 
 ```python
 code = encode_composition(manifest)
 manifest = decode_composition(code)
 preview = inspect_composition(code)
 CompositionStore(".wagent/compositions").save(manifest, alias="stable")
+
+environment = CompositionEnvironment("3.11.9", "2.0.0a3")
+resolver = StaticCompositionDependencyResolver(plugin_candidates)
+plan = plan_composition(manifest, environment, resolver)
 ```
 
-解码与预览不访问网络、不安装依赖、不加载插件、不执行代码。Manifest 拒绝秘密值、绝对本地路径、内嵌代码和 `UnsafeLocalSandbox` 授权；Codec 设有压缩与解压大小边界。用户确认后的独立安装与加载操作仍未实现。
+解码、预览与规划不访问网络、不安装依赖、不加载插件、不执行代码。Manifest 拒绝秘密值、绝对本地路径、内嵌代码和 `UnsafeLocalSandbox` 授权；Codec 设有压缩与解压大小边界。`CompositionDependencyResolver` 可替换，内置静态 Resolver 只读取调用方提供的候选清单。通用 YAML 插件可另行预览、确认加载和卸载，但计划自动转为包安装或加载引用仍未实现。
 
 ## 12. 测试与评测 API
 

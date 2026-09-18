@@ -16,6 +16,7 @@ from w_agent import (
     ModelDescriptor,
     ModelMessage,
     ModelCost,
+    PluginRequirement,
     PluginState,
     RunEvent,
     RunEventType,
@@ -98,6 +99,54 @@ async def test_tui_rejects_invalid_composition_without_loading(tmp_path):
 
         rendered = str(app.query_one("#composition-result").content)
         assert "Rejected: unsupported composition-code prefix" in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_builds_offline_composition_plan_without_importing_code(
+    tmp_path,
+):
+    module_name = "tui_composition_plan_must_not_import"
+    code = encode_composition(
+        CompositionManifest(
+            "planned-stack",
+            "1.0.0",
+            requires_python=">=3.11,<3.13",
+            requires_wagent=">=2.0.0a1,<3",
+            plugins=(PluginRequirement("router", ">=1,<2", "pypi"),),
+            routing={"credential_ref": "SECRET_ENV_NAME"},
+        )
+    )
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        """
+{
+  "plugins": [
+    {
+      "name": "router",
+      "version": "1.4.0",
+      "source": "pypi",
+      "entry": "tui_composition_plan_must_not_import:setup"
+    }
+  ]
+}
+""".lstrip(),
+        encoding="utf-8",
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.query_one(TabbedContent).active = "composition"
+        await pilot.pause()
+        app.query_one("#composition-code").value = code
+        app.query_one("#composition-inventory").value = str(inventory)
+        app._plan_composition()
+
+        rendered = str(app.query_one("#composition-result").content)
+        assert "Ready: True" in rendered
+        assert "action=use-installed" in rendered
+        assert "No package was installed" in rendered
+        assert "SECRET_ENV_NAME" not in rendered
+        assert module_name not in sys.modules
 
 
 @pytest.mark.asyncio

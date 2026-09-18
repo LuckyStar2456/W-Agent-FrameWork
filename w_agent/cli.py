@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import platform
 from collections.abc import Mapping
 from contextlib import nullcontext
 from pathlib import Path
@@ -28,6 +29,13 @@ from w_agent.compositions import (
     inspect_composition,
     manifest_from_dict,
     manifest_to_dict,
+)
+from w_agent.composition_planning import (
+    CompositionEnvironment,
+    StaticCompositionDependencyResolver,
+    composition_plan_to_dict,
+    load_plugin_candidates,
+    plan_composition,
 )
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
@@ -799,6 +807,67 @@ def composition_inspect(
         "risks": list(preview.risks),
     }
     _emit(payload, json_output)
+
+
+@composition_app.command("plan")
+def composition_plan(
+    code: str = typer.Argument(...),
+    inventory: Path | None = typer.Option(
+        None,
+        "--inventory",
+        help="Optional explicit plugin-candidate JSON inventory.",
+    ),
+    python_version: str | None = typer.Option(None, "--python-version"),
+    wagent_version: str | None = typer.Option(None, "--wagent-version"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Build an offline dependency plan without imports or installation."""
+
+    try:
+        preview = inspect_composition(code)
+        candidates = load_plugin_candidates(inventory) if inventory else ()
+        plan = plan_composition(
+            preview.manifest,
+            CompositionEnvironment(
+                python_version or platform.python_version(),
+                wagent_version or get_version(),
+            ),
+            StaticCompositionDependencyResolver(candidates),
+        )
+    except (CompositionError, OSError, ValueError) as error:
+        _fail(str(error))
+    payload = composition_plan_to_dict(plan)
+    if json_output:
+        _emit(payload, True)
+        return
+    console.print(
+        f"Composition: {plan.name}@{plan.version}\n"
+        f"Digest: {plan.digest}\n"
+        f"Python {plan.environment.python_version}: {plan.python_compatible}\n"
+        f"W-Agent {plan.environment.wagent_version}: {plan.wagent_compatible}\n"
+        f"Ready: {plan.ready}\n"
+        f"Plugin load confirmation required: {plan.load_confirmation_required}",
+        markup=False,
+    )
+    table = Table(title="Offline plugin dependency plan")
+    table.add_column("Plugin")
+    table.add_column("Constraint")
+    table.add_column("Source")
+    table.add_column("Action")
+    table.add_column("Selected")
+    for item in plan.plugins:
+        table.add_row(
+            item.requirement.name,
+            item.requirement.version or "*",
+            item.requirement.source or "-",
+            item.action.value,
+            (
+                f"{item.candidate.version} ({item.candidate.entry or '-'})"
+                if item.candidate is not None
+                else "-"
+            ),
+        )
+    console.print(table)
 
 
 @composition_app.command("save")

@@ -41,7 +41,8 @@ async def main():
 if __name__ == "__main__":
     cli_commands = {
         "health", "doctor", "version", "config", "bean", "init",
-        "profile", "probe", "composition", "tui",
+        "profile", "probe", "provider-probe", "plugin", "composition",
+        "session", "checkpoint", "run", "run-resume", "evaluate", "tui",
         "-h", "--help", "-V", "--version",
     }
     if len(sys.argv) > 1 and sys.argv[1] in cli_commands:

@@ -21,6 +21,7 @@ wagent doctor
 wagent plugin inspect --config <plugins.yml> [--json]
 wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
+wagent composition plan <code> [--inventory <plugins.json>] [--json]
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent checkpoint workflow-list [--state-root <path>]
@@ -64,7 +65,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Composition
 
-查看解析后的 Profile，比较两个命名版本，导出编码，导入时预览依赖、配置差异和安全风险。
+查看解析后的 Profile，比较两个命名版本，导出编码，导入时预览依赖、配置差异和安全风险。当前 main 可用显式 JSON 候选清单生成完全离线的环境/插件依赖计划；未提供清单时只参考当前 TUI 活跃插件的名称和版本。计划不查询网络、不导入代码、不安装包，也不代替后续加载确认。
 
 ### Run
 

@@ -21,6 +21,7 @@ wagent doctor
 wagent plugin inspect --config <plugins.yml> [--json]
 wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
+wagent composition plan <code> [--inventory <plugins.json>] [--json]
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
 wagent checkpoint workflow-list [--state-root <path>]
@@ -64,7 +65,7 @@ Current main can show local YAML `module:attribute` sources, enabled state, and 
 
 ### Composition
 
-Displays a resolved profile, compares named versions, exports a code, and previews dependencies, configuration differences, and security risk during import.
+Displays a resolved profile, compares named versions, exports a code, and previews dependencies, configuration differences, and security risk during import. Current main can build a fully offline environment/plugin dependency plan from an explicit JSON candidate inventory. Without an inventory, it considers only plugin names and versions active in the current TUI process. Planning performs no network query, code import, or package installation and never replaces later load confirmation.
 
 ### Run
 

@@ -62,6 +62,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
 | Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
+| Replaceable offline environment/plugin dependency planning | `Experimental` | Phase 6 / main (unpublished) |
 | Import-free general-plugin preview, confirmed batch load, and TUI unload | `Experimental` | Phase 1/6 / main (unpublished) |
 | Typer/Rich CLI, Textual TUI, and session lifecycle UI | `Experimental` | Phase 6 / 2.0.0a1 |
 | Locally configured text-agent run entry point | `Experimental` | Phase 6 / 2.0.0a1 |
@@ -140,7 +141,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 ### Phase 6: sharing, interfaces, and evaluation
 
 - Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
-- Composition preview performs no network access, installation, import, or plugin execution. Current main implements import-free preview of independent YAML references, explicitly confirmed transactional batch loading, and persistent in-process TUI unload. Composition dependency resolution, package-install confirmation, and composition-to-plugin-reference bridging remain `Planned`.
+- Composition preview performs no network access, installation, import, or plugin execution. Current main implements Python/W-Agent compatibility and plugin dependency plans over an explicit candidate inventory, plus import-free preview of independent YAML references, explicitly confirmed transactional batch loading, and persistent in-process TUI unload. Online source catalogs, package-install confirmation, and the execution bridge from a plan to plugin references remain `Planned`.
 - An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
 - Implemented strict local JSON assembly into provider/routing/ReAct/run/session components for text runs. CLI/TUI require explicit authorization for every call, and credentials resolve only through environment-variable references.
 - Implemented host-catalog-bounded configured tool selection, per-command authority grants, separate Python tool-code load confirmation, and CLI approval resume by known session/run/call IDs. Configuration itself cannot import, authorize, or approve a tool.
@@ -150,6 +151,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - The TUI now implements separately confirmed tool-entry loading, per-run authority, exact session/run/call-ID approval resume, and privacy-safe live RunEvents. Confirmations are not retained, and the UI omits prompts, model text, tool arguments, and tool results.
 - Implemented workflow-checkpoint discovery and recovery from an explicitly selected local state root; stores are never copied, merged, or migrated automatically.
 - Current main implements configuration-value-free plugin-reference preview, ephemeral CLI validation bound to `--confirm-plugin-code`, and TUI lifecycle controls bound to `LOAD PLUGINS` / `UNLOAD <name>`. Third-party package installation and upgrades remain `Planned`.
+- Current main implements a replaceable `CompositionDependencyResolver`, strict JSON candidate inventories, environment-constraint checks, and per-plugin offline actions. CLI/TUI never query the network, install packages, or treat Ready as code-load authorization.
 - Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 
