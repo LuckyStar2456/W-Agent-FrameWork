@@ -25,7 +25,7 @@ def test_cli_version_and_profile_json_are_machine_readable():
     profiles = runner.invoke(app, ["profile", "list", "--json"])
 
     assert version.exit_code == 0
-    assert "2.0.0a2" in version.stdout
+    assert "2.0.0a3" in version.stdout
     assert profiles.exit_code == 0
     assert [item["key"] for item in json.loads(profiles.stdout)] == [
         "customer-support",

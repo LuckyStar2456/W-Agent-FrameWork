@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 W-Agent is an open-source Python agent development framework for local developers. It is not a hosted platform or a fixed harness. It provides stable, extensible protocols and freely composable modules so developers can replace model, routing, agent-loop, workflow, tool, state, sandbox, and interface implementations.
 
-The current stable release is `1.5.2`, and the latest alpha is `2.0.0a2`. The 1.x engineering foundation remains available, while the microkernel, model, tool, single-agent, and local-workflow foundations are implemented. Remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
+The current stable release is `1.5.2`, the latest alpha is `2.0.0a2`, and repository main is developing `2.0.0a3`. The 1.x engineering foundation remains available, while the microkernel, model, tool, single-agent, and local-workflow foundations are implemented. Remaining next-generation capabilities are delivered in roadmap phases. Documentation uses explicit status labels so planned capabilities are never presented as current features.
 
 ## Status labels
 
@@ -40,7 +40,7 @@ The following 1.5.2 source capabilities are `Implemented`:
 - Skill loading, signature verification, MCP JWT authentication, and Redis locks.
 - LangChain tool adapters, a FastAPI integration example, and test helpers.
 
-The following Phase 1 capabilities are `Implemented` in the current `2.0.0a2` source:
+The following Phase 1 capabilities are `Implemented` in the current `2.0.0a3` source:
 
 - `PluginSpec`, decorators, YAML references, and Python entry-point discovery.
 - One version-aware, scoped capability registry with immutable snapshots.
@@ -106,7 +106,7 @@ pip install "wagent-framework[wasm]"
 pip install "wagent-framework[tui]"
 ```
 
-PyPI 1.x supports Python 3.9+. `2.0.0a2` and later 2.x alphas require Python 3.11+.
+PyPI 1.x supports Python 3.9+. `2.0.0a2`, current `2.0.0a3` source, and later 2.x alphas require Python 3.11+.
 
 ## Minimal 1.x example
 
@@ -152,7 +152,7 @@ wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, prompt-free agent-checkpoint listing, and CLI catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, and privacy-safe CLI/TUI local evaluation. TUI tool-approval execution, general plugin operations, workflow-checkpoint aggregation, and live event inspection remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, prompt-free agent-checkpoint listing, catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, privacy-safe live RunEvents, and CLI/TUI local evaluation. General plugin operations and workflow-checkpoint aggregation remain `Planned`.
 
 ## Portable project compositions
 

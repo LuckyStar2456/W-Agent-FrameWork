@@ -4,7 +4,7 @@
 
 ## 1. 先确认能力状态
 
-当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a2`。该 Alpha 已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和完整交互 TUI 仍为 `Planned`。
+当前 PyPI 稳定版为 1.5.2，最新 Alpha 为 `2.0.0a2`；仓库 `2.0.0a3` 进一步加入 TUI 工具审批恢复和脱敏实时事件。当前源码已实现插件微内核、模型与工具基础、单 Agent ReAct、Token/费用预算、本地 Session 与 Workflow、Agent/Workflow 适配、客服/编码模板、Docker/显式授权本地 Sandbox、工程装配编码/版本库，以及实验性 CLI/TUI/评测。并行/嵌套 Workflow、装配安装/加载确认和通用插件/Workflow Checkpoint 界面仍为 `Planned`。
 
 1.x 示例对应当前 PyPI 版本；Phase 2A 示例对应仓库源码并要求 Python 3.11+。“计划用法”用于约束后续实现，不是当前可执行 API。
 

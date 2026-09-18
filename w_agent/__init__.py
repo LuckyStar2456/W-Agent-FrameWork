@@ -1,6 +1,6 @@
 """W-Agent 框架包"""
 
-__version__ = "2.0.0a2"
+__version__ = "2.0.0a3"
 __author__ = "LuckyStar2456"
 __license__ = "MIT"
 
@@ -120,6 +120,7 @@ from w_agent.sandbox import (
 from w_agent.sessions import (
     InMemorySessionStore,
     JsonSessionStore,
+    RunEventCallback,
     SessionError,
     SessionManager,
     SessionMessage,
@@ -748,6 +749,7 @@ __all__ = [
     "workflow_start_tool",
     "InMemorySessionStore",
     "JsonSessionStore",
+    "RunEventCallback",
     "SessionError",
     "SessionManager",
     "SessionMessage",

@@ -2,7 +2,7 @@
 
 [English](./agents.en.md) | 简体中文
 
-状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、Token/费用预算、追加式本地 RunStore、审批后恢复和本地 Session 生命周期为 `Implemented`（Phase 3 / 当前 `2.0.0a2`）。通用事件回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
+状态：公开 `AgentLoop`/Run 协议、有界单 Agent `ReactAgentLoop`、Token/费用预算、追加式本地 RunStore、审批后恢复、本地 Session 生命周期和应用级实时事件回调为 `Implemented`（Phase 3 / 当前 `2.0.0a3`）。通用事件回放和多 Agent 编排仍为 `Planned` 或 `Reserved`。
 
 ## 分层
 

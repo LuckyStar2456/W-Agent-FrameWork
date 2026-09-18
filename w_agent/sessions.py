@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import math
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -17,7 +18,14 @@ from types import MappingProxyType
 from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
-from w_agent.agents import AgentDefinition, AgentLoop, RunContext, RunResult
+from w_agent.agents import (
+    AgentDefinition,
+    AgentExecution,
+    AgentLoop,
+    RunContext,
+    RunEvent,
+    RunResult,
+)
 from w_agent.kernel import ScopePath
 from w_agent.models import (
     CancellationToken,
@@ -126,6 +134,9 @@ class ResumableAgentLoop(Protocol):
         tool_context: ToolExecutionContext,
         cancellation: CancellationToken | None = None,
     ) -> RunResult: ...
+
+
+RunEventCallback = Callable[[RunEvent], Awaitable[None] | None]
 
 
 class InMemorySessionStore:
@@ -276,6 +287,7 @@ class SessionManager:
         cancellation: CancellationToken | None = None,
         tool_context: ToolExecutionContext | None = None,
         metadata: Mapping[str, Any] | None = None,
+        event_callback: RunEventCallback | None = None,
     ) -> RunResult:
         current = tuple(messages)
         if not current:
@@ -283,18 +295,22 @@ class SessionManager:
         session = await self._active(session_id)
         history = await self.conversation(session_id) if include_history else ()
         resolved_run_id = run_id or f"run-{uuid4().hex}"
-        result = await loop.run(
-            definition,
-            RunContext(
-                resolved_run_id,
-                (*history, *current),
-                scope=scope or ScopePath.application(),
-                cancellation=cancellation,
-                tool_context=tool_context or ToolExecutionContext(),
-                session_id=session_id,
-                metadata=metadata or {},
-            ),
+        context = RunContext(
+            resolved_run_id,
+            (*history, *current),
+            scope=scope or ScopePath.application(),
+            cancellation=cancellation,
+            tool_context=tool_context or ToolExecutionContext(),
+            session_id=session_id,
+            metadata=metadata or {},
         )
+        if event_callback is None:
+            result = await loop.run(definition, context)
+        else:
+            result = await _consume_execution(
+                loop.stream(definition, context),
+                event_callback,
+            )
         if result.run_id != resolved_run_id:
             raise SessionError("agent returned a different run id")
         await self._record(session, definition, current, result, append_input=True)
@@ -308,15 +324,31 @@ class SessionManager:
         *,
         tool_context: ToolExecutionContext,
         cancellation: CancellationToken | None = None,
+        event_callback: RunEventCallback | None = None,
     ) -> RunResult:
         session = await self._active(session_id)
         if not any(item.run_id == run_id for item in session.runs):
             raise SessionError("run does not belong to session")
-        result = await loop.resume(
-            run_id,
-            tool_context=tool_context,
-            cancellation=cancellation,
-        )
+        if event_callback is None:
+            result = await loop.resume(
+                run_id,
+                tool_context=tool_context,
+                cancellation=cancellation,
+            )
+        else:
+            resume_stream = getattr(loop, "resume_stream", None)
+            if resume_stream is None:
+                raise SessionError(
+                    "agent loop does not support streamed approval resume"
+                )
+            result = await _consume_execution(
+                resume_stream(
+                    run_id,
+                    tool_context=tool_context,
+                    cancellation=cancellation,
+                ),
+                event_callback,
+            )
         if result.run_id != run_id:
             raise SessionError("resumed agent returned a different run id")
         await self._record(
@@ -384,6 +416,21 @@ class SessionManager:
                     updated_at=now,
                 )
             )
+
+
+async def _consume_execution(
+    execution: AgentExecution,
+    event_callback: RunEventCallback,
+) -> RunResult:
+    """Consume one public event stream while projecting each event to a host."""
+
+    async for event in execution:
+        callback_result = event_callback(event)
+        if inspect.isawaitable(callback_result):
+            await callback_result
+    if execution.result is None:
+        raise SessionError("agent event stream completed without a result")
+    return execution.result
 
 
 def _project_messages(

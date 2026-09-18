@@ -2,7 +2,7 @@
 
 [English](./README.en.md) | 简体中文
 
-本文档集同时描述稳定版 1.5.2、最新 Alpha `2.0.0a2` 和后续开放式 Agent 框架计划。每项能力必须使用 `Implemented`、`Planned`、`Reserved`、`Experimental` 或 `Deprecated` 标记。
+本文档集同时描述稳定版 1.5.2、最新 Alpha `2.0.0a2`、当前 `2.0.0a3` 源码和后续开放式 Agent 框架计划。每项能力必须使用 `Implemented`、`Planned`、`Reserved`、`Experimental` 或 `Deprecated` 标记。
 
 ## 阅读顺序
 

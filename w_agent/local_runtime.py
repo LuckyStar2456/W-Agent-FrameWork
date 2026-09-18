@@ -39,7 +39,12 @@ from w_agent.models import (
     WeightedRoutingPolicy,
     builtin_provider_template_registry,
 )
-from w_agent.sessions import JsonSessionStore, SessionManager, SessionRecord
+from w_agent.sessions import (
+    JsonSessionStore,
+    RunEventCallback,
+    SessionManager,
+    SessionRecord,
+)
 from w_agent.tools import ToolBinding, ToolExecutionContext, ToolExecutor, ToolRegistry
 
 _COMPATIBLE_TEMPLATES = frozenset({"deepseek", "glm", "qwen", "turbo"})
@@ -260,6 +265,7 @@ class LocalAgentRuntime:
         permissions: frozenset[str] = frozenset(),
         approved_call_ids: frozenset[str] = frozenset(),
         cancellation: CancellationToken | None = None,
+        event_callback: RunEventCallback | None = None,
     ) -> LocalRuntimeRun:
         self._ensure_open()
         if not prompt:
@@ -279,6 +285,7 @@ class LocalAgentRuntime:
                 approved_call_ids=approved_call_ids,
                 cancellation=cancellation,
             ),
+            event_callback=event_callback,
         )
         return LocalRuntimeRun(await self.sessions.get(session.session_id), result)
 
@@ -290,6 +297,7 @@ class LocalAgentRuntime:
         permissions: frozenset[str] = frozenset(),
         approved_call_ids: frozenset[str],
         cancellation: CancellationToken | None = None,
+        event_callback: RunEventCallback | None = None,
     ) -> LocalRuntimeRun:
         """Resume one persisted approval checkpoint with explicit authority."""
 
@@ -306,6 +314,7 @@ class LocalAgentRuntime:
                 cancellation=cancellation,
             ),
             cancellation=cancellation,
+            event_callback=event_callback,
         )
         return LocalRuntimeRun(await self.sessions.get(session_id), result)
 

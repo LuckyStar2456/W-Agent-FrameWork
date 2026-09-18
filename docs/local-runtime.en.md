@@ -2,7 +2,7 @@
 
 English | [简体中文](./local-runtime.md)
 
-Status: `Experimental` in current `2.0.0a2`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI approval resume, prompt-free agent-checkpoint listing, and CLI/TUI text-run entry points are implemented. TUI tool-load/approval execution, workflow-checkpoint aggregation, and live RunEvent inspection remain `Planned`.
+Status: `Experimental` in current `2.0.0a3`. Strict local JSON configuration, environment-variable credential references, provider/routing/ReAct assembly, versioned pricing and cost budgets, provider-only assembly and probing, explicit tool selection, persistent runs/sessions, Python API/CLI/TUI approval resume, prompt-free agent-checkpoint listing, application event callbacks, and CLI/TUI text-run entry points are implemented. Workflow-checkpoint aggregation remains `Planned`.
 
 ## Configuration
 
@@ -127,6 +127,6 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 
 ## Open assembly boundary
 
-`load_local_runtime_config()`, `assemble_local_provider()`, and `assemble_local_runtime()` are convenience layers, not a second closed runtime. Provider-only assembly returns `LocalProviderAssembly`; it resolves credential references and constructs the object without registration or network access, after which the application chooses any probe or registration policy. The full runtime exposes its definition, loop, ModelRegistry, ToolRegistry, and SessionManager. Both assemblies support `async with` and idempotent `aclose()`; the full runtime rejects use after close. CLI/TUI paths use and close them in the same event loop automatically. Applications can replace the template registry, provider transport, routing, tools, and stores.
+`load_local_runtime_config()`, `assemble_local_provider()`, and `assemble_local_runtime()` are convenience layers, not a second closed runtime. Provider-only assembly returns `LocalProviderAssembly`; it resolves credential references and constructs the object without registration or network access, after which the application chooses any probe or registration policy. The full runtime exposes its definition, loop, ModelRegistry, ToolRegistry, and SessionManager; `run()`/`resume()` can project live events in persisted order through `event_callback`. Both assemblies support `async with` and idempotent `aclose()`; the full runtime rejects use after close. CLI/TUI paths use and close them in the same event loop automatically. Applications can replace the template registry, provider transport, routing, tools, and stores.
 
 Applications pass `{name: ToolBinding}` as `tool_bindings`; configuration selects only a subset. `LocalAgentRuntime.run()` accepts authority and optional approved IDs for that run, while `resume()` accepts session/run IDs, authority, and a non-empty exact approval set. Configuration, sessions, checkpoints, and composition codes cannot create permission, approval, or local-execution authority.

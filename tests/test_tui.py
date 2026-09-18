@@ -12,6 +12,8 @@ from w_agent import (
     ModelDescriptor,
     ModelMessage,
     ModelCost,
+    RunEvent,
+    RunEventType,
     RunResult,
     StopReason,
     TokenUsage,
@@ -107,6 +109,185 @@ async def test_tui_run_requires_explicit_confirmation_before_config_or_network(
         await pilot.pause()
         assert app.query_one("#run-confirm").value == ""
         assert "config" in str(app.query_one("#run-result").content).lower()
+
+
+@pytest.mark.asyncio
+async def test_tui_tool_code_requires_separate_import_confirmation(
+    tmp_path,
+    monkeypatch,
+):
+    loaded = []
+    monkeypatch.setattr(
+        tui_module,
+        "load_tool_entries",
+        lambda entries: loaded.append(entries) or {},
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 65)) as pilot:
+        app.query_one(TabbedContent).active = "run"
+        await pilot.pause()
+        app.query_one("#run-prompt").value = "hello"
+        app.query_one("#run-tool-entries").value = "my_tools:bindings"
+        app.query_one("#run-confirm").value = "RUN"
+        await pilot.click("#run-button")
+        await pilot.pause()
+
+        assert loaded == []
+        assert "type LOAD TOOLS" in str(app.query_one("#run-result").content)
+
+
+@pytest.mark.asyncio
+async def test_tui_projects_live_events_without_prompt_or_arguments(
+    tmp_path,
+    monkeypatch,
+):
+    class Runtime:
+        closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            self.closed = True
+
+        async def run(self, prompt, **kwargs):
+            assert prompt == "SECRET_PROMPT"
+            assert kwargs["permissions"] == frozenset({"notes.write"})
+            await kwargs["event_callback"](
+                RunEvent(
+                    1,
+                    RunEventType.TOOL_REQUESTED,
+                    "run-live",
+                    {
+                        "step": 1,
+                        "call_id": "call-1",
+                        "name": "save_note",
+                        "arguments": {"text": "SECRET_ARGUMENT"},
+                        "text": "SECRET_OUTPUT",
+                    },
+                    session_id="session-live",
+                )
+            )
+            return SimpleNamespace(
+                session=SimpleNamespace(session_id="session-live"),
+                result=RunResult(
+                    "run-live",
+                    StopReason.COMPLETED,
+                    "done",
+                    (ModelMessage.text(MessageRole.ASSISTANT, "done"),),
+                    (),
+                    steps=1,
+                    tool_calls=1,
+                ),
+            )
+
+    runtime = Runtime()
+    loaded = []
+    monkeypatch.setattr(tui_module, "load_local_runtime_config", lambda path: object())
+    monkeypatch.setattr(
+        tui_module,
+        "load_tool_entries",
+        lambda entries: loaded.append(entries) or {"save_note": object()},
+    )
+    monkeypatch.setattr(
+        tui_module,
+        "assemble_local_runtime",
+        lambda config, state_root, *, tool_bindings: runtime,
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(150, 70)) as pilot:
+        app.query_one(TabbedContent).active = "run"
+        await pilot.pause()
+        app.query_one("#run-prompt").value = "SECRET_PROMPT"
+        app.query_one("#run-tool-entries").value = "my_tools:bindings"
+        app.query_one("#run-permissions").value = "notes.write"
+        app.query_one("#run-tool-confirm").value = "LOAD TOOLS"
+        app.query_one("#run-confirm").value = "RUN"
+        await pilot.click("#run-button")
+        await pilot.pause()
+
+        rendered = str(app.query_one("#run-events").content)
+        assert "tool-requested" in rendered
+        assert "call_id=call-1" in rendered
+        assert "SECRET_PROMPT" not in rendered
+        assert "SECRET_ARGUMENT" not in rendered
+        assert "SECRET_OUTPUT" not in rendered
+        assert loaded == [("my_tools:bindings",)]
+        assert runtime.closed is True
+
+
+@pytest.mark.asyncio
+async def test_tui_resumes_exact_approved_call_with_live_events(
+    tmp_path,
+    monkeypatch,
+):
+    class Runtime:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            pass
+
+        async def resume(self, session_id, run_id, **kwargs):
+            assert session_id == "session-1"
+            assert run_id == "run-1"
+            assert kwargs["approved_call_ids"] == frozenset({"call-1"})
+            assert kwargs["permissions"] == frozenset({"notes.write"})
+            await kwargs["event_callback"](
+                RunEvent(
+                    2,
+                    RunEventType.RUN_RESUMED,
+                    "run-1",
+                    {"checkpoint_status": "resuming", "pending_call_id": "call-1"},
+                    session_id="session-1",
+                )
+            )
+            return SimpleNamespace(
+                session=SimpleNamespace(session_id="session-1"),
+                result=RunResult(
+                    "run-1",
+                    StopReason.COMPLETED,
+                    "approved",
+                    (ModelMessage.text(MessageRole.ASSISTANT, "approved"),),
+                    (),
+                    steps=2,
+                    tool_calls=1,
+                ),
+            )
+
+    runtime = Runtime()
+    monkeypatch.setattr(tui_module, "load_local_runtime_config", lambda path: object())
+    monkeypatch.setattr(tui_module, "load_tool_entries", lambda entries: {})
+    monkeypatch.setattr(
+        tui_module,
+        "assemble_local_runtime",
+        lambda config, state_root, *, tool_bindings: runtime,
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(150, 75)) as pilot:
+        app.query_one(TabbedContent).active = "checkpoints"
+        await pilot.pause()
+        app.query_one("#checkpoint-session").value = "session-1"
+        app.query_one("#checkpoint-run").value = "run-1"
+        app.query_one("#checkpoint-call").value = "call-1"
+        app.query_one("#checkpoint-tool-entries").value = "my_tools:bindings"
+        app.query_one("#checkpoint-permissions").value = "notes.write"
+        app.query_one("#checkpoint-tool-confirm").value = "LOAD TOOLS"
+        app.query_one("#checkpoint-confirm").value = "RESUME"
+        await pilot.click("#checkpoint-resume")
+        await pilot.pause()
+
+        assert "Stop: completed" in str(
+            app.query_one("#checkpoint-resume-result").content
+        )
+        events = str(app.query_one("#checkpoint-events").content)
+        assert "run-resumed" in events
+        assert "pending_call_id=call-1" in events
+        assert app.query_one("#checkpoint-confirm").value == ""
+        assert app.query_one("#checkpoint-tool-confirm").value == ""
 
 
 @pytest.mark.asyncio

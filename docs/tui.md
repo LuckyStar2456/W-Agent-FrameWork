@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表，以及 CLI 工具选择/权限/审批恢复和 CLI/TUI 本地评测为 `Experimental`（当前 `2.0.0a2`）；TUI 工具批准执行、Workflow Checkpoint 汇总与通用插件操作仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测为 `Experimental`（当前 `2.0.0a3`）；Workflow Checkpoint 汇总与通用插件操作仍为 `Planned`。
 
 ## 原则
 
@@ -32,7 +32,7 @@ wagent tui
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。可选版本化价格配置为 CLI/TUI Run、Session、Checkpoint 和评测提供费用与完整性。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。`checkpoint list` 发现脱敏的 Agent 审批恢复点；`run-resume` 再要求精确 `--approve-tool-call`。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。可选版本化价格配置为 CLI/TUI Run、Session、Checkpoint 和评测提供费用与完整性。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。TUI 使用独立的 `RUN`、`LOAD TOOLS`、权限输入和 `RESUME` 确认，且精确绑定 Session/Run/Call ID；确认立即清空。RunEvent 面板只展示白名单身份、状态、Token 和费用字段。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、Workflow Checkpoint 聚合、通用插件操作和装配安装确认仍为 `Planned`。
 
 TUI Evaluation 页要求输入 `EVALUATE` 才顺序运行严格 JSON 用例集；默认一次性状态，确认立即清空，只显示 Token/费用/延迟/工具结果和通过状态，并可写默认脱敏报告。自定义 Scorer、输出持久化和开发者工具入口使用 Python API/CLI。
 
@@ -62,7 +62,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Run
 
-当前可读取严格本地配置并启动文本 Agent，显示最终输出、输入/输出 Token 与版本化费用；用户必须输入 `RUN` 才会发起模型调用。TUI 不导入开发者 Python 工具，工具选择、审批恢复和 RunEvent 实时流仍为 `Planned`；后续界面通过 RunEvent 投影，不读取 Loop 私有状态。
+当前可读取严格本地配置并启动文本 Agent，显示最终输出、输入/输出 Token 与版本化费用；用户必须输入 `RUN` 才会发起模型调用。工具入口仅在另行输入 `LOAD TOOLS` 后导入，权限仅对本次运行有效。界面通过公开 `RunEventCallback` 实时投影已持久化事件，不读取 Loop 私有状态，也不显示 Prompt、模型文本或工具参数。
 
 ### Sessions
 
@@ -70,7 +70,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Checkpoints
 
-当前可刷新本地 Agent 审批 Checkpoint 的脱敏摘要，显示 Run/Session、状态、工具名、Call ID、参数名、Token 和费用，不显示 Prompt、参数值或输出。Workflow Checkpoint 的统一列表、版本比较与引导恢复仍为 `Planned`。
+当前可刷新本地 Agent 审批 Checkpoint 的脱敏摘要，显示 Run/Session、状态、工具名、Call ID、参数名、Token 和费用，不显示 Prompt、参数值或输出。用户重新提供配置、工具入口、权限和精确 Call ID，并输入 `LOAD TOOLS`/`RESUME` 后可恢复执行；授权不从 Checkpoint 继承。Workflow Checkpoint 的统一列表、版本比较与引导恢复仍为 `Planned`。
 
 ### Sandbox
 

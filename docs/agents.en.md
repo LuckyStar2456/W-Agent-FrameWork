@@ -2,7 +2,7 @@
 
 English | [简体中文](./agents.md)
 
-Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, token/cost budgets, an append-only local RunStore, post-approval resume, and the local session lifecycle are `Implemented` in Phase 3 / current `2.0.0a2`. General event replay and multi-agent orchestration remain `Planned` or `Reserved`.
+Status: public `AgentLoop`/run contracts, a bounded single-agent `ReactAgentLoop`, token/cost budgets, an append-only local RunStore, post-approval resume, the local session lifecycle, and application-level live-event callbacks are `Implemented` in Phase 3 / current `2.0.0a3`. General event replay and multi-agent orchestration remain `Planned` or `Reserved`.
 
 ## Layers
 

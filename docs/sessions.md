@@ -11,6 +11,7 @@
 - `SessionRunRecord`：保存停止原因、输出、步骤/工具计数和 Token 用量。
 - `InMemorySessionStore`：测试和短期本地开发。
 - `JsonSessionStore`：单一本地生命周期所有者使用的原子 JSON 存储。
+- `RunEventCallback`：可选同步/异步应用投影；按 Agent Loop 的公开事件流顺序调用，内置 ReAct Loop 会先写 RunStore 再暴露事件。
 
 ```python
 from w_agent import (
@@ -42,7 +43,7 @@ wagent session archive case-1
 wagent session unarchive case-1
 ```
 
-CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量/计价计数、输入/输出/缓存 Token、版本化费用及完整性，不会启动模型或产生费用。不同价格表版本或币种不会被静默合并。TUI 当前提供创建、刷新、归档和恢复；配置化 Agent 可在 Run 页面启动。CLI 已支持通过已知 Session/Run/Call ID 审批恢复；TUI 工具与审批界面仍为 `Planned`。
+CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认目录为 `.wagent/sessions`。`show` 返回消息、Run 摘要、模型尝试/用量/计价计数、输入/输出/缓存 Token、版本化费用及完整性，不会启动模型或产生费用。不同价格表版本或币种不会被静默合并。TUI 当前提供创建、刷新、归档和恢复；Run 页面支持经独立确认的工具代码加载、权限输入和脱敏实时事件。CLI/TUI 均支持通过已知 Session/Run/Call ID 审批恢复。
 
 下一次 `run_agent()` 默认把此前投影的文本消息放在本次消息之前。设置 `include_history=False` 可关闭自动上下文拼接，但本次输入与结果仍会记入 Session。
 
@@ -51,6 +52,8 @@ CLI 与 TUI 使用相同的公开 `SessionManager`/`JsonSessionStore`，默认�
 当 Run 以 `NEEDS_APPROVAL` 停止后，使用同一 Loop/RunStore 和本地应用提供的批准调用 `resume_agent()`。Manager 验证 Run 属于该 Session，更新原 Run 摘要而不是创建重复记录，也不会重复保存用户输入。
 
 配置化入口可调用 `LocalAgentRuntime.resume()`；CLI 对应 `wagent run-resume`。两者都要求运行时重新提供权限与非空精确 Call ID 集合，不从 Session 或 Checkpoint 恢复授权。
+
+`run_agent()`、`resume_agent()`、`LocalAgentRuntime.run()` 和 `resume()` 接受可选 `event_callback`。回调可以是同步或异步函数，按执行流顺序接收 `RunEvent`；内置 `ReactAgentLoop` 在回调可见前持久化事件。第三方 Loop 只有在请求恢复事件回调时才需要提供 `resume_stream()`；原有无回调的 `resume()` 保持兼容。回调异常会停止宿主调用，不会被静默吞掉。TUI 仅展示白名单字段，不显示模型文本、工具参数或工具结果。
 
 ## 数据与边界
 

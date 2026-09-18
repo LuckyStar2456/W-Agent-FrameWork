@@ -132,6 +132,17 @@ async def test_session_resume_updates_existing_run_without_duplicate_input(tmp_p
         run_id="run-approval",
     )
 
+    with pytest.raises(SessionError, match="streamed approval resume"):
+        await manager.resume_agent(
+            loop,
+            "approval-1",
+            "run-approval",
+            tool_context=ToolExecutionContext(
+                approved_call_ids=frozenset({"call-1"})
+            ),
+            event_callback=lambda event: None,
+        )
+
     resumed = await manager.resume_agent(
         loop,
         "approval-1",

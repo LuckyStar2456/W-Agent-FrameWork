@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -23,6 +24,7 @@ from w_agent.agents import (
     CODING_AGENT_TEMPLATE,
     CUSTOMER_SUPPORT_AGENT_TEMPLATE,
     JsonlRunStore,
+    RunEvent,
     RunStoreError,
 )
 from w_agent.compositions import (
@@ -41,6 +43,7 @@ from w_agent.evaluation import (
 )
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
+    LocalRuntimeRun,
     assemble_local_provider,
     assemble_local_runtime,
     load_local_runtime_config,
@@ -54,6 +57,7 @@ from w_agent.models import (
 )
 from w_agent.sandbox import DockerSandboxProvider
 from w_agent.sessions import JsonSessionStore, SessionError, SessionManager
+from w_agent.tools import ToolEntryLoadError, load_tool_entries
 
 
 class WAgentTui(App[None]):
@@ -64,11 +68,11 @@ class WAgentTui(App[None]):
     BINDINGS = [("q", "quit", "Quit")]
     CSS = """
     Screen { background: $surface; }
-    TabPane { padding: 1 2; }
+    TabPane { padding: 1 2; overflow-y: auto; }
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #checkpoint-result, #evaluation-result { min-height: 8; }
+    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #run-events, #checkpoint-result, #checkpoint-resume-result, #checkpoint-events, #evaluation-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -151,10 +155,23 @@ class WAgentTui(App[None]):
                     id="run-session",
                 )
                 yield Input(
+                    placeholder="Tool entries, comma-separated module:attribute",
+                    id="run-tool-entries",
+                )
+                yield Input(
+                    placeholder="Runtime permissions, comma-separated",
+                    id="run-permissions",
+                )
+                yield Input(
+                    placeholder="Type LOAD TOOLS to authorize Python imports",
+                    id="run-tool-confirm",
+                )
+                yield Input(
                     placeholder="Type RUN to authorize the model call",
                     id="run-confirm",
                 )
                 yield Button("Start configured run", id="run-button", variant="primary")
+                yield Static("No live events.", id="run-events", classes="panel")
                 yield Static(
                     "No configured run started.", id="run-result", classes="panel"
                 )
@@ -163,6 +180,40 @@ class WAgentTui(App[None]):
                 yield Static(
                     "Loading agent checkpoints…",
                     id="checkpoint-result",
+                    classes="panel",
+                )
+                yield Label("Approve and resume one exact tool call")
+                yield Input(value=".wagent/config.json", id="checkpoint-config")
+                yield Input(placeholder="Session ID", id="checkpoint-session")
+                yield Input(placeholder="Run ID", id="checkpoint-run")
+                yield Input(placeholder="Exact tool call ID", id="checkpoint-call")
+                yield Input(
+                    placeholder="Tool entries, comma-separated module:attribute",
+                    id="checkpoint-tool-entries",
+                )
+                yield Input(
+                    placeholder="Runtime permissions, comma-separated",
+                    id="checkpoint-permissions",
+                )
+                yield Input(
+                    placeholder="Type LOAD TOOLS to authorize Python imports",
+                    id="checkpoint-tool-confirm",
+                )
+                yield Input(
+                    placeholder="Type RESUME to authorize execution and model calls",
+                    id="checkpoint-confirm",
+                )
+                yield Button(
+                    "Approve exact call and resume",
+                    id="checkpoint-resume",
+                    variant="warning",
+                )
+                yield Static(
+                    "No resumed events.", id="checkpoint-events", classes="panel"
+                )
+                yield Static(
+                    "No checkpoint resumed.",
+                    id="checkpoint-resume-result",
                     classes="panel",
                 )
             with TabPane("Sandbox", id="sandbox"):
@@ -236,6 +287,8 @@ class WAgentTui(App[None]):
             await self._run_configured_agent()
         elif event.button.id == "checkpoint-refresh":
             await self._refresh_checkpoints()
+        elif event.button.id == "checkpoint-resume":
+            await self._resume_configured_agent()
         elif event.button.id == "evaluation-button":
             await self._run_evaluation()
 
@@ -387,6 +440,23 @@ class WAgentTui(App[None]):
             target.update("Rejected: type RUN to authorize the model call")
             return
         confirmation.value = ""
+        try:
+            tool_entries = _split_values(
+                self.query_one("#run-tool-entries", Input).value
+            )
+            permissions = frozenset(
+                _split_values(self.query_one("#run-permissions", Input).value)
+            )
+        except ValueError as error:
+            target.update(f"Rejected: {error}")
+            return
+        tool_confirmation = self.query_one("#run-tool-confirm", Input)
+        if tool_entries and tool_confirmation.value.strip() != "LOAD TOOLS":
+            target.update(
+                "Rejected: type LOAD TOOLS to authorize developer Python imports"
+            )
+            return
+        tool_confirmation.value = ""
         prompt = self.query_one("#run-prompt", Input).value
         if not prompt:
             target.update("Rejected: prompt is required")
@@ -395,20 +465,125 @@ class WAgentTui(App[None]):
         if not source.is_absolute():
             source = self.workspace / source
         session_id = self.query_one("#run-session", Input).value.strip() or None
+        event_target = self.query_one("#run-events", Static)
+        event_lines: list[str] = []
+
+        async def show_event(event: RunEvent) -> None:
+            event_lines.append(_event_text(event))
+            event_target.update("\n".join(event_lines))
+
         target.update("Running configured agent…")
+        event_target.update("Waiting for the first event…")
         try:
+            catalog = load_tool_entries(tool_entries) if tool_entries else {}
             runtime = assemble_local_runtime(
                 load_local_runtime_config(source),
                 self.workspace / ".wagent",
+                tool_bindings=catalog,
             )
             async with runtime:
-                run = await runtime.run(prompt, session_id=session_id)
-        except (LocalRuntimeConfigError, SessionError, ValueError) as error:
+                run = await runtime.run(
+                    prompt,
+                    session_id=session_id,
+                    permissions=permissions,
+                    event_callback=show_event,
+                )
+        except (
+            LocalRuntimeConfigError,
+            SessionError,
+            ToolEntryLoadError,
+            ValueError,
+        ) as error:
             target.update(f"Rejected: {error}")
             return
         except Exception as error:
             target.update(f"Run failed: {type(error).__name__}")
             return
+        self._show_run_result(target, run)
+        self.query_one("#run-session", Input).value = run.session.session_id
+        self._select_pending_checkpoint(run)
+        await self._refresh_sessions()
+        await self._refresh_checkpoints()
+
+    async def _resume_configured_agent(self) -> None:
+        target = self.query_one("#checkpoint-resume-result", Static)
+        confirmation = self.query_one("#checkpoint-confirm", Input)
+        if confirmation.value.strip() != "RESUME":
+            target.update(
+                "Rejected: type RESUME to authorize tool execution and model calls"
+            )
+            return
+        confirmation.value = ""
+        session_id = self.query_one("#checkpoint-session", Input).value.strip()
+        run_id = self.query_one("#checkpoint-run", Input).value.strip()
+        call_id = self.query_one("#checkpoint-call", Input).value.strip()
+        if not session_id or not run_id or not call_id:
+            target.update("Rejected: session, run, and exact call ID are required")
+            return
+        try:
+            tool_entries = _split_values(
+                self.query_one("#checkpoint-tool-entries", Input).value
+            )
+            permissions = frozenset(
+                _split_values(
+                    self.query_one("#checkpoint-permissions", Input).value
+                )
+            )
+        except ValueError as error:
+            target.update(f"Rejected: {error}")
+            return
+        tool_confirmation = self.query_one("#checkpoint-tool-confirm", Input)
+        if tool_entries and tool_confirmation.value.strip() != "LOAD TOOLS":
+            target.update(
+                "Rejected: type LOAD TOOLS to authorize developer Python imports"
+            )
+            return
+        tool_confirmation.value = ""
+        source = self._workspace_path(
+            self.query_one("#checkpoint-config", Input).value
+        )
+        event_target = self.query_one("#checkpoint-events", Static)
+        event_lines: list[str] = []
+
+        async def show_event(event: RunEvent) -> None:
+            event_lines.append(_event_text(event))
+            event_target.update("\n".join(event_lines))
+
+        target.update("Resuming approved tool call…")
+        event_target.update("Waiting for the first resumed event…")
+        try:
+            catalog = load_tool_entries(tool_entries) if tool_entries else {}
+            runtime = assemble_local_runtime(
+                load_local_runtime_config(source),
+                self.workspace / ".wagent",
+                tool_bindings=catalog,
+            )
+            async with runtime:
+                run = await runtime.resume(
+                    session_id,
+                    run_id,
+                    permissions=permissions,
+                    approved_call_ids=frozenset({call_id}),
+                    event_callback=show_event,
+                )
+        except (
+            LocalRuntimeConfigError,
+            RunStoreError,
+            SessionError,
+            ToolEntryLoadError,
+            ValueError,
+        ) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Resume failed: {type(error).__name__}")
+            return
+        self._show_run_result(target, run)
+        self._select_pending_checkpoint(run)
+        await self._refresh_sessions()
+        await self._refresh_checkpoints()
+
+    def _show_run_result(self, target: Static, run: LocalRuntimeRun) -> None:
         result = run.result
         cost_text = (
             f"\nCost: {result.cost.total} {result.cost.currency}, "
@@ -429,8 +604,15 @@ class WAgentTui(App[None]):
             f"{cost_text}\n\n"
             f"{result.output}"
         )
-        self.query_one("#run-session", Input).value = run.session.session_id
-        await self._refresh_sessions()
+
+    def _select_pending_checkpoint(self, run: LocalRuntimeRun) -> None:
+        result = run.result
+        pending = result.pending_tool_call
+        if pending is None:
+            return
+        self.query_one("#checkpoint-session", Input).value = run.session.session_id
+        self.query_one("#checkpoint-run", Input).value = result.run_id
+        self.query_one("#checkpoint-call", Input).value = pending.id
 
     async def _run_evaluation(self) -> None:
         target = self.query_one("#evaluation-result", Static)
@@ -522,6 +704,53 @@ class WAgentTui(App[None]):
 
 def run_tui(workspace: str | Path = ".") -> None:
     WAgentTui(workspace).run()
+
+
+def _split_values(value: str) -> tuple[str, ...]:
+    """Parse a compact UI list without allowing blank or duplicate entries."""
+
+    values = tuple(item.strip() for item in value.split(",") if item.strip())
+    if len(values) != len(set(values)):
+        raise ValueError("list entries must be unique")
+    return values
+
+
+def _event_text(event: RunEvent) -> str:
+    """Render a prompt/argument/output-free event projection for the TUI."""
+
+    fields = (
+        "step",
+        "provider",
+        "model",
+        "finish_reason",
+        "call_id",
+        "name",
+        "outcome",
+        "failure_code",
+        "reason",
+        "stop_reason",
+        "checkpoint_status",
+        "pending_call_id",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "usage_complete",
+        "max_cost",
+        "cost_complete",
+    )
+    details = [
+        f"{name}={event.data[name]}"
+        for name in fields
+        if event.data.get(name) is not None
+    ]
+    cost = event.data.get("cost")
+    if isinstance(cost, Mapping):
+        total = cost.get("total")
+        currency = cost.get("currency")
+        if total is not None and currency is not None:
+            details.append(f"cost={total} {currency}")
+    prefix = f"{event.sequence:03d} {event.type.value}"
+    return prefix if not details else f"{prefix} | {' | '.join(details)}"
 
 
 def _cost_text(cost: ModelCost | None, *, complete: bool) -> str:

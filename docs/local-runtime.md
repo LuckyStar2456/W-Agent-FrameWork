@@ -2,7 +2,7 @@
 
 [English](./local-runtime.en.md) | 简体中文
 
-状态：`Experimental`（当前 `2.0.0a2`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI 审批恢复、Agent Checkpoint 脱敏列表，以及 CLI/TUI 文本运行入口已实现。TUI 工具加载/批准执行页面、Workflow Checkpoint 汇总与实时 RunEvent 查看仍为 `Planned`。
+状态：`Experimental`（当前 `2.0.0a3`）。严格本地 JSON 配置、环境变量凭据引用、Provider/路由/ReAct 装配、版本化价格与费用预算、Provider 单独装配与探测、显式工具选择、持久化 Run/Session、Python API/CLI/TUI 审批恢复、Agent Checkpoint 脱敏列表、应用事件回调，以及 CLI/TUI 文本运行入口已实现。Workflow Checkpoint 汇总仍为 `Planned`。
 
 ## 配置
 
@@ -127,6 +127,6 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 
 ## 开放装配边界
 
-`load_local_runtime_config()`、`assemble_local_provider()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。Provider 单独装配返回 `LocalProviderAssembly`，只解析凭据引用并构建对象，不注册、不访问网络；应用随后可选择任意探测或注册策略。完整 Runtime 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager。两种装配都支持 `async with` 和幂等 `aclose()`；关闭后完整 Runtime 拒绝继续运行。CLI/TUI 自动在同一事件循环内完成使用与关闭。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
+`load_local_runtime_config()`、`assemble_local_provider()` 与 `assemble_local_runtime()` 是便利层，不是新的封闭 Runtime。Provider 单独装配返回 `LocalProviderAssembly`，只解析凭据引用并构造对象，不注册、不访问网络；应用随后可选择任意探测或注册策略。完整 Runtime 公开 Definition、Loop、ModelRegistry、ToolRegistry 和 SessionManager；`run()`/`resume()` 可通过 `event_callback` 投影按持久化顺序产生的实时事件。两种装配都支持 `async with` 和幂等 `aclose()`；关闭后完整 Runtime 拒绝继续运行。CLI/TUI 自动在同一事件循环内完成使用与关闭。应用可替换模板注册表、Provider 传输、路由、工具与 Store。
 
 应用将 `{name: ToolBinding}` 作为 `tool_bindings` 传给装配器；配置只能选择其中的子集。`LocalAgentRuntime.run()` 接收本次运行的权限和可选批准 ID，`resume()` 接收 Session/Run ID、权限与非空精确批准集合。配置、Session、Checkpoint 和工程装配编码都不能生成权限、批准或本地执行授权。

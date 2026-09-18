@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.md)
 
-This documentation describes stable 1.5.2, the latest alpha `2.0.0a2`, and later open-agent-framework plans. Every capability must be labeled `Implemented`, `Planned`, `Reserved`, `Experimental`, or `Deprecated`.
+This documentation describes stable 1.5.2, the latest alpha `2.0.0a2`, current `2.0.0a3` source, and later open-agent-framework plans. Every capability must be labeled `Implemented`, `Planned`, `Reserved`, `Experimental`, or `Deprecated`.
 
 ## Reading order
 

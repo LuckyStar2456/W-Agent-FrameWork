@@ -4,7 +4,7 @@ English | [简体中文](./guide.md)
 
 ## 1. Check capability status first
 
-The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a2`. This alpha implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, composition install/load confirmation, and the complete interactive TUI remain `Planned`.
+The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a2`; repository `2.0.0a3` additionally provides TUI tool-approval resume and privacy-safe live events. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, composition install/load confirmation, and general plugin/workflow-checkpoint screens remain `Planned`.
 
 The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
 

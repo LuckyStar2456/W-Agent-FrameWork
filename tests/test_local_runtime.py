@@ -97,6 +97,11 @@ def _templates(captured):
 @pytest.mark.asyncio
 async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_path):
     captured = {}
+    events = []
+
+    async def record_event(event):
+        events.append(event)
+
     runtime = assemble_local_runtime(
         _config(),
         tmp_path / ".wagent",
@@ -104,9 +109,20 @@ async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_pa
         environ={"TEST_MODEL_KEY": "not-persisted"},
     )
 
-    run = await runtime.run("hi", session_title="Configured run")
+    run = await runtime.run(
+        "hi",
+        session_title="Configured run",
+        event_callback=record_event,
+    )
 
     assert run.result.output == "hello"
+    assert [event.type.value for event in events] == [
+        "run-started",
+        "model-started",
+        "model-completed",
+        "token-usage",
+        "run-completed",
+    ]
     assert run.result.usage == TokenUsage(3, 2)
     assert run.result.usage_complete is True
     assert len(run.result.attempts) == 1
@@ -393,17 +409,21 @@ async def test_local_runtime_selects_catalog_tools_and_resumes_approval(tmp_path
     assert pending.result.pending_tool_call.id == "save-1"
     assert writes == []
 
+    resumed_events = []
     completed = await runtime.resume(
         pending.session.session_id,
         pending.result.run_id,
         permissions=frozenset({"notes.write"}),
         approved_call_ids=frozenset({"save-1"}),
+        event_callback=resumed_events.append,
     )
 
     assert completed.result.output == "saved"
     assert completed.result.stop_reason.value == "completed"
     assert writes == ["value"]
     assert completed.result.usage == TokenUsage(7, 2)
+    assert resumed_events[0].type.value == "run-resumed"
+    assert resumed_events[-1].type.value == "run-completed"
 
 
 def test_local_runtime_tool_selection_requires_budget_and_authorized_catalog(tmp_path):

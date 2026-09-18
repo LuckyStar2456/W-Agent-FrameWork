@@ -2,7 +2,7 @@
 
 English | [简体中文](./api.md)
 
-This document separates stable 1.5.2 APIs, the latest alpha `2.0.0a2` APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
+This document separates stable 1.5.2 APIs, the latest alpha `2.0.0a2`, current `2.0.0a3` source APIs, and later planned protocols. Protocols marked `Planned` are design material and cannot be imported today.
 
 ## 1. Current top-level API
 
@@ -11,7 +11,7 @@ Status: `Implemented`. `w_agent.__init__` currently exports these primary types:
 | Group | API |
 |---|---|
 | Agent | `BaseAgent`, `LegacyAgentAdapter`, `AgentDefinition`, `AgentLoop`, `ReactAgentLoop`, `RunContext`, `RunEvent`, `RunResult`, `RunStore`, `RunCheckpointSummary`, `JsonlRunStore`, `TokenBudget`, `CostBudget` |
-| Session | `SessionManager`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
+| Session | `SessionManager`, `RunEventCallback`, `SessionRecord`, `SessionRunRecord`, `InMemorySessionStore`, `JsonSessionStore` |
 | Local assembly | `LocalRuntimeConfig`, `LocalToolConfig`, `LocalPricingConfig`, `LocalProviderAssembly`, `LocalAgentRuntime`, `load_local_runtime_config`, `assemble_local_provider`, `assemble_local_runtime` |
 | Container | `BeanFactory`, `BeanDefinition`, `Scope` |
 | Configuration | `DynamicConfigManager` |
@@ -136,7 +136,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `RunStore.list_checkpoints()` exposes `RunCheckpointSummary` without prompts, argument values, or outputs. `TokenBudget` provides cumulative token limits; `CostBudget` combines with a replaceable `PricingResolver` and application-supplied versioned `PriceTable` for cost metering and hard stops. `TOKEN_USAGE`/`COST_USAGE`, `RunResult`, and checkpoints expose and preserve token values, costs, attempt ledgers, and completeness. `SessionManager` plus memory/JSON stores provide local lifecycle, cross-run text context, and approval-resume coordination. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
+`ReactAgentLoop` is an ordinary implementation built only on public model/tool contracts and can be replaced as a whole through the same protocol. It runs a bounded model/tool cycle, appends through `RunStore` before event visibility, and returns `pending_tool_call` plus `checkpoint_id` when approval is required. `RunStore.list_checkpoints()` exposes `RunCheckpointSummary` without prompts, argument values, or outputs. `TokenBudget` provides cumulative token limits; `CostBudget` combines with a replaceable `PricingResolver` and application-supplied versioned `PriceTable` for cost metering and hard stops. `TOKEN_USAGE`/`COST_USAGE`, `RunResult`, and checkpoints expose and preserve token values, costs, attempt ledgers, and completeness. `SessionManager.run_agent()`/`resume_agent()` accept an optional synchronous or asynchronous `RunEventCallback` and project live events in public stream order; the built-in ReAct loop persists each event before exposing it. `customer_support_agent()` and `coding_agent()` build fully overridable ordinary definitions and bind no model, tool, or authority. General multimodal/tool event replay and per-token text events remain `Planned`. See [Agent runtime](./agents.en.md) and [Session lifecycle](./sessions.en.md).
 
 ## 8. Workflow protocol
 

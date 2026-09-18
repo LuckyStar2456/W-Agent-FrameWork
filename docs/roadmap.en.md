@@ -65,6 +65,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Locally configured text-agent run entry point | `Experimental` | Phase 6 / 2.0.0a1 |
 | Configured tool selection, explicit code loading, and CLI approval resume | `Experimental` | Phase 3/6 / 2.0.0a1 |
 | Prompt-free agent approval-checkpoint listing in API/CLI/TUI | `Implemented` | Phase 3/6 / 2.0.0a1 |
+| TUI tool loading/authority/exact approval resume and privacy-safe live RunEvents | `Experimental` | Phase 3/6 / 2.0.0a3 |
 | Scripted model mocks, explicit record/replay, and local evaluation metrics | `Experimental` | Phase 6 / 2.0.0a1 |
 | CLI/TUI local-evaluation entry points and privacy-safe reports | `Experimental` | Phase 6 / 2.0.0a1 |
 | Evaluation pricing/cost metrics | `Experimental` | Phase 6 / 2.0.0a2 |
@@ -143,7 +144,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented prompt-free agent approval-checkpoint listing in the API, CLI, and TUI. Summaries exclude prompts, argument values, outputs, and credentials.
 - Implemented network-free scripted model providers, JSONL recording/sequential replay requiring explicit sensitive-content authorization, and a sequential evaluation runner with replaceable scorers. The CLI reads strict JSON datasets, uses disposable state by default, and reports token completeness, latency, errors, and tool success rate. JSON reports omit prompts, outputs, metadata, and exception bodies by default.
 - Implemented a sequential TUI evaluation screen with strict JSON cases, disposable state, one-shot `EVALUATE` authorization, aggregate metrics, and optional privacy-safe reports; prompts and outputs are hidden by default.
-- TUI tool-approval execution, live RunEvent views, workflow-checkpoint aggregation/cross-store recovery, and general plugin-install confirmation remain `Planned`.
+- The TUI now implements separately confirmed tool-entry loading, per-run authority, exact session/run/call-ID approval resume, and privacy-safe live RunEvents. Confirmations are not retained, and the UI omits prompts, model text, tool arguments, and tool results.
+- Workflow-checkpoint aggregation/cross-store recovery and general plugin-install confirmation remain `Planned`.
 - Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 
