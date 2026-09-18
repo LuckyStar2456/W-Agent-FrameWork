@@ -2,7 +2,7 @@
 
 [English](./tui.en.md) | 简体中文
 
-状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现 Workflow Checkpoint 脱敏汇总、显式 Definition 加载和引导恢复；通用插件操作仍为 `Planned`。
+状态：Typer/Rich CLI、可启动 Textual TUI、本地 Session 生命周期、配置化 Agent 运行入口、Token/费用可见性、Agent Checkpoint 脱敏列表、CLI/TUI 工具选择/权限/审批恢复、脱敏实时 RunEvent 和本地评测在 `2.0.0a3` 为 `Experimental`。当前 main 另外实现 Workflow Checkpoint 引导恢复，以及通用插件的无导入预览、确认加载和 TUI 卸载；这些 main 能力尚未发布。插件包安装/升级仍为 `Planned`。
 
 ## 原则
 
@@ -18,6 +18,8 @@ wagent init
 wagent profile list
 wagent probe <endpoint>
 wagent doctor
+wagent plugin inspect --config <plugins.yml> [--json]
+wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
@@ -34,7 +36,9 @@ wagent tui
 
 兼容期继续保留 `w-agent` 命令名以及基础 `config`、`bean` 子命令；规范入口为 `wagent`。
 
-`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。可选版本化价格配置为 CLI/TUI Run、Session、Checkpoint 和评测提供费用与完整性。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。TUI 使用独立的 `RUN`、`LOAD TOOLS`、权限输入和 `RESUME` 确认，且精确绑定 Session/Run/Call ID；确认立即清空。Workflow 恢复同样要求独立的代码加载与执行确认，并按 Checkpoint 的名称、版本和类型选择 Definition。RunEvent 面板只展示白名单身份、状态、Token 和费用字段。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。`config validate`、通用插件操作和装配安装确认仍为 `Planned`。
+`run` 使用严格的 `.wagent/config.json` 与环境变量凭据引用；每次都必须显式传入 `--confirm-model-call`。可选版本化价格配置为 CLI/TUI Run、Session、Checkpoint 和评测提供费用与完整性。配置可从显式 Catalog 选择工具；CLI 仅在 `--tool-entry` 与独立的 `--confirm-tool-code` 同时出现时导入开发者 Python 工具，并通过 `--grant-permission` 授予本次权限。TUI 使用独立的 `RUN`、`LOAD TOOLS`、权限输入和 `RESUME` 确认，且精确绑定 Session/Run/Call ID；确认立即清空。Workflow 恢复同样要求独立的代码加载与执行确认，并按 Checkpoint 的名称、版本和类型选择 Definition。RunEvent 面板只展示白名单身份、状态、Token 和费用字段。TUI Models 页也提供配置化安全/主动 Provider 探测，主动生成必须输入 `ACTIVE` 且确认不会持久化。
+
+`plugin inspect` 只解析引用、启用状态和配置键，不导入代码。`plugin validate-load` 必须传入 `--confirm-plugin-code`，在临时 `PluginManager` 中事务化加载，输出不含配置值的 active 快照，并在进程退出前卸载。TUI Plugins 页用持久的进程内 Manager；加载需输入一次性 `LOAD PLUGINS`，卸载需输入精确的 `UNLOAD <name>`，且 Provider 卸载会级联卸载活跃依赖者。`config validate`、插件包安装/升级和装配安装确认仍为 `Planned`。
 
 TUI Evaluation 页要求输入 `EVALUATE` 才顺序运行严格 JSON 用例集；默认一次性状态，确认立即清空，只显示 Token/费用/延迟/工具结果和通过状态，并可写默认脱敏报告。自定义 Scorer、输出持久化和开发者工具入口使用 Python API/CLI。
 
@@ -56,7 +60,7 @@ TUI 使用 Textual，通过 `wagent-framework[tui]` 可选依赖安装。基础 
 
 ### Plugins
 
-显示来源、版本、API 兼容性、提供能力、依赖、作用域和状态。安装或升级第三方包需要用户明确执行；首版不自动更新。
+当前 main 可从本地 YAML 显示 `module:attribute` 来源、启用状态和配置键，且预览不导入模块。经 `LOAD PLUGINS` 确认后，页面显示名称、版本、API 兼容性、提供能力、依赖和生命周期状态；配置值、插件异常正文和 Metadata 不进入投影。用户可用名称绑定确认卸载插件及其活跃依赖者。安装或升级第三方包仍需框架外的用户明确操作；首版不自动更新。
 
 ### Composition
 

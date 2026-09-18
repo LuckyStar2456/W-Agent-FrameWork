@@ -13,9 +13,12 @@ from .exceptions import (
 )
 from .loading import (
     PluginReference,
+    PluginReferenceSummary,
     discover_entrypoint_plugins,
     import_plugin,
+    load_plugin_references,
     load_yaml_references,
+    preview_plugin_references,
 )
 from .plugins import (
     CapabilityDeclaration,
@@ -56,6 +59,7 @@ __all__ = [
     "PluginManager",
     "PluginRecord",
     "PluginReference",
+    "PluginReferenceSummary",
     "PluginSpec",
     "PluginState",
     "PluginUnloadError",
@@ -68,6 +72,8 @@ __all__ = [
     "coerce_plugin",
     "discover_entrypoint_plugins",
     "import_plugin",
+    "load_plugin_references",
     "load_yaml_references",
+    "preview_plugin_references",
     "plugin",
 ]

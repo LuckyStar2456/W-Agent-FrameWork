@@ -50,6 +50,15 @@ from w_agent.local_runtime import (
     assemble_local_runtime,
     load_local_runtime_config,
 )
+from w_agent.kernel import (
+    PluginLoadError,
+    PluginManager,
+    PluginRecord,
+    PluginReference,
+    load_plugin_references,
+    load_yaml_references,
+    preview_plugin_references,
+)
 from w_agent.models import (
     AttemptRecord,
     EndpointProbe,
@@ -83,12 +92,14 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 profile_app = typer.Typer(help="Inspect built-in editable agent templates.")
+plugin_app = typer.Typer(help="Inspect and explicitly validate local plugins.")
 composition_app = typer.Typer(help="Encode, inspect, and store compositions.")
 session_app = typer.Typer(help="Manage local persistent agent sessions.")
 config_app = typer.Typer(help="Compatibility configuration commands.")
 bean_app = typer.Typer(help="Compatibility IOC-container commands.")
 checkpoint_app = typer.Typer(help="Inspect local prompt-free checkpoint summaries.")
 app.add_typer(profile_app, name="profile")
+app.add_typer(plugin_app, name="plugin")
 app.add_typer(composition_app, name="composition")
 app.add_typer(session_app, name="session")
 app.add_typer(config_app, name="config")
@@ -496,6 +507,85 @@ def profile_list(
             str(item["key"]),
             str(item["description"]),
             ", ".join(item["recommended_tools"]),
+        )
+    console.print(table)
+
+
+@plugin_app.command("inspect")
+def plugin_inspect(
+    config: Path = typer.Option(Path(".wagent/plugins.yml"), "--config"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Preview plugin references and config keys without importing code."""
+
+    try:
+        summaries = preview_plugin_references(load_yaml_references(config))
+    except (OSError, ValueError) as error:
+        _fail(str(error))
+    payload = [
+        {
+            "entry": item.entry,
+            "enabled": item.enabled,
+            "config_keys": list(item.config_keys),
+        }
+        for item in summaries
+    ]
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Plugin reference preview (no imports)")
+    table.add_column("Entry")
+    table.add_column("Enabled")
+    table.add_column("Config keys")
+    for item in payload:
+        table.add_row(
+            str(item["entry"]),
+            str(item["enabled"]),
+            ", ".join(item["config_keys"]) or "-",
+        )
+    console.print(table)
+
+
+@plugin_app.command("validate-load")
+def plugin_validate_load(
+    config: Path = typer.Option(Path(".wagent/plugins.yml"), "--config"),
+    confirm_plugin_code: bool = typer.Option(
+        False,
+        "--confirm-plugin-code",
+        help="Authorize importing and executing developer-owned plugin code.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Load a plugin batch transactionally, report it, then unload on exit."""
+
+    if not confirm_plugin_code:
+        _fail("plugin code not authorized; pass --confirm-plugin-code")
+    try:
+        references = load_yaml_references(config)
+        payload = asyncio.run(_validate_plugin_batch(references))
+    except (OSError, PluginLoadError, ValueError) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"plugin validation failed: {type(error).__name__}")
+    if json_output:
+        _emit(payload, True)
+        return
+    table = Table(title="Validated plugins (unloaded after validation)")
+    table.add_column("Name")
+    table.add_column("Version")
+    table.add_column("API")
+    table.add_column("State during validation")
+    table.add_column("Capabilities")
+    for item in payload:
+        table.add_row(
+            str(item["name"]),
+            str(item["version"]),
+            str(item["api_version"]),
+            str(item["state"]),
+            ", ".join(
+                capability["capability"] for capability in item["provides"]
+            )
+            or "-",
         )
     console.print(table)
 
@@ -977,6 +1067,21 @@ async def _resume_workflow_checkpoint(
     return await LocalWorkflowEngine(store).resume(definition, run_id)
 
 
+async def _validate_plugin_batch(
+    references: tuple[PluginReference, ...],
+) -> tuple[dict[str, Any], ...]:
+    manager = PluginManager()
+    try:
+        await load_plugin_references(manager, references)
+        return tuple(
+            _plugin_record_payload(record)
+            for record in manager.records()
+            if record.state.value == "active"
+        )
+    finally:
+        await manager.close()
+
+
 def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
         _emit(payload, True)
@@ -1255,6 +1360,37 @@ def _workflow_result_payload(result: Any) -> dict[str, Any]:
                 },
             }
             for event in result.events
+        ],
+    }
+
+
+def _plugin_record_payload(record: PluginRecord) -> dict[str, Any]:
+    spec = record.spec
+    return {
+        "name": spec.name,
+        "version": spec.version,
+        "api_version": spec.api_version,
+        "state": record.state.value,
+        "scope": [
+            {"kind": segment.kind, "value": segment.value}
+            for segment in spec.scope
+        ],
+        "provides": [
+            {
+                "capability": item.capability,
+                "name": item.name,
+                "version": item.version,
+                "exclusive": item.exclusive,
+            }
+            for item in spec.provides
+        ],
+        "requires": [
+            {
+                "capability": item.capability,
+                "name": item.name,
+                "version": item.version,
+            }
+            for item in spec.requires
         ],
     }
 

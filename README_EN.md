@@ -71,7 +71,7 @@ The following Phase 2A capabilities are also `Implemented` in the current source
 - A strict local-JSON text-agent CLI/TUI run entry point with environment credential references, per-call confirmation, and visible token/cost budgets and metering.
 - Deterministic scripted model providers, explicitly authorized JSONL recording/sequential replay, and a local evaluation runner with privacy-safe JSON reports.
 
-`BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, parallel or nested workflows, composition dependency installation/load confirmation, and the complete interactive TUI remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
+`BaseAgent` remains the minimal 1.x abstraction; `LegacyAgentAdapter` can now bridge it strictly into a text workflow node, while the new ReAct runtime is provided independently. Current main has safe preview, confirmed loading, and TUI unload for independent YAML plugin references, but composition dependency resolution/package installation, dedicated OpenAI Responses and vLLM differences, model cross-stream recovery, general multimodal/tool event replay, and parallel or nested workflows remain `Planned` and must not be treated as existing features. The Docker backend has simulated CLI lifecycle tests, which do not prove Docker is installed or running on the current machine. Vendor templates likewise have fake-transport tests rather than live validation for every remote model.
 
 ## Next-generation module map
 
@@ -152,11 +152,11 @@ wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, privacy-safe agent/workflow checkpoint listing, catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, exact-version workflow recovery, privacy-safe live RunEvents, and CLI/TUI local evaluation. Workflow recovery is an unpublished main capability; general plugin operations remain `Planned`.
+The CLI and TUI use only public Python APIs. The current CLI/TUI foundation is `Experimental`: it covers initialization, template listing, safe/active endpoint probing, composition management/offline preview, local session lifecycle, per-call-confirmed configured agent runs with visible token totals, privacy-safe agent/workflow checkpoint listing, catalog tool selection, separate code-load confirmation, authority grants, exact-call-ID approval resume, exact-version workflow recovery, import-free general-plugin preview/confirmed loading/TUI unload, privacy-safe live RunEvents, and CLI/TUI local evaluation. Workflow recovery and general plugin operations are unpublished main capabilities; plugin package installation/upgrades remain `Planned`.
 
 ## Portable project compositions
 
-`Implemented`: developers can name and version a framework composition, export it as a copyable code, and validate and preview risks without network access, imports, or execution. The local store keeps multiple versions and aliases while rejecting silent content conflicts. Dependency installation and plugin-load confirmation remain `Planned`.
+`Implemented`: developers can name and version a framework composition, export it as a copyable code, and validate and preview risks without network access, imports, or execution. The local store keeps multiple versions and aliases while rejecting silent content conflicts. Current main's general plugin confirmation boundary is not automatically connected to compositions; dependency resolution and package installation remain `Planned`.
 
 A composition code carries a portable manifest, never secrets. It does not bundle arbitrary source by default and never executes untrusted plugins automatically during import. See [Portable project compositions](./docs/project-sharing.en.md).
 

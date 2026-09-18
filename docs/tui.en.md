@@ -2,7 +2,7 @@
 
 English | [简体中文](./tui.md)
 
-Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements privacy-safe workflow-checkpoint discovery, explicit definition loading, and guided recovery; general plugin operations remain `Planned`.
+Status: the Typer/Rich CLI, launchable Textual TUI, local session lifecycle, configured-agent entry point, token/cost visibility, prompt-free agent-checkpoint listing, CLI/TUI tool selection/authority/approval resume, privacy-safe live RunEvents, and local evaluation are `Experimental` in `2.0.0a3`. Current main additionally implements guided workflow-checkpoint recovery plus import-free preview, confirmed loading, and TUI unload for general plugins. These main capabilities are unpublished. Plugin package installation and upgrades remain `Planned`.
 
 ## Principles
 
@@ -18,6 +18,8 @@ wagent init
 wagent profile list
 wagent probe <endpoint>
 wagent doctor
+wagent plugin inspect --config <plugins.yml> [--json]
+wagent plugin validate-load --config <plugins.yml> --confirm-plugin-code [--json]
 wagent composition export|inspect|save|list
 wagent session create|list|show|archive|unarchive
 wagent checkpoint list [--session <id>]
@@ -34,7 +36,9 @@ These commands are implemented. The CLI prints human-readable text by default; t
 
 The compatibility window retains the `w-agent` command name and basic `config` and `bean` subcommands; `wagent` is canonical.
 
-`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Optional versioned pricing exposes cost and completeness in CLI/TUI runs, sessions, checkpoints, and evaluation. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. The TUI uses independent `RUN`, `LOAD TOOLS`, authority input, and `RESUME` confirmations bound to exact session/run/call IDs, and clears confirmations immediately. Workflow recovery likewise requires independent code-load and execution confirmations and selects a definition by checkpoint name, version, and kind. RunEvent panels expose only allowlisted identity, status, token, and cost fields. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained. `config validate`, general plugin operations, and composition-install confirmation remain `Planned`.
+`run` uses strict `.wagent/config.json` plus environment-variable credential references and requires `--confirm-model-call` every time. Optional versioned pricing exposes cost and completeness in CLI/TUI runs, sessions, checkpoints, and evaluation. Configuration may select from an explicit tool catalog. The CLI imports developer Python tools only when `--tool-entry` and independent `--confirm-tool-code` are both present, while `--grant-permission` grants authority for that command. The TUI uses independent `RUN`, `LOAD TOOLS`, authority input, and `RESUME` confirmations bound to exact session/run/call IDs, and clears confirmations immediately. Workflow recovery likewise requires independent code-load and execution confirmations and selects a definition by checkpoint name, version, and kind. RunEvent panels expose only allowlisted identity, status, token, and cost fields. The TUI Models screen also exposes configured safe/active provider probes; active generation requires typing `ACTIVE`, and confirmation is never retained.
+
+`plugin inspect` parses only references, enabled state, and configuration keys, and imports no code. `plugin validate-load` requires `--confirm-plugin-code`, loads transactionally in a temporary `PluginManager`, prints an active snapshot without configuration values, and unloads before the process exits. The TUI Plugins screen owns a persistent in-process manager: loading requires one-shot `LOAD PLUGINS`, unloading requires exact `UNLOAD <name>`, and unloading a provider cascades to active consumers. `config validate`, plugin package installation/upgrades, and composition-install confirmation remain `Planned`.
 
 The TUI Evaluation screen requires typing `EVALUATE` before sequentially running a strict JSON dataset. It uses disposable state, clears confirmation immediately, displays only token/cost/latency/tool/pass metrics, and may write a default privacy-safe report. Custom scorers, output persistence, and developer tool entries use the Python API/CLI.
 
@@ -56,7 +60,7 @@ Manages provider configuration references, model catalogs, and probe results. Be
 
 ### Plugins
 
-Shows source, version, API compatibility, provided capabilities, dependencies, scope, and state. Installing or upgrading a third-party package requires explicit user action; the first release does not auto-update.
+Current main can show local YAML `module:attribute` sources, enabled state, and configuration keys without importing modules. After `LOAD PLUGINS` confirmation, it shows name, version, API compatibility, provided capabilities, dependencies, and lifecycle state. Configuration values, plugin exception bodies, and metadata are excluded from the projection. A name-bound confirmation unloads a plugin and its active consumers. Installing or upgrading third-party packages remains an explicit action outside the framework; the first release does not auto-update.
 
 ### Composition
 

@@ -62,6 +62,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Sandbox command-tool binding | `Implemented` | Phase 5 / 2.0.0a1 |
 | Customer-support/RAG and coding profiles | `Implemented` | Phase 5 / 2.0.0a1 |
 | Portable composition codes, safe preview, and versioning | `Implemented` | Phase 6 / 2.0.0a1 |
+| Import-free general-plugin preview, confirmed batch load, and TUI unload | `Experimental` | Phase 1/6 / main (unpublished) |
 | Typer/Rich CLI, Textual TUI, and session lifecycle UI | `Experimental` | Phase 6 / 2.0.0a1 |
 | Locally configured text-agent run entry point | `Experimental` | Phase 6 / 2.0.0a1 |
 | Configured tool selection, explicit code loading, and CLI approval resume | `Experimental` | Phase 3/6 / 2.0.0a1 |
@@ -139,7 +140,7 @@ This document is the single capability-status overview for W-Agent. Phases descr
 ### Phase 6: sharing, interfaces, and evaluation
 
 - Implemented named/versioned `CompositionManifest` values, deterministic encoding/decoding, size bounds, integrity checks, safe preview, and a conflict-safe local version/alias store.
-- Preview performs no network access, installation, import, or plugin execution. Dependency resolution plus installation/load confirmations remain `Planned`.
+- Composition preview performs no network access, installation, import, or plugin execution. Current main implements import-free preview of independent YAML references, explicitly confirmed transactional batch loading, and persistent in-process TUI unload. Composition dependency resolution, package-install confirmation, and composition-to-plugin-reference bridging remain `Planned`.
 - An initial `wagent` CLI (with the `w-agent` alias) and launchable Textual TUI now cover workspace initialization, template listing, safe endpoint probing, composition export/preview/save/list, local session create/show/archive/unarchive with visible token totals, and offline TUI composition inspection.
 - Implemented strict local JSON assembly into provider/routing/ReAct/run/session components for text runs. CLI/TUI require explicit authorization for every call, and credentials resolve only through environment-variable references.
 - Implemented host-catalog-bounded configured tool selection, per-command authority grants, separate Python tool-code load confirmation, and CLI approval resume by known session/run/call IDs. Configuration itself cannot import, authorize, or approve a tool.
@@ -147,7 +148,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Implemented network-free scripted model providers, JSONL recording/sequential replay requiring explicit sensitive-content authorization, and a sequential evaluation runner with replaceable scorers. The CLI reads strict JSON datasets, uses disposable state by default, and reports token completeness, latency, errors, and tool success rate. JSON reports omit prompts, outputs, metadata, and exception bodies by default.
 - Implemented a sequential TUI evaluation screen with strict JSON cases, disposable state, one-shot `EVALUATE` authorization, aggregate metrics, and optional privacy-safe reports; prompts and outputs are hidden by default.
 - The TUI now implements separately confirmed tool-entry loading, per-run authority, exact session/run/call-ID approval resume, and privacy-safe live RunEvents. Confirmations are not retained, and the UI omits prompts, model text, tool arguments, and tool results.
-- Implemented workflow-checkpoint discovery and recovery from an explicitly selected local state root; stores are never copied, merged, or migrated automatically. General plugin install/upgrade/removal confirmation remains `Planned`.
+- Implemented workflow-checkpoint discovery and recovery from an explicitly selected local state root; stores are never copied, merged, or migrated automatically.
+- Current main implements configuration-value-free plugin-reference preview, ephemeral CLI validation bound to `--confirm-plugin-code`, and TUI lifecycle controls bound to `LOAD PLUGINS` / `UNLOAD <name>`. Third-party package installation and upgrades remain `Planned`.
 - Versioned cost aggregation is implemented in evaluation reports, CLI, and TUI; built-in customer-support/coding benchmark tasks remain `Planned`.
 - Implemented a strict text-only bridge from legacy `BaseAgent.arun()` to workflow nodes; other old-API bridges remain demand-driven plans rather than a second runtime.
 

@@ -2,7 +2,7 @@
 
 English | [简体中文](./plugin-system.md)
 
-Status: `Implemented` in `2.0.0a1`. This document defines the current microkernel plugin API. Higher-level model, agent, and workflow plugins remain on the roadmap.
+Status: the microkernel plugin API is `Implemented` in `2.0.0a1`. Current main (unpublished) additionally provides import-free YAML preview, explicitly confirmed batch loading, and TUI unload controls. Third-party package installation remains `Planned`.
 
 ## Goal
 
@@ -39,6 +39,31 @@ handle = await manager.load(hello_provider)
 value = manager.registry.resolve("example.hello", ScopePath.application())
 await handle.unload()
 ```
+
+## YAML references and explicit authorization
+
+```yaml
+plugins:
+  - entry: my_plugins.router:setup
+    enabled: true
+    config:
+      endpoint: https://example.test
+  - entry: my_plugins.optional:setup
+    enabled: false
+```
+
+Current main uses this safe operational sequence:
+
+```text
+wagent plugin inspect --config .wagent/plugins.yml
+  → parse only entry, enabled, and configuration keys; import no module
+wagent plugin validate-load --config .wagent/plugins.yml --confirm-plugin-code
+  → import and load enabled entries, report an active snapshot, then unload before exit
+```
+
+The TUI Plugins screen uses the same `PluginManager` and loading API. After one-shot `LOAD PLUGINS` confirmation, plugins remain active in the current TUI process. Unload requires the name-bound `UNLOAD <name>` phrase and unloads active consumers before their provider. Configuration values reach plugin code, but preview and lifecycle projections show keys only.
+
+If any import or load in a batch fails, plugins loaded earlier by that batch are unloaded in reverse order. Plugins that were already active in the manager and are outside the batch are not part of this rollback. Duplicate references fail before import, and `enabled: false` references are never imported.
 
 ## Manifest
 
@@ -98,7 +123,7 @@ A child scope may override a parent provider. Scoped resolution is implemented; 
 - Invalid configuration: fail during resolution.
 - Partial load failure: roll back the load's effect scope.
 - Cleanup failure: report the error, continue other cleanup, then report incomplete cleanup.
-- Unknown plugin code: execute only after explicit installation and first-load confirmation.
+- Unknown plugin code: execute only after explicit load confirmation; installation is a separate confirmation boundary that is not implemented yet.
 
 ## Relationship to compositions
 
@@ -109,4 +134,5 @@ A `CompositionManifest` references plugin names, version constraints, and config
 - One plugin name cannot have multiple active instances in one `PluginManager`.
 - A Registry snapshot fixes resolution results but does not yet own provider lifecycle leases.
 - Dependency recovery does not automatically reload consumers.
-- YAML loads `module:attribute` references and configuration only; it does not install third-party packages.
+- YAML loads strict `module:attribute` references and configuration only; it does not install third-party packages.
+- CLI `validate-load` is an ephemeral validation; use the Python API or TUI for persistent in-process plugin state.

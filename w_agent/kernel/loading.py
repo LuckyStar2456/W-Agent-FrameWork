@@ -11,7 +11,8 @@ from typing import Any, Iterable, Mapping
 
 import yaml
 
-from .plugins import Plugin, coerce_plugin
+from .exceptions import PluginLoadError
+from .plugins import Plugin, PluginHandle, PluginManager, coerce_plugin
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,9 +24,21 @@ class PluginReference:
     enabled: bool = True
 
     def __post_init__(self) -> None:
-        if ":" not in self.entry:
+        if self.entry.count(":") != 1:
             raise ValueError("plugin entry must use 'module:attribute' syntax")
+        module_name, attribute = self.entry.split(":", 1)
+        if not module_name.strip() or not attribute.strip():
+            raise ValueError("plugin entry module and attribute are required")
         object.__setattr__(self, "config", MappingProxyType(dict(self.config)))
+
+
+@dataclass(frozen=True, slots=True)
+class PluginReferenceSummary:
+    """Import-free projection suitable for review and confirmation screens."""
+
+    entry: str
+    enabled: bool
+    config_keys: tuple[str, ...]
 
 
 def load_yaml_references(path: str | Path) -> tuple[PluginReference, ...]:
@@ -62,8 +75,70 @@ def import_plugin(reference: PluginReference) -> Plugin:
     if not reference.enabled:
         raise ValueError(f"plugin reference {reference.entry!r} is disabled")
     module_name, attribute = reference.entry.split(":", 1)
-    module = importlib.import_module(module_name)
-    return coerce_plugin(getattr(module, attribute))
+    try:
+        module = importlib.import_module(module_name)
+        return coerce_plugin(getattr(module, attribute))
+    except Exception as exc:
+        raise PluginLoadError(
+            f"plugin reference {reference.entry!r} could not be imported"
+        ) from exc
+
+
+def preview_plugin_references(
+    references: Iterable[PluginReference],
+) -> tuple[PluginReferenceSummary, ...]:
+    """Return a deterministic, config-value-free projection without imports."""
+
+    values = tuple(references)
+    entries = [reference.entry for reference in values]
+    if len(entries) != len(set(entries)):
+        raise ValueError("plugin references must be unique")
+    return tuple(
+        PluginReferenceSummary(
+            reference.entry,
+            reference.enabled,
+            tuple(sorted(str(key) for key in reference.config)),
+        )
+        for reference in values
+    )
+
+
+async def load_plugin_references(
+    manager: PluginManager,
+    references: Iterable[PluginReference],
+) -> tuple[PluginHandle, ...]:
+    """Import and transactionally load one explicitly authorized batch.
+
+    Importing and loading executes developer-owned Python code. Callers must
+    present a confirmation boundary before invoking this function. If any entry
+    fails, plugins loaded earlier by this batch are unloaded in reverse order.
+    """
+
+    values = tuple(references)
+    preview_plugin_references(values)
+    handles: list[PluginHandle] = []
+    for reference in values:
+        if not reference.enabled:
+            continue
+        try:
+            plugin = import_plugin(reference)
+            handles.append(await manager.load(plugin, config=reference.config))
+        except Exception as exc:
+            cleanup_failures: list[Exception] = []
+            for handle in reversed(handles):
+                try:
+                    await handle.unload()
+                except Exception as cleanup_error:
+                    cleanup_failures.append(cleanup_error)
+            error = PluginLoadError(
+                f"plugin batch failed at reference {reference.entry!r}"
+            )
+            if cleanup_failures:
+                error.add_note(
+                    f"{len(cleanup_failures)} plugin rollback operation(s) failed"
+                )
+            raise error from exc
+    return tuple(handles)
 
 
 def discover_entrypoint_plugins(

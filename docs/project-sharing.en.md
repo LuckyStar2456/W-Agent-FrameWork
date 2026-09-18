@@ -2,7 +2,7 @@
 
 English | [简体中文](./project-sharing.md)
 
-Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`, while CLI and TUI offline preview are `Experimental`. Dependency installation and plugin-load confirmation screens remain `Planned`.
+Status: manifests, encoding/decoding, safe preview, and the local version store are `Implemented` in `2.0.0a1`, while CLI and TUI offline preview are `Experimental`. Current main (unpublished) has independent generic YAML plugin preview/load confirmation and TUI unload controls. Composition dependency resolution, package installation, and generation of a confirmed plugin plan from a composition remain `Planned`.
 
 Current public APIs are `CompositionManifest`, `PluginRequirement`, `encode_composition()`, `decode_composition()`, `inspect_composition()`, and `CompositionStore`. They operate on data only and perform no network access, package installation, plugin import, or execution.
 
@@ -88,6 +88,8 @@ Code
 
 Decode and preview perform no network access, install no package, import no plugin module, and execute no plugin code. Installation and loading are separate confirmation steps.
 
+Current main's `wagent plugin inspect` / `validate-load` commands and TUI Plugins screen can operate user-selected `module:attribute` YAML references, but they do not derive or execute those references from a `CompositionManifest`. The general plugin confirmation boundary is therefore available, while the bridge from a composition to dependencies, an installation plan, and plugin references is not.
+
 ## Version management
 
 `CompositionStore` keeps manifests and content digests by `(name, version)`. Importing different content under the same name and version is a conflict and never silently overwrites data; an alias also cannot silently move to another version. Users can:
@@ -101,4 +103,4 @@ An active run pins the composition digest captured at start. Updating a composit
 
 ## Third-party plugins
 
-A composition code declares dependencies and does not prove trust. Import views show plugin source, version, hash, requested capabilities, and host/network execution requirements. First loading of an unknown plugin requires confirmation; automatic updates are disabled by default.
+A composition code declares dependencies and does not prove trust. The planned composition import view will show plugin source, version, hash, requested capabilities, and host/network execution requirements. Current generic plugin loading requires a separate one-shot code-execution confirmation. Automatic installation and automatic updates are not implemented.

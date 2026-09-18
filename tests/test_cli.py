@@ -1,5 +1,7 @@
 import asyncio
 import json
+import sys
+import types
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
@@ -20,6 +22,7 @@ from w_agent import (
     PythonWorkflowDefinition,
     WorkflowContext,
     WorkflowNodeResult,
+    plugin,
 )
 from w_agent.cli import app
 
@@ -102,6 +105,102 @@ def test_cli_keeps_basic_legacy_command_names():
     assert config.exit_code == 0
     assert json.loads(config.stdout) == {}
     assert beans.exit_code == 0
+
+
+def test_cli_plugin_inspect_is_import_free_and_hides_config_values(
+    tmp_path,
+):
+    source = tmp_path / "plugins.yml"
+    source.write_text(
+        """
+plugins:
+  - entry: missing.plugin:setup
+    config:
+      endpoint: SECRET_ENDPOINT
+      token: SECRET_TOKEN
+  - entry: also.missing:setup
+    enabled: false
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["plugin", "inspect", "--config", str(source), "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload[0] == {
+        "entry": "missing.plugin:setup",
+        "enabled": True,
+        "config_keys": ["endpoint", "token"],
+    }
+    assert payload[1]["enabled"] is False
+    assert "SECRET_ENDPOINT" not in result.stdout
+    assert "SECRET_TOKEN" not in result.stdout
+
+
+def test_cli_plugin_validate_load_requires_explicit_code_confirmation(tmp_path):
+    source = tmp_path / "plugins.yml"
+    source.write_text("plugins: []\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["plugin", "validate-load", "--config", str(source)],
+    )
+
+    assert result.exit_code == 2
+    assert "--confirm-plugin-code" in result.stderr
+
+
+def test_cli_plugin_validate_load_reports_active_snapshot_then_cleans_up(
+    tmp_path,
+    monkeypatch,
+):
+    module = types.ModuleType("test_cli_plugin_module")
+    lifecycle = []
+
+    @plugin(name="cli-plugin", version="1.2.0")
+    async def setup(context):
+        lifecycle.append(("loaded", dict(context.config)))
+        return lambda: lifecycle.append(("disposed", None))
+
+    module.setup = setup
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    source = tmp_path / "plugins.yml"
+    source.write_text(
+        """
+plugins:
+  - entry: test_cli_plugin_module:setup
+    config:
+      token: SECRET_TOKEN
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "plugin",
+            "validate-load",
+            "--config",
+            str(source),
+            "--confirm-plugin-code",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload[0]["name"] == "cli-plugin"
+    assert payload[0]["version"] == "1.2.0"
+    assert payload[0]["state"] == "active"
+    assert lifecycle == [
+        ("loaded", {"token": "SECRET_TOKEN"}),
+        ("disposed", None),
+    ]
+    assert "SECRET_TOKEN" not in result.stdout
 
 
 def test_cli_session_lifecycle_and_machine_readable_usage(tmp_path):

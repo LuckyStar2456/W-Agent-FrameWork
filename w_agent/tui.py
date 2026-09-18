@@ -48,6 +48,14 @@ from w_agent.local_runtime import (
     assemble_local_runtime,
     load_local_runtime_config,
 )
+from w_agent.kernel import (
+    PluginLoadError,
+    PluginManager,
+    PluginUnloadError,
+    load_plugin_references,
+    load_yaml_references,
+    preview_plugin_references,
+)
 from w_agent.models import (
     EndpointProbe,
     ModelCost,
@@ -80,7 +88,7 @@ class WAgentTui(App[None]):
     .panel { border: round $primary; padding: 1 2; margin-bottom: 1; }
     Input { margin-bottom: 1; }
     Button { margin-bottom: 1; }
-    #composition-result, #probe-result, #provider-probe-result, #session-result, #run-result, #run-events, #checkpoint-result, #checkpoint-resume-result, #checkpoint-events, #workflow-checkpoint-result, #workflow-checkpoint-resume-result, #workflow-checkpoint-events, #evaluation-result { min-height: 8; }
+    #composition-result, #probe-result, #provider-probe-result, #plugin-preview-result, #plugin-result, #session-result, #run-result, #run-events, #checkpoint-result, #checkpoint-resume-result, #checkpoint-events, #workflow-checkpoint-result, #workflow-checkpoint-resume-result, #workflow-checkpoint-events, #evaluation-result { min-height: 8; }
     """
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -90,6 +98,7 @@ class WAgentTui(App[None]):
             JsonSessionStore(self.workspace / ".wagent" / "sessions")
         )
         self.runs = JsonlRunStore(self.workspace / ".wagent")
+        self.plugin_manager = PluginManager()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -124,10 +133,45 @@ class WAgentTui(App[None]):
             with TabPane("Profiles", id="profiles"):
                 yield Static(self._profile_text(), classes="panel")
             with TabPane("Plugins", id="plugins"):
+                yield Label("Review local plugin references without importing code")
+                yield Input(value=".wagent/plugins.yml", id="plugin-config")
+                yield Button("Preview references", id="plugin-preview")
                 yield Static(
-                    "Plugin installation and loading require explicit application "
-                    "confirmation. This UI never auto-installs or auto-updates.",
+                    "No plugin configuration previewed.",
+                    id="plugin-preview-result",
                     classes="panel",
+                )
+                yield Label(
+                    "Loading executes developer-owned Python code. Installation "
+                    "and updates are never automatic."
+                )
+                yield Input(
+                    placeholder="Type LOAD PLUGINS to authorize imports and setup",
+                    id="plugin-load-confirm",
+                )
+                yield Button(
+                    "Load enabled plugins",
+                    id="plugin-load",
+                    variant="warning",
+                )
+                yield Button("Refresh lifecycle state", id="plugin-refresh")
+                yield Static(
+                    "No plugin lifecycle records.",
+                    id="plugin-result",
+                    classes="panel",
+                )
+                yield Label(
+                    "Unloading a provider also unloads active dependent plugins."
+                )
+                yield Input(placeholder="Exact plugin name", id="plugin-unload-name")
+                yield Input(
+                    placeholder="Type UNLOAD <plugin-name>",
+                    id="plugin-unload-confirm",
+                )
+                yield Button(
+                    "Unload plugin and dependents",
+                    id="plugin-unload",
+                    variant="warning",
                 )
             with TabPane("Composition", id="composition"):
                 yield Label("Paste a wagent-compose:v1 code for offline preview")
@@ -311,6 +355,7 @@ class WAgentTui(App[None]):
         )
         self.query_one("#home-summary", Static).update(summary)
         await self._refresh_sessions()
+        self._refresh_plugins()
         await self._refresh_checkpoints()
         await self._refresh_workflow_checkpoints()
         available = await DockerSandboxProvider().available()
@@ -320,9 +365,20 @@ class WAgentTui(App[None]):
             "explicit runtime authorization object from the host application."
         )
 
+    async def on_unmount(self) -> None:
+        await self.plugin_manager.close()
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "composition-button":
             self._inspect_composition()
+        elif event.button.id == "plugin-preview":
+            self._preview_plugins()
+        elif event.button.id == "plugin-load":
+            await self._load_plugins()
+        elif event.button.id == "plugin-refresh":
+            self._refresh_plugins()
+        elif event.button.id == "plugin-unload":
+            await self._unload_plugin()
         elif event.button.id == "probe-button":
             await self._probe_endpoint()
         elif event.button.id == "provider-probe-safe":
@@ -369,6 +425,91 @@ class WAgentTui(App[None]):
                 indent=2,
             )
         )
+
+    def _preview_plugins(self) -> None:
+        target = self.query_one("#plugin-preview-result", Static)
+        try:
+            references = load_yaml_references(self._plugin_config_path())
+            summaries = preview_plugin_references(references)
+        except (OSError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        lines = [
+            (
+                f"{item.entry} | enabled={item.enabled} | "
+                f"config keys={','.join(item.config_keys) or '-'}"
+            )
+            for item in summaries
+        ]
+        target.update(
+            "\n".join(lines)
+            if lines
+            else "No plugin references. No code was imported."
+        )
+
+    async def _load_plugins(self) -> None:
+        target = self.query_one("#plugin-result", Static)
+        confirmation = self.query_one("#plugin-load-confirm", Input)
+        if confirmation.value.strip() != "LOAD PLUGINS":
+            target.update(
+                "Rejected: type LOAD PLUGINS to authorize developer Python code"
+            )
+            return
+        confirmation.value = ""
+        target.update("Loading explicitly authorized plugins…")
+        try:
+            references = load_yaml_references(self._plugin_config_path())
+            await load_plugin_references(self.plugin_manager, references)
+        except (OSError, PluginLoadError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Plugin load failed: {type(error).__name__}")
+            return
+        self._refresh_plugins(prefix="Plugin batch loaded.\n")
+
+    def _refresh_plugins(self, *, prefix: str = "") -> None:
+        target = self.query_one("#plugin-result", Static)
+        records = sorted(
+            self.plugin_manager.records(),
+            key=lambda record: record.spec.name,
+        )
+        lines = [
+            (
+                f"{record.spec.name}@{record.spec.version} | "
+                f"api={record.spec.api_version} | state={record.state.value} | "
+                "provides="
+                f"{','.join(item.capability for item in record.spec.provides) or '-'} | "
+                "requires="
+                f"{','.join(item.capability for item in record.spec.requires) or '-'}"
+            )
+            for record in records
+        ]
+        body = "\n".join(lines) if lines else "No plugin lifecycle records."
+        target.update(prefix + body)
+
+    async def _unload_plugin(self) -> None:
+        target = self.query_one("#plugin-result", Static)
+        name = self.query_one("#plugin-unload-name", Input).value.strip()
+        confirmation = self.query_one("#plugin-unload-confirm", Input)
+        if not name:
+            target.update("Rejected: exact plugin name is required")
+            return
+        if confirmation.value.strip() != f"UNLOAD {name}":
+            target.update(
+                f"Rejected: type UNLOAD {name} to unload it and active dependents"
+            )
+            return
+        confirmation.value = ""
+        try:
+            await self.plugin_manager.unload(name)
+        except (KeyError, PluginUnloadError, ValueError) as error:
+            target.update(f"Rejected: {error}")
+            return
+        except Exception as error:
+            target.update(f"Plugin unload failed: {type(error).__name__}")
+            return
+        self._refresh_plugins(prefix=f"Unloaded {name} and active dependents.\n")
 
     async def _probe_endpoint(self) -> None:
         endpoint = self.query_one("#probe-endpoint", Input).value.strip()
@@ -857,6 +998,12 @@ class WAgentTui(App[None]):
     def _workspace_path(self, value: str) -> Path:
         path = Path(value.strip())
         return path if path.is_absolute() else self.workspace / path
+
+    def _plugin_config_path(self) -> Path:
+        value = self.query_one("#plugin-config", Input).value.strip()
+        if not value:
+            raise ValueError("plugin config path is required")
+        return self._workspace_path(value)
 
     def _workflow_store(self) -> JsonlWorkflowStore:
         value = self.query_one("#workflow-checkpoint-state-root", Input).value.strip()

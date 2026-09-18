@@ -1,4 +1,6 @@
 import pytest
+import sys
+import types
 from types import SimpleNamespace
 
 pytest.importorskip("textual")
@@ -14,6 +16,7 @@ from w_agent import (
     ModelDescriptor,
     ModelMessage,
     ModelCost,
+    PluginState,
     RunEvent,
     RunEventType,
     RunResult,
@@ -24,6 +27,7 @@ from w_agent import (
     WorkflowNodeResult,
     WorkflowStopReason,
     encode_composition,
+    plugin,
 )
 from w_agent.tui import WAgentTui
 from textual.widgets import TabbedContent
@@ -94,6 +98,111 @@ async def test_tui_rejects_invalid_composition_without_loading(tmp_path):
 
         rendered = str(app.query_one("#composition-result").content)
         assert "Rejected: unsupported composition-code prefix" in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_plugin_preview_does_not_import_or_reveal_config_values(
+    tmp_path,
+):
+    module_name = "test_tui_missing_preview_plugin"
+    source = tmp_path / "plugins.yml"
+    source.write_text(
+        f"""
+plugins:
+  - entry: {module_name}:setup
+    config:
+      endpoint: SECRET_ENDPOINT
+      token: SECRET_TOKEN
+""".lstrip(),
+        encoding="utf-8",
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.query_one(TabbedContent).active = "plugins"
+        await pilot.pause()
+        app.query_one("#plugin-config").value = str(source)
+        app._preview_plugins()
+
+        rendered = str(app.query_one("#plugin-preview-result").content)
+        assert f"{module_name}:setup" in rendered
+        assert "config keys=endpoint,token" in rendered
+        assert "SECRET_ENDPOINT" not in rendered
+        assert "SECRET_TOKEN" not in rendered
+        assert module_name not in sys.modules
+
+
+@pytest.mark.asyncio
+async def test_tui_plugin_load_requires_explicit_code_confirmation(tmp_path):
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.query_one(TabbedContent).active = "plugins"
+        await pilot.pause()
+        await app._load_plugins()
+
+        rendered = str(app.query_one("#plugin-result").content)
+        assert "type LOAD PLUGINS" in rendered
+        assert app.plugin_manager.records() == ()
+
+
+@pytest.mark.asyncio
+async def test_tui_loads_and_unloads_persistent_plugin_without_secret_projection(
+    tmp_path,
+    monkeypatch,
+):
+    module = types.ModuleType("test_tui_plugin_module")
+    lifecycle = []
+
+    @plugin(name="tui-plugin", version="1.0.0")
+    async def setup(context):
+        lifecycle.append(("loaded", dict(context.config)))
+        return lambda: lifecycle.append(("disposed", None))
+
+    module.setup = setup
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    source = tmp_path / "plugins.yml"
+    source.write_text(
+        """
+plugins:
+  - entry: test_tui_plugin_module:setup
+    config:
+      token: SECRET_TOKEN
+""".lstrip(),
+        encoding="utf-8",
+    )
+    app = WAgentTui(tmp_path)
+
+    async with app.run_test(size=(140, 70)) as pilot:
+        app.query_one(TabbedContent).active = "plugins"
+        await pilot.pause()
+        app.query_one("#plugin-config").value = str(source)
+        app.query_one("#plugin-load-confirm").value = "LOAD PLUGINS"
+        await app._load_plugins()
+
+        record = app.plugin_manager.record("tui-plugin")
+        assert record.state == PluginState.ACTIVE
+        rendered = str(app.query_one("#plugin-result").content)
+        assert "tui-plugin@1.0.0" in rendered
+        assert "state=active" in rendered
+        assert "SECRET_TOKEN" not in rendered
+        assert app.query_one("#plugin-load-confirm").value == ""
+
+        app.query_one("#plugin-unload-name").value = "tui-plugin"
+        app.query_one("#plugin-unload-confirm").value = "UNLOAD wrong"
+        await app._unload_plugin()
+        assert record.state == PluginState.ACTIVE
+
+        app.query_one("#plugin-unload-confirm").value = "UNLOAD tui-plugin"
+        await app._unload_plugin()
+        assert record.state == PluginState.DISPOSED
+        assert "state=disposed" in str(app.query_one("#plugin-result").content)
+        assert app.query_one("#plugin-unload-confirm").value == ""
+
+    assert lifecycle == [
+        ("loaded", {"token": "SECRET_TOKEN"}),
+        ("disposed", None),
+    ]
 
 
 @pytest.mark.asyncio

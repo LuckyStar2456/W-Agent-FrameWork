@@ -62,6 +62,7 @@
 | Sandbox 命令工具绑定 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 客服/RAG 与编码 Agent 模板 | `Implemented` | Phase 5 / 2.0.0a1 |
 | 工程装配编码、安全预览与版本管理 | `Implemented` | Phase 6 / 2.0.0a1 |
+| 通用插件无导入预览、确认批量加载与 TUI 卸载 | `Experimental` | Phase 1/6 / main（未发布） |
 | Typer/Rich CLI、Textual TUI 与 Session 生命周期界面 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 本地配置化文本 Agent 运行入口 | `Experimental` | Phase 6 / 2.0.0a1 |
 | 配置化工具选择、显式代码加载与 CLI 审批恢复 | `Experimental` | Phase 3/6 / 2.0.0a1 |
@@ -139,7 +140,7 @@
 ### Phase 6：分享、界面与评测
 
 - 已实现命名和版本化的 `CompositionManifest`、确定性编码/解码、大小限制、完整性校验、安全预览与冲突安全的本地版本/别名库。
-- 装配预览阶段不访问网络、不安装、不导入也不执行插件；依赖解析、安装确认与加载确认仍为 `Planned`。
+- 装配预览阶段不访问网络、不安装、不导入也不执行插件。当前 main 已实现独立 YAML 引用的无导入预览、明确确认后的事务化批量加载，以及 TUI 持久进程内卸载；装配依赖解析、包安装确认和装配到插件引用的桥接仍为 `Planned`。
 - 已提供 `wagent` CLI（保留 `w-agent` 别名）和可启动的 Textual TUI 基础；覆盖工作区初始化、模板列表、安全端点探测、装配导出/预览/保存/列表、本地 Session 创建/查看/归档/恢复和可见 Token 汇总，以及 TUI 离线装配检查。
 - 已实现严格本地 JSON 到 Provider/路由/ReAct/Run/Session 的文本运行装配；CLI/TUI 每次调用均要求显式授权，凭据只从环境变量引用读取。
 - 已实现由宿主 Catalog 限定的配置化工具选择、逐次权限授予、独立 Python 工具代码加载确认，以及已知 Session/Run/Call ID 的 CLI 审批恢复；配置本身不能导入、授权或批准工具。
@@ -147,7 +148,8 @@
 - 已实现无网络的脚本化 Model Provider、需显式敏感内容授权的 JSONL 录制/顺序回放，以及可替换 Scorer 的顺序评测运行器；CLI 可读取严格 JSON 用例集，默认使用一次性状态，并输出 Token 完整性、延迟、错误与工具成功率。JSON 报告默认排除 Prompt、输出、Metadata 和异常正文。
 - 已实现 TUI 顺序评测页面：严格 JSON 用例、一次性状态、`EVALUATE` 单次授权、汇总指标和可选安全报告；不默认展示 Prompt 或输出。
 - 已实现 TUI 工具入口独立加载确认、本次权限、精确 Session/Run/Call ID 审批恢复和脱敏实时 RunEvent；确认不持久化，界面不展示 Prompt、模型文本、工具参数或工具结果。
-- 已实现从显式选择的本地 State Root 汇总和恢复 Workflow Checkpoint；不会自动复制、合并或迁移 Store。通用插件安装/升级/卸载确认仍为 `Planned`。
+- 已实现从显式选择的本地 State Root 汇总和恢复 Workflow Checkpoint；不会自动复制、合并或迁移 Store。
+- 当前 main 已实现配置值脱敏的插件引用预览、`--confirm-plugin-code` 短生命周期 CLI 验证，以及绑定 `LOAD PLUGINS` / `UNLOAD <name>` 的 TUI 生命周期操作；第三方包安装/升级仍为 `Planned`。
 - 已实现评测报告、CLI 与 TUI 的版本化费用汇总；客服与编码内置基准任务仍为 `Planned`。
 - 已实现旧 `BaseAgent.arun()` 到 Workflow 节点的严格文本兼容桥；其他旧 API Bridge 仍按需规划，不建立第二套运行时。
 

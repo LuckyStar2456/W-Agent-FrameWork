@@ -2,7 +2,7 @@
 
 [English](./plugin-system.en.md) | 简体中文
 
-状态：`Implemented`（`2.0.0a1`）。本文定义当前微内核插件 API；模型、Agent 和 Workflow 等上层插件仍按路线图实现。
+状态：微内核插件 API 在 `2.0.0a1` 为 `Implemented`。当前 main（未发布）另外提供不导入代码的 YAML 预览、显式确认后的批量加载与 TUI 卸载控制；第三方包安装仍为 `Planned`。
 
 ## 目标
 
@@ -39,6 +39,31 @@ handle = await manager.load(hello_provider)
 value = manager.registry.resolve("example.hello", ScopePath.application())
 await handle.unload()
 ```
+
+## YAML 引用与明确授权
+
+```yaml
+plugins:
+  - entry: my_plugins.router:setup
+    enabled: true
+    config:
+      endpoint: https://example.test
+  - entry: my_plugins.optional:setup
+    enabled: false
+```
+
+当前 main 的安全操作顺序为：
+
+```text
+wagent plugin inspect --config .wagent/plugins.yml
+  → 仅解析 entry、enabled 和配置键，不导入模块
+wagent plugin validate-load --config .wagent/plugins.yml --confirm-plugin-code
+  → 导入并加载启用项，报告活跃快照，然后在命令退出前卸载
+```
+
+TUI Plugins 页使用同一 `PluginManager` 和加载 API。输入一次性 `LOAD PLUGINS` 后，插件在当前 TUI 进程中保持活跃；卸载要求输入与插件名绑定的 `UNLOAD <name>`，并先卸载依赖该 Provider 的活跃插件。配置值会传给插件，但预览和生命周期投影只显示配置键，不显示值。
+
+同一批次中任一导入或加载失败时，本批次先前加载的插件按逆序卸载。已在 Manager 中活跃、但不属于本批次的插件不参与该回滚。重复引用会在导入前被拒绝，`enabled: false` 的引用不会被导入。
 
 ## 清单
 
@@ -98,7 +123,7 @@ Application → Workspace → Session → Agent → Run → Step
 - 配置非法：解析阶段失败。
 - 部分加载失败：回滚本次 effect scope。
 - 清理失败：记录错误并继续清理其他资源，最终报告不完整清理。
-- 未知插件代码：只有用户确认安装和首次加载后才执行。
+- 未知插件代码：只有用户明确确认加载后才执行；安装是另一条尚未实现的确认边界。
 
 ## 与工程装配的关系
 
@@ -109,4 +134,5 @@ Application → Workspace → Session → Agent → Run → Step
 - `PluginManager` 内同名插件不能同时处于活跃状态。
 - Registry 快照固定解析结果，但尚未拥有 Provider 生命周期租约。
 - 依赖恢复不会自动重新加载 Consumer。
-- YAML 只加载 `module:attribute` 引用和配置，不安装第三方包。
+- YAML 只加载严格的 `module:attribute` 引用和配置，不安装第三方包。
+- CLI `validate-load` 只做短生命周期验证；需要持久进程内插件状态时使用 Python API 或 TUI。

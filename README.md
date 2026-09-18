@@ -71,7 +71,7 @@ W-Agent 遵循以下原则：
 - 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认、可见 Token/费用预算与计量。
 - 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放，以及本地评测运行器与脱敏 JSON 报告。
 
-当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow、装配依赖安装/加载确认和完整交互 TUI 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
+当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。当前 main 已有独立 YAML 插件引用的安全预览、确认加载和 TUI 卸载，但装配依赖解析/包安装、专用 OpenAI Responses 与 vLLM 差异适配、模型跨流恢复、多模态/工具事件通用回放、并行或嵌套 Workflow 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
 
 ## 下一代模块图
 
@@ -152,11 +152,11 @@ wagent run "hello" --confirm-model-call --json
 wagent evaluate cases.json --confirm-model-call --report report.json
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent/Workflow Checkpoint 脱敏列表、Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复、精确版本 Workflow 恢复、脱敏实时 RunEvent，以及 CLI/TUI 隐私安全本地评测。Workflow 恢复入口属于 main 的未发布能力；通用插件操作仍为 `Planned`。
+CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览、本地 Session 生命周期、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent/Workflow Checkpoint 脱敏列表、Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复、精确版本 Workflow 恢复、通用插件无导入预览/确认加载/TUI 卸载、脱敏实时 RunEvent，以及 CLI/TUI 隐私安全本地评测。Workflow 恢复与通用插件操作属于 main 的未发布能力；插件包安装/升级仍为 `Planned`。
 
 ## 工程装配分享
 
-`Implemented`：开发者可以给框架装配命名和版本化，导出为可复制编码，并在无网络、无导入、无执行的阶段完成校验和风险预览。本地 Store 支持多版本与别名且拒绝静默覆盖冲突内容。依赖安装和插件加载确认仍为 `Planned`。
+`Implemented`：开发者可以给框架装配命名和版本化，导出为可复制编码，并在无网络、无导入、无执行的阶段完成校验和风险预览。本地 Store 支持多版本与别名且拒绝静默覆盖冲突内容。当前 main 的通用插件确认边界不自动连接装配；依赖解析与包安装仍为 `Planned`。
 
 装配编码只携带可移植清单，不携带密钥，不默认打包任意源码，也不会在导入时自动执行不可信插件。详细设计见[工程装配分享](./docs/project-sharing.md)。
 
