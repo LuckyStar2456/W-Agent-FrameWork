@@ -10,7 +10,7 @@
 
 | 分组 | API |
 |---|---|
-| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore`、`TokenBudget`、`CostBudget` |
+| Agent | `BaseAgent`、`LegacyAgentAdapter`、`AgentDefinition`、`AgentLoop`、`ReactAgentLoop`、`RunContext`、`RunEvent`、`RunResult`、`RunStore`、`RunCheckpointSummary`、`JsonlRunStore`、`TokenBudget`、`TokenEstimator`、`TokenEstimate`、`CharacterTokenEstimator`、`CostBudget` |
 | Session | `SessionManager`、`RunEventCallback`、`SessionRecord`、`SessionRunRecord`、`InMemorySessionStore`、`JsonSessionStore` |
 | 本地装配 | `LocalRuntimeConfig`、`LocalToolConfig`、`LocalPricingConfig`、`LocalProviderAssembly`、`LocalAgentRuntime`、`load_local_runtime_config`、`assemble_local_provider`、`assemble_local_runtime` |
 | 容器 | `BeanFactory`、`BeanDefinition`、`Scope` |
@@ -136,7 +136,7 @@ class AgentLoop(Protocol):
     ) -> AgentExecution: ...
 ```
 
-`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`RunStore.list_checkpoints()` 提供不含 Prompt/参数值/输出的 `RunCheckpointSummary`。`TokenBudget` 提供 Run 级累计 Token 限制；`CostBudget` 配合可替换 `PricingResolver` 和应用提供的版本化 `PriceTable` 提供费用计量与硬停止。`TOKEN_USAGE`/`COST_USAGE`、`RunResult` 和 Checkpoint 公开并保留 Token、费用、尝试账本与完整性。`SessionManager.run_agent()`/`resume_agent()` 接受可选同步或异步 `RunEventCallback`，按公开流顺序把实时事件投影给应用；内置 ReAct Loop 会先持久化再暴露事件。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
+`ReactAgentLoop` 是只使用公开模型与工具协议的普通实现，可以被同协议 Loop 整体替换。它执行有界模型/工具循环，通过 `RunStore` 在事件可见前追加记录，并在需要审批时返回 `pending_tool_call` 与 `checkpoint_id`。`RunStore.list_checkpoints()` 提供不含 Prompt/参数值/输出的 `RunCheckpointSummary`。`TokenBudget` 提供 Run 级累计 Token 限制；构造 Loop 时可注入 `TokenEstimator`，通过 `TOKEN_ESTIMATED`、`TOKEN_ESTIMATE_UNAVAILABLE` 和 `TOKEN_BUDGET_WARNING` 提供调用前保护与软阈值可见性。`CharacterTokenEstimator` 是必须显式启用且不处理图片/音频的启发式模板，不会冒充精确分词器。`CostBudget` 配合可替换 `PricingResolver` 和应用提供的版本化 `PriceTable` 提供费用计量与硬停止。`TOKEN_USAGE`/`COST_USAGE`、`RunResult` 和 Checkpoint 公开并保留 Token、费用、尝试账本与完整性。`SessionManager.run_agent()`/`resume_agent()` 接受可选同步或异步 `RunEventCallback`，按公开流顺序把实时事件投影给应用；内置 ReAct Loop 会先持久化再暴露事件。`customer_support_agent()` 和 `coding_agent()` 只构建可完全覆盖的普通 Definition，不绑定模型、工具或权限。多模态/工具事件通用回放和文本逐 Token 事件仍为 `Planned`。详见[Agent Runtime](./agents.md)与[Session](./sessions.md)。
 
 ## 8. Workflow 协议
 

@@ -29,6 +29,7 @@ class StopReason(StrEnum):
     MAX_TOOL_CALLS = "max-tool-calls"
     TOKEN_BUDGET = "token-budget"
     TOKEN_USAGE_UNAVAILABLE = "token-usage-unavailable"
+    TOKEN_ESTIMATE_UNAVAILABLE = "token-estimate-unavailable"
     COST_BUDGET = "cost-budget"
     COST_UNAVAILABLE = "cost-unavailable"
     MODEL_ERROR = "model-error"
@@ -41,6 +42,9 @@ class RunEventType(StrEnum):
     MODEL_COMPLETED = "model-completed"
     MODEL_FAILED = "model-failed"
     TOKEN_USAGE = "token-usage"
+    TOKEN_ESTIMATED = "token-estimated"
+    TOKEN_ESTIMATE_UNAVAILABLE = "token-estimate-unavailable"
+    TOKEN_BUDGET_WARNING = "token-budget-warning"
     TOKEN_BUDGET_STOPPED = "token-budget-stopped"
     COST_USAGE = "cost-usage"
     COST_BUDGET_STOPPED = "cost-budget-stopped"
@@ -64,6 +68,8 @@ class TokenBudget:
     max_output_tokens: int | None = None
     max_total_tokens: int | None = None
     require_usage: bool = False
+    require_estimate: bool = False
+    soft_limit_ratio: Decimal | str | int | float | None = None
 
     def __post_init__(self) -> None:
         limits = (
@@ -73,6 +79,26 @@ class TokenBudget:
         )
         if any(value is not None and value <= 0 for value in limits):
             raise ValueError("token budget limits must be positive")
+        if not isinstance(self.require_usage, bool) or not isinstance(
+            self.require_estimate, bool
+        ):
+            raise ValueError("token budget requirement flags must be booleans")
+        if self.soft_limit_ratio is not None:
+            if isinstance(self.soft_limit_ratio, bool):
+                raise ValueError("soft token limit ratio must be between 0 and 1")
+            try:
+                ratio = (
+                    self.soft_limit_ratio
+                    if isinstance(self.soft_limit_ratio, Decimal)
+                    else Decimal(str(self.soft_limit_ratio))
+                )
+            except (InvalidOperation, ValueError) as error:
+                raise ValueError(
+                    "soft token limit ratio must be between 0 and 1"
+                ) from error
+            if not ratio.is_finite() or ratio <= 0 or ratio > 1:
+                raise ValueError("soft token limit ratio must be between 0 and 1")
+            object.__setattr__(self, "soft_limit_ratio", ratio)
 
     def exceeded_limits(self, usage: TokenUsage) -> tuple[str, ...]:
         """Return stable names for every exceeded cumulative limit."""

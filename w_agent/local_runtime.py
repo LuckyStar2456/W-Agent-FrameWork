@@ -15,6 +15,7 @@ from typing import Any
 
 from w_agent.agents import (
     AgentDefinition,
+    CharacterTokenEstimator,
     CostBudget,
     JsonlRunStore,
     ReactAgentLoop,
@@ -106,6 +107,10 @@ class LocalAgentConfig:
     max_cumulative_output_tokens: int | None = None
     max_total_tokens: int | None = None
     require_usage: bool = True
+    token_estimator: str | None = None
+    estimator_characters_per_token: int = 4
+    require_estimate: bool = False
+    soft_limit_ratio: Decimal | str | int | float | None = None
     extensions: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -125,6 +130,40 @@ class LocalAgentConfig:
             raise LocalRuntimeConfigError("agent token limits must be positive")
         if not isinstance(self.require_usage, bool):
             raise LocalRuntimeConfigError("require_usage must be a boolean")
+        if self.token_estimator not in (None, "character"):
+            raise LocalRuntimeConfigError(
+                "agent token_estimator must be null or 'character'"
+            )
+        if (
+            isinstance(self.estimator_characters_per_token, bool)
+            or not isinstance(self.estimator_characters_per_token, int)
+            or self.estimator_characters_per_token <= 0
+        ):
+            raise LocalRuntimeConfigError(
+                "estimator_characters_per_token must be a positive integer"
+            )
+        if not isinstance(self.require_estimate, bool):
+            raise LocalRuntimeConfigError("require_estimate must be a boolean")
+        if self.require_estimate and self.token_estimator is None:
+            raise LocalRuntimeConfigError(
+                "require_estimate needs an explicit token_estimator"
+            )
+        try:
+            normalized_budget = TokenBudget(
+                max_input_tokens=self.max_input_tokens,
+                max_output_tokens=self.max_cumulative_output_tokens,
+                max_total_tokens=self.max_total_tokens,
+                require_usage=self.require_usage,
+                require_estimate=self.require_estimate,
+                soft_limit_ratio=self.soft_limit_ratio,
+            )
+        except ValueError as error:
+            raise LocalRuntimeConfigError("agent token budget is invalid") from error
+        object.__setattr__(
+            self,
+            "soft_limit_ratio",
+            normalized_budget.soft_limit_ratio,
+        )
         _reject_secrets(self.extensions, "agent.extensions")
         object.__setattr__(self, "extensions", MappingProxyType(dict(self.extensions)))
 
@@ -366,6 +405,10 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
             "max_cumulative_output_tokens",
             "max_total_tokens",
             "require_usage",
+            "token_estimator",
+            "estimator_characters_per_token",
+            "require_estimate",
+            "soft_limit_ratio",
             "extensions",
         },
         "agent",
@@ -510,14 +553,19 @@ def assemble_local_runtime(
             config.pricing.version,
             config.pricing.currency,
         )
+    agent = config.agent
     loop = ReactAgentLoop(
         executor,
         tools,
         tool_executor,
         store=JsonlRunStore(state),
         pricing=pricing_catalog,
+        token_estimator=(
+            CharacterTokenEstimator(agent.estimator_characters_per_token)
+            if agent.token_estimator == "character"
+            else None
+        ),
     )
-    agent = config.agent
     definition = AgentDefinition(
         agent.name,
         system_prompt=agent.system_prompt,
@@ -532,6 +580,8 @@ def assemble_local_runtime(
             max_output_tokens=agent.max_cumulative_output_tokens,
             max_total_tokens=agent.max_total_tokens,
             require_usage=agent.require_usage,
+            require_estimate=agent.require_estimate,
+            soft_limit_ratio=agent.soft_limit_ratio,
         ),
         cost_budget=cost_budget,
     )

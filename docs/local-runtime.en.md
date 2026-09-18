@@ -27,7 +27,11 @@ Example `.wagent/config.json`:
     "max_input_tokens": 12000,
     "max_cumulative_output_tokens": 3000,
     "max_total_tokens": 15000,
-    "require_usage": true
+    "require_usage": true,
+    "token_estimator": "character",
+    "estimator_characters_per_token": 4,
+    "require_estimate": true,
+    "soft_limit_ratio": "0.8"
   },
   "invocation": {
     "max_attempts_per_route": 1,
@@ -120,9 +124,11 @@ The Run screen reads the same configuration. The user must type `RUN` before a m
 - `max_output_tokens` bounds one model request's output.
 - `max_input_tokens`, `max_cumulative_output_tokens`, and `max_total_tokens` are cumulative within one run.
 - With `require_usage=true`, any attempt without usage, including a failed attempt before a successful retry, stops the run as `token-usage-unavailable`.
-- Provider-reported usage is enforceable only after a call. There is no pre-call token estimator yet, so the first call can cross a cumulative limit.
+- `token_estimator="character"` is an explicitly selected local heuristic template; `require_estimate=true` fails closed before the call when estimation is unavailable. The Python API may inject any `TokenEstimator` and is not limited to this template.
+- Pre-call estimation exposes `token-estimated`, tightens the output allowance against the total limit, and blocks the network request when estimated input leaves no generation space. `soft_limit_ratio` emits `token-budget-warning` without stopping the run.
+- The character estimator is marked inexact and rejects image/audio input. It does not include hidden vendor overhead, retry, or failover usage; provider-reported usage remains authoritative after the call.
 - `pricing.max_cost` is the cumulative run limit computed with the named price-table version. Decimal arithmetic is exact, and an over-limit response stops as `cost-budget` before its tool calls execute.
-- Like token budgets, cost budgets reconcile actual reported usage after a call and cannot guarantee that the first network request stays under the limit. Missing usage or price data never continues as zero cost.
+- Cost budgets still reconcile actual reported usage after a call. Token estimates are never silently converted to money, and missing usage or price data never continues as zero cost.
 - Setting `max_attempts_per_route` or `max_routes` above one authorizes additional, potentially billable retry or failover calls.
 
 ## Open assembly boundary

@@ -142,6 +142,40 @@ async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_local_runtime_explicit_character_estimator_is_visible(tmp_path):
+    events = []
+
+    async def record_event(event):
+        events.append(event)
+
+    runtime = assemble_local_runtime(
+        _config(
+            max_total_tokens=100,
+            token_estimator="character",
+            estimator_characters_per_token=4,
+            require_estimate=True,
+            soft_limit_ratio="0.05",
+        ),
+        tmp_path / ".wagent",
+        templates=_templates({}),
+        environ={"TEST_MODEL_KEY": "not-persisted"},
+    )
+
+    run = await runtime.run("hi", event_callback=record_event)
+
+    assert run.result.stop_reason.value == "completed"
+    estimate = next(event for event in events if event.type.value == "token-estimated")
+    assert estimate.data["estimator"].startswith("character-heuristic:v1")
+    assert estimate.data["exact"] is False
+    assert any(event.type.value == "token-budget-warning" for event in events)
+
+
+def test_local_runtime_required_estimate_needs_explicit_estimator():
+    with pytest.raises(LocalRuntimeConfigError, match="explicit token_estimator"):
+        _config(require_estimate=True)
+
+
+@pytest.mark.asyncio
 async def test_local_runtime_loads_explicit_pricing_and_persists_cost(tmp_path):
     config = local_runtime_config_from_mapping(
         {

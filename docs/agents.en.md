@@ -49,7 +49,7 @@ Each step:
 `max_steps` and `max_tool_calls` are enforced budgets. `max_output_tokens` caps one model request; cumulative limits use a separate `TokenBudget` to keep those meanings distinct. The current template executes tool calls from one model response sequentially. It neither parallelizes nor retries tools automatically.
 
 ```python
-from w_agent import AgentDefinition, TokenBudget
+from w_agent import AgentDefinition, CharacterTokenEstimator, TokenBudget
 
 definition = AgentDefinition(
     "assistant",
@@ -59,8 +59,14 @@ definition = AgentDefinition(
         max_output_tokens=6_000,
         max_total_tokens=24_000,
         require_usage=True,
+        require_estimate=True,
+        soft_limit_ratio="0.8",
     ),
 )
+
+# An explicit local heuristic template; production may inject an exact tokenizer.
+estimator = CharacterTokenEstimator(characters_per_token=4)
+# loop = ReactAgentLoop(..., token_estimator=estimator)
 ```
 
 ## Events and results
@@ -73,9 +79,11 @@ Run events contain model text, tool arguments, and result-stage information need
 
 `MODEL_COMPLETED` exposes response tokens, a per-attempt ledger, and `attempt_usage_complete`; failed model stages also record prompt-free, credential-free attempt summaries. The following `TOKEN_USAGE` event exposes known run totals. `RunResult.attempts` carries the typed complete ledger, `RunResult.usage` carries cumulative known usage, and `usage_complete` reports whether every attempt, including retry and failover, supplied provider usage. A real zero-token report is not confused with missing metadata.
 
-Hard token budgets reconcile every provider-reported attempt after a successful response and stop with `TOKEN_BUDGET` before executing tool calls from a response that exceeded a limit. Remaining output/total allowance also tightens the next request's output cap. Because the core does not assume a tokenizer, it cannot know the first request's exact input usage in advance; failed or interrupted attempts may lack usage. With `require_usage=True`, any unreported attempt—including a failed attempt before a successful retry—stops the run with `TOKEN_USAGE_UNAVAILABLE`.
+Hard token budgets reconcile every provider-reported attempt after a successful response and stop with `TOKEN_BUDGET` before executing tool calls from a response that exceeded a limit. Remaining output/total allowance also tightens the next request's output cap. Applications may inject an asynchronous `TokenEstimator` into `ReactAgentLoop`; its pre-call `TokenEstimate` checks cumulative input/total limits and subtracts estimated input from the total allowance before tightening the output cap. `require_estimate=True` fails closed as `TOKEN_ESTIMATE_UNAVAILABLE` when the estimator is missing, fails, or returns an invalid result. Otherwise a `TOKEN_ESTIMATE_UNAVAILABLE` event makes the degradation visible while execution continues. `soft_limit_ratio` emits `TOKEN_BUDGET_WARNING` only and never silently changes the stop policy. `TOKEN_ESTIMATED` contains counts, estimator identity, and exactness but no prompt.
 
-Cost metering uses an application-supplied `PriceTable`/`PricingResolver` and exact provider, model, table version, and currency identities. Normal input, cached input, and output costs use `Decimal`. `CostBudget` binds a run to one explicit table version, and `RunResult.cost_complete` becomes true only when every attempt was priced. An over-limit response stops with `COST_BUDGET` before its tools execute. Missing rates or usage and version/currency mismatches fail closed as `COST_UNAVAILABLE`. Cost and table identity flow through `COST_USAGE`, terminal events, results, sessions, and approval checkpoints so resumed runs continue the same ledger. The framework bundles no potentially stale vendor prices and never silently infers money from token counts. Session totals and per-attempt ledgers are implemented; cross-session agent aggregation, pre-call estimation, and soft thresholds remain planned.
+The built-in `CharacterTokenEstimator` counts neutral-message text, tool calls/results, tool and response schemas, and stop strings. It explicitly reports `exact=False`, rejects image/audio input, and does not claim to include hidden vendor framing. Applications can replace it with a model-specific tokenizer. An estimate protects only the next initial request; it cannot predict retries/failover or final provider accounting, so actual usage is always reconciled afterward. With `require_usage=True`, any unreported attempt—including a failed attempt before a successful retry—stops the run with `TOKEN_USAGE_UNAVAILABLE`.
+
+Cost metering uses an application-supplied `PriceTable`/`PricingResolver` and exact provider, model, table version, and currency identities. Normal input, cached input, and output costs use `Decimal`. `CostBudget` binds a run to one explicit table version, and `RunResult.cost_complete` becomes true only when every attempt was priced. An over-limit response stops with `COST_BUDGET` before its tools execute. Missing rates or usage and version/currency mismatches fail closed as `COST_UNAVAILABLE`. Cost and table identity flow through `COST_USAGE`, terminal events, results, sessions, and approval checkpoints so resumed runs continue the same ledger. The framework bundles no potentially stale vendor prices and never silently infers money from token counts. Session totals, per-attempt ledgers, pre-call token estimation, and soft-threshold events are implemented; cross-session agent aggregation and pre-call monetary estimation remain planned.
 
 The current ReAct template uses the model executor's collecting `invoke()` method, so run events do not yet contain per-token text deltas. The model layer already supports safe pass-through; adapting text deltas into agent RunEvents is later work.
 

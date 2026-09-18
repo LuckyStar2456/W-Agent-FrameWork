@@ -1127,6 +1127,15 @@ def _event_text(event: RunEvent) -> str:
         "input_tokens",
         "output_tokens",
         "total_tokens",
+        "estimated_input_tokens",
+        "projected_input_tokens",
+        "projected_total_tokens",
+        "max_output_tokens",
+        "estimator",
+        "exact",
+        "phase",
+        "soft_limit_ratio",
+        "error",
         "usage_complete",
         "max_cost",
         "cost_complete",
@@ -1136,6 +1145,9 @@ def _event_text(event: RunEvent) -> str:
         for name in fields
         if event.data.get(name) is not None
     ]
+    limits = event.data.get("limits") or event.data.get("exceeded_limits")
+    if isinstance(limits, (list, tuple)) and limits:
+        details.append(f"limits={','.join(str(item) for item in limits)}")
     cost = event.data.get("cost")
     if isinstance(cost, Mapping):
         total = cost.get("total")

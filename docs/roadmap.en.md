@@ -44,7 +44,8 @@ This document is the single capability-status overview for W-Agent. Phases descr
 | Visible run-level token metering and hard budgets | `Implemented` | Phase 3 / 2.0.0a1 |
 | Session totals and per-attempt token ledger | `Implemented` | Phase 3/6 / 2.0.0a1 |
 | Versioned price tables, cost metering, and hard run cost budgets | `Implemented` | Phase 3/6 / 2.0.0a2 |
-| Cross-session agent aggregation, pre-call estimators, and soft thresholds | `Planned` | Phase 3/6 |
+| Pluggable pre-call token estimators and soft-threshold events | `Experimental` (current main) | Phase 3/6 |
+| Cross-session agent aggregation and pre-call monetary estimation | `Planned` | Phase 3/6 |
 | Local JSONL RunEvents and approval-checkpoint resume | `Implemented` | Phase 3 / 2.0.0a1 |
 | Separate tool definition, policy, and execution | `Implemented` | Phase 3 / 2.0.0a1 |
 | Python-function tool template | `Implemented` | Phase 3 / 2.0.0a1 |
@@ -111,10 +112,10 @@ This document is the single capability-status overview for W-Agent. Phases descr
 - Status: the tool foundation, run contracts, single-agent ReAct, local event recording, approval resume, and local session lifecycle are `Implemented`; general event replay remains `Planned`.
 - Implemented replaceable loops, a default ReAct template, in-process/JSONL RunEvents, step/tool budgets, and approval resume without repeating the first model request.
 - Implemented run-level input, output, and total hard limits through `TokenBudget`; `RunResult.usage` and `TOKEN_USAGE` events expose cumulative values, and approval checkpoints preserve metering state. `max_output_tokens` remains a per-model-request generation cap.
-- Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. Exact first-request input usage cannot be known without a tokenizer, and failed or interrupted retry attempts may already have incurred unreported usage.
+- Current budgets reconcile provider-reported actual usage after each successful response and tighten the next request from the remaining output/total allowance. `require_usage=True` fails closed when a provider omits usage. A `TokenEstimator` may be injected to estimate input before the call, tighten that request's output allowance, and block an obvious overrun; `require_estimate=True` fails closed when estimation is unavailable, while `soft_limit_ratio` emits an observable warning without changing stop policy. Estimates cannot predict retry/failover accounting, so provider usage remains authoritative.
 - Implemented session totals, `AttemptRecord` token ledgers covering retry/failover, and RunEvent/CLI visibility. Missing usage for failed attempts remains unknown and makes strict accounting fail closed.
 - Implemented application-supplied versioned price tables, normal/cached-input and output cost metering, pricing completeness, approval-checkpoint persistence, and hard run cost budgets. Missing prices or usage fail closed, and money is never silently inferred from token counts.
-- Later work adds cross-session agent aggregation, a pluggable pre-call token estimator, and soft-threshold actions.
+- Later work adds cross-session agent aggregation, pre-call monetary estimation, and more application-policy templates that consume soft-threshold events.
 - Implemented `SessionManager`, memory/JSON stores, create/list/archive/unarchive, cross-run text projection, and session-bound agent start/approval resume.
 - Later work adds general projection/replay for multimodal, tool, and arbitrary RunEvents plus per-token agent text events.
 - Implemented Python tools, unified registration, argument validation, permission/per-call approval, timeout/cancellation, normalized results, and prompt-free audit.

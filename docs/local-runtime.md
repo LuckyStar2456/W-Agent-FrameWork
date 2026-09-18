@@ -27,7 +27,11 @@
     "max_input_tokens": 12000,
     "max_cumulative_output_tokens": 3000,
     "max_total_tokens": 15000,
-    "require_usage": true
+    "require_usage": true,
+    "token_estimator": "character",
+    "estimator_characters_per_token": 4,
+    "require_estimate": true,
+    "soft_limit_ratio": "0.8"
   },
   "invocation": {
     "max_attempts_per_route": 1,
@@ -120,9 +124,11 @@ Run 页面读取同一配置。用户必须输入 `RUN` 才会发起模型调用
 - `max_output_tokens` 是单次模型请求的输出上限。
 - `max_input_tokens`、`max_cumulative_output_tokens`、`max_total_tokens` 是一个 Run 内的累计上限。
 - `require_usage=true` 时，只要某次模型尝试未报告用量（包括成功重试之前的失败尝试），Run 就以 `token-usage-unavailable` 停止。
-- Provider 报告的用量只能在调用后核算；当前没有调用前 Token 估算器，因此首个调用仍可能越过累计上限。
+- `token_estimator="character"` 是必须显式选择的本地启发式模板；`require_estimate=true` 在估算不可用时调用前失败关闭。Python API 可注入任意 `TokenEstimator`，不受该模板限制。
+- 调用前估算会公开 `token-estimated`、收紧总量对应的输出额度，并在预计输入已无生成空间时阻止网络请求；`soft_limit_ratio` 只产生 `token-budget-warning`，不停止 Run。
+- 字符估算器标记为非精确并拒绝图片/音频。它不覆盖厂商隐藏开销、重试或故障转移；调用后仍以 Provider 实报用量核算。
 - `pricing.max_cost` 是使用指定价格表版本计算的累计 Run 费用上限；费用使用十进制精确计算，超限时在执行本次响应中的工具前以 `cost-budget` 停止。
-- 费用预算与 Token 预算一样依据调用后实际报告值，不能保证首个请求在网络调用前不越限；缺少用量或价格时不会按零费用继续。
+- 费用预算仍依据调用后实际报告值；当前 Token 估算不会被静默换算为费用，缺少用量或价格时不会按零费用继续。
 - 将 `max_attempts_per_route` 或 `max_routes` 设为大于 1 会授权额外、可能计费的重试或故障转移。
 
 ## 开放装配边界

@@ -7,6 +7,7 @@ from w_agent import (
     FinishEvent,
     FinishReason,
     InvocationPolicy,
+    ImageContent,
     MessageRole,
     ModelCapability,
     ModelDescriptor,
@@ -15,10 +16,12 @@ from w_agent import (
     ModelFailure,
     ModelFailureKind,
     ModelMessage,
+    ModelRequest,
     ModelRegistry,
     ModelRouter,
     JsonlRunStore,
     CostBudget,
+    CharacterTokenEstimator,
     ModelPrice,
     PriceTable,
     PricingCatalog,
@@ -30,6 +33,8 @@ from w_agent import (
     TextContent,
     TextDelta,
     TokenBudget,
+    TokenEstimate,
+    TokenEstimationError,
     TokenUsage,
     ToolCallContent,
     ToolExecutionContext,
@@ -83,7 +88,15 @@ class AgentProvider:
         yield FinishEvent(reason)
 
 
-def _loop(responses, binding, *, store=None, policy=None, pricing=None):
+def _loop(
+    responses,
+    binding,
+    *,
+    store=None,
+    policy=None,
+    pricing=None,
+    token_estimator=None,
+):
     provider = AgentProvider(responses)
     models = ModelRegistry()
     models.register("fake", provider)
@@ -101,6 +114,7 @@ def _loop(responses, binding, *, store=None, policy=None, pricing=None):
         tool_executor,
         store=store,
         pricing=pricing,
+        token_estimator=token_estimator,
     ), provider
 
 
@@ -393,6 +407,155 @@ async def test_react_loop_can_fail_closed_when_provider_omits_usage():
 
 
 @pytest.mark.asyncio
+async def test_react_preflight_estimate_caps_output_and_emits_soft_warning():
+    class FixedEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(12, "fixed:v1", exact=True)
+
+    loop, provider = _loop(
+        [((TextContent("done"),), FinishReason.STOP, TokenUsage(12, 2))],
+        python_tool(lambda: "unused", name="unused"),
+        token_estimator=FixedEstimator(),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "estimated",
+            max_output_tokens=10,
+            token_budget=TokenBudget(
+                max_total_tokens=20,
+                require_estimate=True,
+                soft_limit_ratio="0.5",
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COMPLETED
+    assert provider.requests[0].max_output_tokens == 8
+    estimated = next(
+        event for event in result.events if event.type is RunEventType.TOKEN_ESTIMATED
+    )
+    assert estimated.data["input_tokens"] == 12
+    assert estimated.data["exact"] is True
+    assert estimated.data["max_output_tokens"] == 8
+    warnings = [
+        event
+        for event in result.events
+        if event.type is RunEventType.TOKEN_BUDGET_WARNING
+    ]
+    assert warnings[0].data["phase"] == "preflight"
+    assert "total_tokens" in warnings[0].data["limits"]
+
+
+@pytest.mark.asyncio
+async def test_react_preflight_stops_before_request_that_fills_total_budget():
+    class FixedEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(10, "fixed:v1")
+
+    loop, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+        token_estimator=FixedEstimator(),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "estimated",
+            token_budget=TokenBudget(max_total_tokens=10),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.TOKEN_BUDGET
+    assert provider.requests == []
+    stopped = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.TOKEN_BUDGET_STOPPED
+    )
+    assert stopped.data["estimated"] is True
+    assert stopped.data["exceeded_limits"] == ("total_tokens",)
+
+
+@pytest.mark.asyncio
+async def test_react_required_estimate_fails_closed_when_unavailable():
+    loop, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "estimated",
+            token_budget=TokenBudget(require_estimate=True),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.TOKEN_ESTIMATE_UNAVAILABLE
+    assert provider.requests == []
+    unavailable = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.TOKEN_ESTIMATE_UNAVAILABLE
+    )
+    assert unavailable.data["error"] == "estimator-unavailable"
+
+
+@pytest.mark.asyncio
+async def test_optional_estimator_failure_is_visible_and_does_not_block():
+    class FailingEstimator:
+        async def estimate(self, request):
+            raise TokenEstimationError("provider tokenizer unavailable")
+
+    loop, provider = _loop(
+        [((TextContent("done"),), FinishReason.STOP, TokenUsage(4, 1))],
+        python_tool(lambda: "unused", name="unused"),
+        token_estimator=FailingEstimator(),
+    )
+
+    result = await loop.run(AgentDefinition("estimated"), _context())
+
+    assert result.stop_reason is StopReason.COMPLETED
+    assert len(provider.requests) == 1
+    unavailable = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.TOKEN_ESTIMATE_UNAVAILABLE
+    )
+    assert unavailable.data["error"] == "estimator-failed"
+
+
+@pytest.mark.asyncio
+async def test_character_estimator_is_explicit_and_rejects_multimodal_input():
+    estimator = CharacterTokenEstimator(
+        characters_per_token=2,
+        tokens_per_message=1,
+        base_tokens=1,
+    )
+    estimate = await estimator.estimate(
+        ModelRequest(messages=(ModelMessage.text(MessageRole.USER, "abcd"),))
+    )
+
+    assert estimate.input_tokens == 6
+    assert estimate.exact is False
+    assert estimate.estimator.startswith("character-heuristic:v1")
+    with pytest.raises(TokenEstimationError, match="image or audio"):
+        await estimator.estimate(
+            ModelRequest(
+                messages=(
+                    ModelMessage(
+                        MessageRole.USER,
+                        (ImageContent(url="https://example.invalid/image.png"),),
+                    ),
+                )
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_react_loop_enforces_versioned_cost_budget_before_tools():
     calls = 0
 
@@ -522,6 +685,10 @@ async def test_react_attempt_ledger_marks_retry_usage_incomplete():
 
 @pytest.mark.asyncio
 async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_path):
+    class FixedEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(1, "fixed:v1")
+
     store = JsonlRunStore(tmp_path)
     loop, _ = _loop(
         [
@@ -544,9 +711,19 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
         ),
         store=store,
         policy=InvocationPolicy(max_attempts_per_route=2, initial_backoff=0),
+        token_estimator=FixedEstimator(),
     )
 
-    result = await loop.run(AgentDefinition("writer"), _context())
+    result = await loop.run(
+        AgentDefinition(
+            "writer",
+            token_budget=TokenBudget(
+                require_estimate=True,
+                soft_limit_ratio="0.8",
+            ),
+        ),
+        _context(),
+    )
     checkpoint = await JsonlRunStore(tmp_path).load_checkpoint("run-1")
     persisted = (tmp_path / "runs" / "run-1" / "checkpoint.json").read_text(
         encoding="utf-8"
@@ -556,6 +733,10 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
     assert checkpoint is not None
     assert len(checkpoint.attempts) == 2
     assert checkpoint.attempts[0].failure is not None
+    assert checkpoint.definition.token_budget is not None
+    assert checkpoint.definition.token_budget.require_estimate is True
+    assert str(checkpoint.definition.token_budget.soft_limit_ratio) == "0.8"
+    assert '"soft_limit_ratio":"0.8"' in persisted
     assert "omitted" in checkpoint.attempts[0].failure.message
     assert "secret provider response" not in persisted
 

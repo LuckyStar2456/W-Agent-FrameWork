@@ -49,7 +49,7 @@ result = await loop.run(AgentDefinition("assistant"), context)
 `max_steps` 和 `max_tool_calls` 是强制预算。`max_output_tokens` 是每次模型请求的生成上限；累计预算使用独立的 `TokenBudget`，避免混淆。当前模板按顺序执行同一模型响应中的工具调用，不自动并行，也不重试工具。
 
 ```python
-from w_agent import AgentDefinition, TokenBudget
+from w_agent import AgentDefinition, CharacterTokenEstimator, TokenBudget
 
 definition = AgentDefinition(
     "assistant",
@@ -59,8 +59,14 @@ definition = AgentDefinition(
         max_output_tokens=6_000,
         max_total_tokens=24_000,
         require_usage=True,
+        require_estimate=True,
+        soft_limit_ratio="0.8",
     ),
 )
+
+# 仅为本地显式选择的启发式模板；生产可注入自己的精确 tokenizer。
+estimator = CharacterTokenEstimator(characters_per_token=4)
+# loop = ReactAgentLoop(..., token_estimator=estimator)
 ```
 
 ## 事件和结果
@@ -73,9 +79,11 @@ Run 事件包含重建模型上下文所需的模型文本、工具参数和结�
 
 `MODEL_COMPLETED` 包含本次响应 Token、逐尝试账本和 `attempt_usage_complete`；失败模型阶段也记录不含 Prompt/凭据的尝试摘要。随后产生的 `TOKEN_USAGE` 包含 Run 累计已知值。`RunResult.attempts` 提供强类型完整账本，`RunResult.usage` 提供累计已知用量，`usage_complete` 表明包括重试/故障转移在内的每次模型尝试是否都收到 Provider 用量。真实零用量与未上报不会混淆。
 
-Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。因为核心层不假设某个分词器，首个请求输入量无法精确预知；失败或中断尝试可能没有 Usage。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。
+Token 硬预算在每个成功响应后按 Provider 已报告的逐尝试实际值核算，超限时在执行该响应中的工具前以 `TOKEN_BUDGET` 停止。剩余输出/总量也会收紧下一请求的输出上限。应用可向 `ReactAgentLoop` 注入异步 `TokenEstimator`；调用前产生的 `TokenEstimate` 会校验累计输入/总量，并从总量余额中扣除预计输入后再收紧本次输出上限。`require_estimate=True` 在估算器缺失、失败或返回非法结果时以 `TOKEN_ESTIMATE_UNAVAILABLE` 失败关闭；否则用 `TOKEN_ESTIMATE_UNAVAILABLE` 事件公开降级但允许继续。`soft_limit_ratio` 只产生 `TOKEN_BUDGET_WARNING`，不会暗中改变停止策略。`TOKEN_ESTIMATED` 只含数量、估算器标识和精确性，不含 Prompt。
 
-费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。Session 级累计与逐尝试账本已实现；Agent 跨 Session 聚合、调用前估算和软阈值仍在计划中。
+内置 `CharacterTokenEstimator` 统计中立消息中的文本、工具调用/结果、工具与响应 Schema 和停止词；它明确标记 `exact=False`，不处理图片/音频，也不声称覆盖厂商隐藏格式开销。应用可替换为模型专用 tokenizer。估算只保护下一次初始请求，不能预知重试/故障转移或 Provider 最终记账，因此调用后仍始终以实际 Usage 核算。设置 `require_usage=True` 后，只要本轮任一尝试未报告用量（包括随后成功的重试之前的失败尝试），Run 就以 `TOKEN_USAGE_UNAVAILABLE` 停止。
+
+费用计量使用应用提供的 `PriceTable`/`PricingResolver`，按精确 Provider、Model、价格表版本和币种计算，普通输入、缓存输入和输出费用均使用 `Decimal`。`CostBudget` 将一个 Run 绑定到明确的价格表版本；每个尝试都已计价时 `RunResult.cost_complete` 才为真。超限响应在执行工具前以 `COST_BUDGET` 停止；缺少价格、用量、版本或币种不一致时以 `COST_UNAVAILABLE` 失败关闭。费用及表版本进入 `COST_USAGE`、终止事件、结果、Session 和审批 Checkpoint，恢复后继续累计。框架不内置可能过期的厂商价格，也不从 Token 静默推断金额。Session 级累计、逐尝试账本、调用前 Token 估算与软阈值事件已实现；Agent 跨 Session 聚合与调用前费用预估仍在计划中。
 
 当前 ReAct 使用模型执行器的收集式 `invoke()`，所以 Run 事件尚不包含文本逐 Token 增量。模型层本身已经支持安全透传，接入 Agent 文本增量 RunEvent 是后续工作。
 

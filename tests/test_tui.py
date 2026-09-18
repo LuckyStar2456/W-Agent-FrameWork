@@ -34,6 +34,29 @@ from w_agent.tui import WAgentTui
 from textual.widgets import TabbedContent
 
 
+def test_tui_projects_token_estimate_metadata_without_prompt_content():
+    event = RunEvent(
+        1,
+        RunEventType.TOKEN_ESTIMATED,
+        "run-1",
+        {
+            "step": 1,
+            "estimated_input_tokens": 120,
+            "projected_total_tokens": 180,
+            "max_output_tokens": 80,
+            "estimator": "custom:v1",
+            "exact": True,
+            "prompt": "must-not-render",
+        },
+    )
+
+    rendered = tui_module._event_text(event)
+
+    assert "estimated_input_tokens=120" in rendered
+    assert "estimator=custom:v1" in rendered
+    assert "must-not-render" not in rendered
+
+
 @pytest.mark.asyncio
 async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path):
     app = WAgentTui(tmp_path)

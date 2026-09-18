@@ -350,6 +350,12 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
                     "max_output_tokens": definition.token_budget.max_output_tokens,
                     "max_total_tokens": definition.token_budget.max_total_tokens,
                     "require_usage": definition.token_budget.require_usage,
+                    "require_estimate": definition.token_budget.require_estimate,
+                    "soft_limit_ratio": (
+                        str(definition.token_budget.soft_limit_ratio)
+                        if definition.token_budget.soft_limit_ratio is not None
+                        else None
+                    ),
                 }
                 if definition.token_budget is not None
                 else None
@@ -418,6 +424,8 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
                     max_output_tokens=token_budget.get("max_output_tokens"),
                     max_total_tokens=token_budget.get("max_total_tokens"),
                     require_usage=bool(token_budget.get("require_usage", False)),
+                    require_estimate=bool(token_budget.get("require_estimate", False)),
+                    soft_limit_ratio=token_budget.get("soft_limit_ratio"),
                 )
                 if isinstance(token_budget, Mapping)
                 else None

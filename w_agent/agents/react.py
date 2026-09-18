@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from typing import Any, Mapping
 
 from w_agent.models import (
@@ -32,6 +33,7 @@ from w_agent.tools import (
 )
 
 from .persistence import InMemoryRunStore, RunStore
+from .budgeting import TokenEstimate, TokenEstimator
 from .types import (
     AgentDefinition,
     CheckpointStatus,
@@ -187,12 +189,14 @@ class ReactAgentLoop:
         *,
         store: RunStore | None = None,
         pricing: PricingResolver | None = None,
+        token_estimator: TokenEstimator | None = None,
     ) -> None:
         self.models = models
         self.tools = tools
         self.tool_executor = tool_executor
         self.store = store if store is not None else InMemoryRunStore()
         self.pricing = pricing
+        self.token_estimator = token_estimator
 
     def stream(
         self,
@@ -441,11 +445,6 @@ class ReactAgentLoop:
                 return
             state.steps += 1
             definitions = self.tools.definitions(scope=context.scope)
-            yield await execution.emit(
-                RunEventType.MODEL_STARTED,
-                step=state.steps,
-                tool_count=len(definitions),
-            )
             request = ModelRequest(
                 messages=tuple(state.messages),
                 model=definition.model,
@@ -453,6 +452,100 @@ class ReactAgentLoop:
                 temperature=definition.temperature,
                 max_output_tokens=_request_output_limit(definition, state.usage),
                 extensions=definition.extensions,
+            )
+            budget = definition.token_budget
+            if self.token_estimator is not None or (
+                budget is not None and budget.require_estimate
+            ):
+                estimate, estimate_error = await self._estimate_request(request)
+            else:
+                estimate, estimate_error = None, None
+            if estimate_error is not None:
+                yield await execution.emit(
+                    RunEventType.TOKEN_ESTIMATE_UNAVAILABLE,
+                    step=state.steps,
+                    error=estimate_error,
+                    required=(budget.require_estimate if budget is not None else False),
+                )
+                if budget is not None and budget.require_estimate:
+                    yield await execution.emit(
+                        RunEventType.TOKEN_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.TOKEN_ESTIMATE_UNAVAILABLE.value,
+                        exceeded_limits=(),
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.TOKEN_ESTIMATE_UNAVAILABLE,
+                    )
+                    return
+            if estimate is not None:
+                projected_input = state.usage.input_tokens + estimate.input_tokens
+                projected_total = state.usage.total_tokens + estimate.input_tokens
+                estimated_limit = _request_output_limit(
+                    definition,
+                    state.usage,
+                    estimated_input_tokens=estimate.input_tokens,
+                )
+                exceeded = _estimated_budget_limits(
+                    definition,
+                    state.usage,
+                    estimate.input_tokens,
+                )
+                yield await execution.emit(
+                    RunEventType.TOKEN_ESTIMATED,
+                    step=state.steps,
+                    input_tokens=estimate.input_tokens,
+                    estimator=estimate.estimator,
+                    exact=estimate.exact,
+                    projected_input_tokens=projected_input,
+                    projected_total_tokens=projected_total,
+                    max_output_tokens=(
+                        estimated_limit
+                        if estimated_limit and estimated_limit > 0
+                        else None
+                    ),
+                )
+                soft_limits = _soft_budget_limits(
+                    definition,
+                    TokenUsage(projected_input, state.usage.output_tokens),
+                )
+                if soft_limits:
+                    yield await execution.emit(
+                        RunEventType.TOKEN_BUDGET_WARNING,
+                        step=state.steps,
+                        phase="preflight",
+                        limits=soft_limits,
+                        soft_limit_ratio=str(budget.soft_limit_ratio),
+                    )
+                if exceeded or estimated_limit == 0:
+                    stopped_limits = exceeded or ("total_tokens",)
+                    yield await execution.emit(
+                        RunEventType.TOKEN_BUDGET_STOPPED,
+                        step=state.steps,
+                        reason=StopReason.TOKEN_BUDGET.value,
+                        exceeded_limits=stopped_limits,
+                        estimated=True,
+                        input_tokens=state.usage.input_tokens,
+                        output_tokens=state.usage.output_tokens,
+                        total_tokens=state.usage.total_tokens,
+                        estimated_input_tokens=estimate.input_tokens,
+                    )
+                    yield await self._finish_terminal(
+                        execution,
+                        state,
+                        StopReason.TOKEN_BUDGET,
+                    )
+                    return
+                request = replace(request, max_output_tokens=estimated_limit)
+            yield await execution.emit(
+                RunEventType.MODEL_STARTED,
+                step=state.steps,
+                tool_count=len(definitions),
+                estimated_input_tokens=(
+                    estimate.input_tokens if estimate is not None else None
+                ),
             )
             try:
                 invocation = await self.models.invoke(
@@ -537,6 +630,16 @@ class ReactAgentLoop:
                     state.reported_usage_calls == state.model_calls
                 ),
             )
+
+            soft_limits = _soft_budget_limits(definition, state.usage)
+            if soft_limits:
+                yield await execution.emit(
+                    RunEventType.TOKEN_BUDGET_WARNING,
+                    step=state.steps,
+                    phase="reconciled",
+                    limits=soft_limits,
+                    soft_limit_ratio=str(definition.token_budget.soft_limit_ratio),
+                )
 
             cost_budget = definition.cost_budget
             if cost_budget is not None:
@@ -846,6 +949,20 @@ class ReactAgentLoop:
             return None, "price-table-currency-mismatch"
         return table.zero(), None
 
+    async def _estimate_request(
+        self,
+        request: ModelRequest,
+    ) -> tuple[TokenEstimate | None, str | None]:
+        if self.token_estimator is None:
+            return None, "estimator-unavailable"
+        try:
+            estimate = await self.token_estimator.estimate(request)
+        except Exception:
+            return None, "estimator-failed"
+        if not isinstance(estimate, TokenEstimate):
+            return None, "invalid-estimator-result"
+        return estimate, None
+
     async def _save_ready_checkpoint(
         self,
         execution: ReactAgentExecution,
@@ -976,6 +1093,8 @@ def _attempt_ledger(
 def _request_output_limit(
     definition: AgentDefinition,
     usage: TokenUsage,
+    *,
+    estimated_input_tokens: int = 0,
 ) -> int | None:
     """Cap a request by the remaining measurable output/total run budget."""
 
@@ -985,9 +1104,57 @@ def _request_output_limit(
         if budget.max_output_tokens is not None:
             limits.append(budget.max_output_tokens - usage.output_tokens)
         if budget.max_total_tokens is not None:
-            limits.append(budget.max_total_tokens - usage.total_tokens)
+            limits.append(
+                budget.max_total_tokens - usage.total_tokens - estimated_input_tokens
+            )
     available = [limit for limit in limits if limit is not None]
     return min(available) if available else None
+
+
+def _estimated_budget_limits(
+    definition: AgentDefinition,
+    usage: TokenUsage,
+    estimated_input_tokens: int,
+) -> tuple[str, ...]:
+    budget = definition.token_budget
+    if budget is None:
+        return ()
+    projected_input = usage.input_tokens + estimated_input_tokens
+    projected_total = usage.total_tokens + estimated_input_tokens
+    exceeded: list[str] = []
+    if (
+        budget.max_input_tokens is not None
+        and projected_input > budget.max_input_tokens
+    ):
+        exceeded.append("input_tokens")
+    if (
+        budget.max_total_tokens is not None
+        and projected_total >= budget.max_total_tokens
+    ):
+        exceeded.append("total_tokens")
+    return tuple(exceeded)
+
+
+def _soft_budget_limits(
+    definition: AgentDefinition,
+    usage: TokenUsage,
+) -> tuple[str, ...]:
+    budget = definition.token_budget
+    if budget is None or budget.soft_limit_ratio is None:
+        return ()
+    ratio = budget.soft_limit_ratio
+    if not isinstance(ratio, Decimal):  # normalized by TokenBudget
+        raise RuntimeError("soft token limit ratio was not normalized")
+    reached: list[str] = []
+    values = (
+        ("input_tokens", usage.input_tokens, budget.max_input_tokens),
+        ("output_tokens", usage.output_tokens, budget.max_output_tokens),
+        ("total_tokens", usage.total_tokens, budget.max_total_tokens),
+    )
+    for name, current, limit in values:
+        if limit is not None and Decimal(current) / Decimal(limit) >= ratio:
+            reached.append(name)
+    return tuple(reached)
 
 
 def _exhausted_budget_limits(
