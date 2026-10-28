@@ -94,6 +94,46 @@ def _templates(captured):
     )
 
 
+def test_local_runtime_tool_delta_flag_is_explicit_and_strict():
+    assert _config(emit_tool_call_deltas=True).agent.emit_tool_call_deltas is True
+    with pytest.raises(LocalRuntimeConfigError, match="emit_tool_call_deltas"):
+        _config(emit_tool_call_deltas="true")
+
+
+def test_local_runtime_output_block_flag_is_explicit_and_strict():
+    assert _config(emit_output_blocks=True).agent.emit_output_blocks is True
+    with pytest.raises(LocalRuntimeConfigError, match="emit_output_blocks"):
+        _config(emit_output_blocks="true")
+
+
+def test_local_runtime_result_recording_config_is_explicit_and_strict():
+    assert _config().agent.emit_tool_results is False
+    assert _config(emit_tool_results=True).agent.emit_tool_results is True
+    with pytest.raises(LocalRuntimeConfigError, match="emit_tool_results"):
+        _config(emit_tool_results="true")
+    for value in (True, 0, -1, "1024"):
+        with pytest.raises(LocalRuntimeConfigError, match="max_tool_result_event_bytes"):
+            _config(max_tool_result_event_bytes=value)
+
+
+async def test_runtime_forwards_recording_limits_and_host_encoder(tmp_path):
+    class Encoder:
+        def encode(self, result, *, name):
+            return None
+    encoder = Encoder()
+    runtime = assemble_local_runtime(
+        _config(emit_tool_results=True, max_tool_result_event_bytes=2048), tmp_path,
+        templates=_templates({}), environ={"TEST_MODEL_KEY": "test"},
+        tool_result_event_encoder=encoder,
+    )
+    try:
+        assert runtime.definition.emit_tool_results is True
+        assert runtime.definition.max_tool_result_event_bytes == 2048
+        assert runtime.loop.tool_result_event_encoder is encoder
+    finally:
+        await runtime.aclose()
+
+
 @pytest.mark.asyncio
 async def test_local_runtime_assembles_full_text_run_and_persists_session(tmp_path):
     captured = {}

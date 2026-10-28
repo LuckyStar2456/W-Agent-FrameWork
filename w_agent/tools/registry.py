@@ -59,14 +59,16 @@ class ToolRegistry:
     ) -> Registration:
         """Register a binding produced by a public adapter such as python_tool."""
 
-        return self.register(
-            binding.definition,
-            binding.handler,
-            side_effect=binding.side_effect,
-            required_permissions=binding.required_permissions,
-            version=version,
-            scope=scope,
-            owner=owner,
+        return self.registry.register(
+            Contribution(
+                capability=TOOL_CAPABILITY, provider=binding,
+                name=binding.definition.name, version=version,
+                scope=scope or ScopePath.application(), owner=owner,
+                metadata={
+                    "side_effect": binding.side_effect.value,
+                    "required_permissions": tuple(sorted(binding.required_permissions)),
+                },
+            )
         )
 
     def binding(

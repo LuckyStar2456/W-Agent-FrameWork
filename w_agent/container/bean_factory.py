@@ -43,6 +43,16 @@ class BeanFactory:
             f"w_agent_creation_stack_{id(self)}", default=()
         )
     
+    def existing_singleton(self, name: str) -> Any:
+        """Borrow an already created singleton without creating or initializing it.
+
+        The host remains responsible for initialization and shutdown. Early
+        references and prototype definitions are intentionally not exposed.
+        """
+        if name not in self._singleton_objects:
+            raise BeanNotFoundError(name)
+        return self._singleton_objects[name]
+
     def register_bean_definition(self, name: str, definition: BeanDefinition):
         """注册Bean定义"""
         if not name or not isinstance(name, str):

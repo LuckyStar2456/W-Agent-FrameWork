@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 from urllib.parse import quote
 
 from .errors import ModelError, ModelFailure, ModelFailureKind
@@ -95,8 +96,110 @@ class AnthropicMessagesMapping(HttpProviderMapping):
         return _AnthropicDecoder(model)
 
 
+class GeminiOutputPartMapper(Protocol):
+    """Replaceable projection from one Gemini response Part to neutral media."""
+
+    def map_part(
+        self,
+        part: Mapping[str, Any],
+    ) -> ImageContent | AudioContent | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class GeminiMediaOutputMapper:
+    """Map documented inlineData/fileData image and audio response parts.
+
+    Only the reference is retained for fileData; no URI is dereferenced.
+    Unknown media types fail closed so the provider does not silently erase a
+    generated output that the neutral model protocol cannot yet represent.
+    """
+
+    max_inline_bytes: int = 8 * 1024 * 1024
+    max_reference_chars: int = 16_384
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_inline_bytes, bool)
+            or not isinstance(self.max_inline_bytes, int)
+            or self.max_inline_bytes <= 0
+        ):
+            raise ValueError("Gemini inline media limit must be positive")
+        if (
+            isinstance(self.max_reference_chars, bool)
+            or not isinstance(self.max_reference_chars, int)
+            or self.max_reference_chars <= 0
+        ):
+            raise ValueError("Gemini media reference limit must be positive")
+
+    def map_part(
+        self,
+        part: Mapping[str, Any],
+    ) -> ImageContent | AudioContent | None:
+        inline = part.get("inlineData")
+        reference = part.get("fileData")
+        if inline is None and reference is None:
+            return None
+        if inline is not None and reference is not None:
+            raise _protocol_error("Gemini Part has multiple media sources")
+        source = inline if inline is not None else reference
+        if not isinstance(source, Mapping):
+            raise _protocol_error("Gemini media source must be an object")
+        media_type = source.get("mimeType")
+        if (
+            not isinstance(media_type, str)
+            or not media_type
+            or len(media_type) > 255
+            or any(ord(character) < 32 for character in media_type)
+        ):
+            raise _protocol_error("Gemini media MIME type is invalid")
+        if media_type.startswith("image/"):
+            content_type = ImageContent
+        elif media_type.startswith("audio/"):
+            content_type = AudioContent
+        else:
+            raise _protocol_error("unsupported Gemini output media type")
+        if inline is not None:
+            encoded = source.get("data")
+            max_encoded_chars = ((self.max_inline_bytes + 2) // 3) * 4
+            if (
+                not isinstance(encoded, str)
+                or not encoded
+                or len(encoded) > max_encoded_chars
+            ):
+                raise _protocol_error("Gemini inline media exceeds its limit")
+            try:
+                payload = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error) as error:
+                raise _protocol_error("Gemini inline media is not Base64") from error
+            if len(payload) > self.max_inline_bytes:
+                raise _protocol_error("Gemini inline media exceeds its limit")
+            return content_type(data=payload, media_type=media_type)
+        uri = source.get("fileUri")
+        if (
+            not isinstance(uri, str)
+            or not uri
+            or len(uri) > self.max_reference_chars
+            or any(ord(character) < 32 for character in uri)
+        ):
+            raise _protocol_error("Gemini media file URI is invalid")
+        return content_type(url=uri, media_type=media_type)
+
+
 class GeminiGenerateContentMapping(HttpProviderMapping):
     """Google Gemini native generateContent mapping."""
+
+    def __init__(
+        self,
+        *,
+        output_part_mapper: GeminiOutputPartMapper | None = None,
+    ) -> None:
+        self.output_part_mapper = (
+            output_part_mapper
+            if output_part_mapper is not None
+            else GeminiMediaOutputMapper()
+        )
+        if not callable(getattr(self.output_part_mapper, "map_part", None)):
+            raise ValueError("Gemini output part mapper needs a map_part method")
 
     def catalog_request(self) -> HttpRequest:
         return HttpRequest("GET", "/v1beta/models")
@@ -159,7 +262,7 @@ class GeminiGenerateContentMapping(HttpProviderMapping):
     def stream_decoder(
         self, request: ModelRequest, model: str
     ) -> HttpStreamDecoder:
-        return _GeminiDecoder(model)
+        return _GeminiDecoder(model, self.output_part_mapper)
 
 
 class OllamaChatMapping(HttpProviderMapping):
@@ -385,11 +488,16 @@ class _AnthropicDecoder:
 
 
 class _GeminiDecoder:
-    def __init__(self, model: str) -> None:
+    def __init__(
+        self,
+        model: str,
+        output_part_mapper: GeminiOutputPartMapper,
+    ) -> None:
         self.model = model
+        self.output_part_mapper = output_part_mapper
         self.text = ""
-        self.text_started = False
-        self.next_index = 1
+        self.text_index: int | None = None
+        self.next_index = 0
         self.reason: FinishReason | None = None
         self.saw_candidate = False
 
@@ -422,15 +530,23 @@ class _GeminiDecoder:
             for part in parts:
                 if not isinstance(part, Mapping):
                     continue
+                if sum(
+                    key in part
+                    for key in ("text", "functionCall", "inlineData", "fileData")
+                ) > 1:
+                    raise _protocol_error("Gemini Part has multiple data fields")
                 if isinstance(part.get("text"), str):
-                    if not self.text_started:
-                        self.text_started = True
-                        events.append(BlockStart(0, "text"))
+                    if self.text_index is None:
+                        self.text_index = self.next_index
+                        self.next_index += 1
+                        events.append(BlockStart(self.text_index, "text"))
                     value = part["text"]
                     self.text += value
-                    events.append(TextDelta(0, value))
+                    events.append(TextDelta(self.text_index, value))
+                    continue
                 function = part.get("functionCall")
                 if isinstance(function, Mapping):
+                    events.extend(self._close_text())
                     index = self.next_index
                     self.next_index += 1
                     name = str(function.get("name") or "")
@@ -448,6 +564,19 @@ class _GeminiDecoder:
                             ),
                         )
                     )
+                    continue
+                media = self.output_part_mapper.map_part(part)
+                if media is not None:
+                    if not isinstance(media, (ImageContent, AudioContent)):
+                        raise _protocol_error(
+                            "Gemini output mapper returned an unsupported block"
+                        )
+                    events.extend(self._close_text())
+                    index = self.next_index
+                    self.next_index += 1
+                    events.extend(
+                        (BlockStart(index, media.type), BlockEnd(index, media))
+                    )
             if candidate.get("finishReason") is not None:
                 self.reason = _finish_reason(str(candidate["finishReason"]))
         return tuple(events)
@@ -456,10 +585,17 @@ class _GeminiDecoder:
         if not self.saw_candidate:
             raise _protocol_error("Gemini stream returned no candidate")
         events: list[StreamEvent] = []
-        if self.text_started:
-            events.append(BlockEnd(0, TextContent(self.text)))
+        events.extend(self._close_text())
         events.append(FinishEvent(self.reason or FinishReason.OTHER))
         return tuple(events)
+
+    def _close_text(self) -> tuple[StreamEvent, ...]:
+        if self.text_index is None:
+            return ()
+        closed = BlockEnd(self.text_index, TextContent(self.text))
+        self.text_index = None
+        self.text = ""
+        return (closed,)
 
 
 class _OllamaDecoder:

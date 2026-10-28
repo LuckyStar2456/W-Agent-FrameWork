@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import math
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Mapping, Protocol
@@ -42,15 +43,24 @@ class SandboxSpec:
 
     def __post_init__(self) -> None:
         workspace = Path(self.workspace).resolve()
+        if not isinstance(self.container_workdir, str):
+            raise ValueError("container workdir must be a string")
+        if self.image is not None and (not isinstance(self.image, str) or "\0" in self.image):
+            raise ValueError("sandbox image must be a safe string")
+        if self.user is not None and (not isinstance(self.user, str) or not self.user or "\0" in self.user):
+            raise ValueError("sandbox user must be a safe string")
         workdir = PurePosixPath(self.container_workdir)
-        if not workdir.is_absolute() or ".." in workdir.parts:
+        if (not workdir.is_absolute() or ".." in workdir.parts
+                or any(char in self.container_workdir for char in "\0\n\r,:")):
             raise ValueError("container workdir must be an absolute safe path")
-        if self.cpu_limit <= 0 or self.memory_bytes <= 0 or self.pids_limit <= 0:
-            raise ValueError("sandbox resource limits must be positive")
-        if not self.keepalive_command or any(
-            not value or "\0" in value for value in self.keepalive_command
-        ):
-            raise ValueError("sandbox keepalive command is invalid")
+        _positive_number(self.cpu_limit, "cpu_limit")
+        _positive_integer(self.memory_bytes, "memory_bytes")
+        _positive_integer(self.pids_limit, "pids_limit")
+        _validate_argv(self.keepalive_command, "sandbox keepalive command")
+        if not isinstance(self.inherit_host_environment, bool):
+            raise ValueError("inherit_host_environment must be a boolean")
+        object.__setattr__(self, "network", SandboxNetwork(self.network))
+        object.__setattr__(self, "workspace_access", WorkspaceAccess(self.workspace_access))
         _validate_environment(self.environment)
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(
@@ -68,13 +78,9 @@ class SandboxCommand:
     max_output_bytes: int = 1_048_576
 
     def __post_init__(self) -> None:
-        if not self.argv or any(
-            not isinstance(value, str) or not value or "\0" in value
-            for value in self.argv
-        ):
-            raise ValueError("sandbox command argv must contain safe strings")
-        if self.timeout <= 0 or self.max_output_bytes <= 0:
-            raise ValueError("sandbox command limits must be positive")
+        _validate_argv(self.argv, "sandbox command argv")
+        _positive_number(self.timeout, "timeout")
+        _positive_integer(self.max_output_bytes, "max_output_bytes")
         object.__setattr__(self, "argv", tuple(self.argv))
 
 
@@ -123,6 +129,29 @@ class SandboxTimeoutError(SandboxExecutionError):
 
 class SandboxOutputTooLarge(SandboxExecutionError):
     """A sandbox stream exceeded its byte limit."""
+
+
+def _positive_number(value: float, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite positive number")
+    try:
+        valid = math.isfinite(value) and value > 0
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ValueError(f"{name} must be a finite positive number")
+
+
+def _positive_integer(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _validate_argv(argv, name: str) -> None:
+    if isinstance(argv, (str, bytes)) or not isinstance(argv, (tuple, list)) or not argv:
+        raise ValueError(f"{name} must be a non-empty argument sequence")
+    if any(not isinstance(value, str) or "\0" in value for value in argv) or not argv[0]:
+        raise ValueError(f"{name} must contain safe strings")
 
 
 def _validate_environment(environment: Mapping[str, str]) -> None:

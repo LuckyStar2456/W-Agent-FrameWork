@@ -107,6 +107,7 @@ async def test_provider_safe_probe_never_calls_generation():
     assert result.successful is True
     assert provider.stream_calls == 0
     assert [check.level for check in result.checks] == [
+        ProbeLevel.L1_REACHABILITY,
         ProbeLevel.L2_AUTHENTICATION,
         ProbeLevel.L3_CATALOG,
     ]
@@ -204,10 +205,10 @@ async def test_registration_service_runs_safe_probe_and_bridges_health():
 
     outcome = await service.register("fake", provider, version="1")
 
-    assert outcome.health == HealthStatus.HEALTHY
+    assert outcome.health == HealthStatus.UNKNOWN
     assert outcome.probe_result.mode == ProbeMode.SAFE
     assert outcome.probe_result.routes == (("fake", "chat"),)
-    assert state.health[("fake", "chat")] == HealthStatus.HEALTHY
+    assert state.health[("fake", "chat")] == HealthStatus.UNKNOWN
     assert service.cache.get("fake") is outcome.probe_result
     assert models.provider("fake") is provider
     assert provider.stream_calls == 0

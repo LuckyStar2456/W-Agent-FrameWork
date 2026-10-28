@@ -9,6 +9,8 @@ from w_agent import (
     CancellationToken,
     McpClient,
     McpHttpResponse,
+    McpLegacyClient,
+    McpLegacyStreamableHttpTransport,
     McpProtocolError,
     McpRemoteError,
     McpStdioTransport,
@@ -315,3 +317,130 @@ async def test_mcp_client_rejects_repeated_pagination_cursor():
 
     with pytest.raises(McpProtocolError, match="repeated"):
         await McpClient(transport).list_tools()
+
+
+class FakeLegacyTransport(FakeRpcTransport):
+    def __init__(self, results):
+        super().__init__(results)
+        self.notifications = []
+
+    async def send_notification(self, message, *, cancellation=None):
+        self.notifications.append(message)
+
+
+@pytest.mark.asyncio
+async def test_legacy_mcp_initializes_once_before_discovery():
+    transport = FakeLegacyTransport(
+        [
+            {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "legacy", "version": "1"},
+            },
+            {"tools": [], "nextCursor": None},
+            {"tools": []},
+        ]
+    )
+    client = McpLegacyClient(transport)
+
+    assert await client.list_tools() == ()
+    assert await client.list_tools() == ()
+    assert [message["method"] for message in transport.messages] == [
+        "initialize", "tools/list", "tools/list"
+    ]
+    assert transport.messages[0]["params"]["protocolVersion"] == "2025-11-25"
+    assert "_meta" not in transport.messages[1]["params"]
+    assert transport.notifications == [
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    ]
+    assert client.protocol_version == "2025-06-18"
+
+
+@pytest.mark.asyncio
+async def test_legacy_mcp_rejects_unsupported_negotiated_version():
+    transport = FakeLegacyTransport(
+        [{
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "old", "version": "1"},
+        }]
+    )
+    client = McpLegacyClient(transport)
+
+    with pytest.raises(McpProtocolError, match="unsupported version"):
+        await client.list_tools()
+    assert transport.notifications == []
+    with pytest.raises(McpProtocolError, match="create a new client"):
+        await client.list_tools()
+
+
+def test_legacy_mcp_does_not_advertise_unimplemented_client_capabilities():
+    with pytest.raises(ValueError, match="cannot advertise"):
+        McpLegacyClient(FakeLegacyTransport([]), client_capabilities={"sampling": {}})
+
+
+@pytest.mark.asyncio
+async def test_legacy_stdio_waits_for_initialized_notification():
+    server = """
+import json, sys
+initialized = False
+for line in sys.stdin:
+    message = json.loads(line)
+    if message.get("method") == "initialize":
+        result = {"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "stdio", "version": "1"}}
+    elif message.get("method") == "notifications/initialized":
+        initialized = True
+        continue
+    elif message.get("method") == "tools/list":
+        result = {"tools": []} if initialized else {"error": "not initialized"}
+    else:
+        continue
+    print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+"""
+    transport = McpStdioTransport((sys.executable, "-u", "-c", server))
+    async with McpLegacyClient(transport) as client:
+        assert await client.list_tools() == ()
+
+
+@pytest.mark.asyncio
+async def test_legacy_streamable_http_keeps_session_and_negotiated_header():
+    class LegacyExchange:
+        def __init__(self):
+            self.requests = []
+
+        async def post(self, request, *, cancellation=None):
+            self.requests.append(request)
+            message = json.loads(request.body)
+            if "id" not in message:
+                return McpHttpResponse(202, {}, b"")
+            if message["method"] == "initialize":
+                result = {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "legacy", "version": "1"},
+                }
+                headers = {
+                    "content-type": "application/json",
+                    "Mcp-Session-Id": "server-session",
+                }
+            else:
+                result = {"tools": []}
+                headers = {"content-type": "application/json"}
+            return McpHttpResponse(
+                200,
+                headers,
+                json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}).encode(),
+            )
+
+    exchange = LegacyExchange()
+    client = McpLegacyClient(
+        McpLegacyStreamableHttpTransport(
+            "https://mcp.example.test/mcp", exchange=exchange
+        )
+    )
+    assert await client.list_tools() == ()
+    initialize, notification, discovery = exchange.requests
+    assert "MCP-Protocol-Version" not in initialize.headers
+    assert notification.headers["MCP-Protocol-Version"] == "2025-06-18"
+    assert discovery.headers["Mcp-Session-Id"] == "server-session"
+    assert "Mcp-Method" not in discovery.headers

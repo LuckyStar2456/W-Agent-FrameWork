@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -36,6 +37,11 @@ from .types import (
 
 class OpenAIResponsesMapping(HttpProviderMapping):
     """Translate stable model requests to the OpenAI Responses API."""
+
+    def __init__(self, *, max_image_bytes: int = 20 * 1024 * 1024) -> None:
+        if isinstance(max_image_bytes, bool) or not isinstance(max_image_bytes, int) or max_image_bytes < 1:
+            raise ValueError("max_image_bytes must be a positive integer")
+        self.max_image_bytes = max_image_bytes
 
     def catalog_request(self) -> HttpRequest:
         return HttpRequest("GET", "/models")
@@ -80,6 +86,9 @@ class OpenAIResponsesMapping(HttpProviderMapping):
                 }
                 for tool in request.tools
             ]
+        image_tool = _image_tool(request, model)
+        if image_tool is not None:
+            body.setdefault("tools", []).append(image_tool)
         if request.response_schema is not None:
             body["text"] = {
                 "format": {
@@ -133,7 +142,11 @@ class OpenAIResponsesMapping(HttpProviderMapping):
         )
 
     def stream_decoder(self, request: ModelRequest, model: str) -> HttpStreamDecoder:
-        return _OpenAIResponsesDecoder(model)
+        image_tool = _image_tool(request, model)
+        return _OpenAIResponsesDecoder(
+            model, image_format=(image_tool or {}).get("output_format", "png"),
+            max_image_bytes=self.max_image_bytes,
+        )
 
 
 @dataclass(slots=True)
@@ -153,8 +166,11 @@ class _ToolAccumulator:
 
 
 class _OpenAIResponsesDecoder:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, *, image_format: str = "png", max_image_bytes: int = 20 * 1024 * 1024) -> None:
         self.model = model
+        self._image_format = image_format
+        self._max_image_bytes = max_image_bytes
+        self._images: dict[int, tuple[str, ImageContent]] = {}
         self._next_index = 0
         self._texts: dict[tuple[int, int], _TextAccumulator] = {}
         self._tools: dict[int, _ToolAccumulator] = {}
@@ -338,6 +354,8 @@ class _OpenAIResponsesDecoder:
 
     def _output_item_done(self, data: Mapping[str, Any]) -> tuple[StreamEvent, ...]:
         item = _mapping(data.get("item"), "completed output item", self.model)
+        if item.get("type") == "image_generation_call":
+            return self._image_done(data)
         if item.get("type") != "function_call":
             return ()
         output_index = _index(data.get("output_index"), "output_index", self.model)
@@ -366,6 +384,35 @@ class _OpenAIResponsesDecoder:
         tool.arguments = final
         events.append(self._close_tool(tool))
         return tuple(events)
+
+    def _image_done(self, data: Mapping[str, Any]) -> tuple[StreamEvent, ...]:
+        item = _mapping(data.get("item"), "image generation item", self.model)
+        output_index = _index(data.get("output_index"), "output_index", self.model)
+        if item.get("status") != "completed":
+            return ()
+        image_id, encoded = item.get("id"), item.get("result")
+        image_format = item.get("output_format", self._image_format)
+        if not isinstance(image_id, str) or not image_id:
+            raise _protocol_error("generated image needs an id", self.model)
+        if not isinstance(image_format, str) or image_format not in {"png", "jpeg", "webp"}:
+            raise _protocol_error("generated image has an unsupported output format", self.model)
+        if not isinstance(encoded, str) or not encoded or len(encoded) > ((self._max_image_bytes + 2) // 3) * 4:
+            raise _protocol_error("generated image is empty or exceeds the byte limit", self.model)
+        try:
+            payload = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise _protocol_error("generated image is not valid base64", self.model) from exc
+        if not payload or len(payload) > self._max_image_bytes:
+            raise _protocol_error("generated image is empty or exceeds the byte limit", self.model)
+        block = ImageContent(data=payload, media_type=f"image/{image_format}")
+        previous = self._images.get(output_index)
+        if previous is not None:
+            if previous != (image_id, block):
+                raise _protocol_error("terminal image conflicts with streamed image", self.model)
+            return ()
+        self._images[output_index] = (image_id, block)
+        index = self._allocate()
+        return (BlockStart(index, "image"), BlockEnd(index, block))
 
     def _close_tool(self, tool: _ToolAccumulator) -> BlockEnd:
         tool.closed = True
@@ -420,6 +467,8 @@ class _OpenAIResponsesDecoder:
         for output_index, item in enumerate(output):
             if not isinstance(item, Mapping):
                 continue
+            if item.get("type") == "image_generation_call":
+                events.extend(self._image_done({"output_index": output_index, "item": item}))
             if item.get("type") == "function_call":
                 if output_index not in self._tools:
                     synthetic = {"output_index": output_index, "item": item}
@@ -502,6 +551,19 @@ class _OpenAIResponsesDecoder:
             if not tool.closed:
                 events.append(self._close_tool(tool))
         return events
+
+
+def _image_tool(request: ModelRequest, model: str) -> dict[str, Any] | None:
+    options = request.extensions.get("openai_responses.image_generation")
+    if options is None:
+        return None
+    allowed = {"model", "size", "quality", "background", "output_format", "output_compression", "partial_images", "action"}
+    if not isinstance(options, Mapping) or set(options) - allowed:
+        raise _configuration_error("invalid-image-generation", "image_generation must contain documented image tool options", model)
+    output_format = options.get("output_format", "png")
+    if not isinstance(output_format, str) or output_format not in {"png", "jpeg", "webp"}:
+        raise _configuration_error("invalid-image-format", "image output_format must be png, jpeg, or webp", model)
+    return {"type": "image_generation", **options}
 
 
 def _responses_input(request: ModelRequest) -> tuple[str, list[dict[str, Any]]]:

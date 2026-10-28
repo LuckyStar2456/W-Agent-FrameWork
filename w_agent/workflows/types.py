@@ -32,6 +32,7 @@ class WorkflowEventType(StrEnum):
     WORKFLOW_RESUMED = "workflow-resumed"
     NODE_STARTED = "node-started"
     NODE_COMPLETED = "node-completed"
+    NODE_SUSPENDED = "node-suspended"
     NODE_FAILED = "node-failed"
     WORKFLOW_PAUSED = "workflow-paused"
     WORKFLOW_COMPLETED = "workflow-completed"
@@ -86,8 +87,15 @@ class WorkflowNodeResult:
     state_updates: Mapping[str, Any] = field(default_factory=dict)
     next_node: str | None = None
     pause: bool = False
+    suspend: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.suspend, bool):
+            raise ValueError("workflow suspend flag must be a boolean")
+        if self.suspend and (
+            self.pause is not True or self.next_node is not None or self.output is not None
+        ):
+            raise ValueError("suspended nodes require pause=True without output or transition")
         object.__setattr__(
             self,
             "state_updates",

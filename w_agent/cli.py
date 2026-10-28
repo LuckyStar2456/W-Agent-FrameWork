@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import platform
+import sys
 from collections.abc import Mapping
 from contextlib import nullcontext
 from pathlib import Path
@@ -15,12 +16,32 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from w_agent._cli_replay import ReplayViewError, ViewOptions, run_view, session_view
+from w_agent._shared_budget_ui import budget_binding_scope, shared_budget_summary
+from w_agent._service_usage_ui import ServiceUsageOptions, service_usage_binding_scope, service_usage_summary
+from w_agent._knowledge_ui import KnowledgeEvaluationOptions, KnowledgeRunOptions, knowledge_binding_scope
+from w_agent.knowledge_cli import register_knowledge_commands
+from w_agent.knowledge_index_cli import register_knowledge_index_commands
+from w_agent.knowledge_plan_action_cli import register_knowledge_plan_actions
+from w_agent.knowledge_build_cli import register_knowledge_build_commands
+from w_agent.knowledge_sync_cli import register_knowledge_sync_commands
+from w_agent.knowledge_archive_cli import register_knowledge_archive_commands
+from w_agent.service_usage_cli import register_service_usage_commands
+from w_agent.application_cli import register_application_commands
+from w_agent.input_manifest import load_input_manifest
+from w_agent.session_history_options import BuiltinSessionHistoryOptions
+from w_agent.session_message_fields import MessageFieldsSessionInputRecorder
+from w_agent.session_inputs import SessionInputRecorder
+
 from w_agent.agents import (
     CODING_AGENT_TEMPLATE,
     CUSTOMER_SUPPORT_AGENT_TEMPLATE,
     JsonlRunStore,
     RunCheckpointSummary,
+    RunEventCursor,
+    RunEventReplay,
     RunStoreError,
+    RunResult,
 )
 from w_agent.compositions import (
     CompositionError,
@@ -36,6 +57,20 @@ from w_agent.composition_planning import (
     composition_plan_to_dict,
     load_plugin_candidates,
     plan_composition,
+)
+from w_agent.plugin_installation import (
+    InstalledPluginReference,
+    PluginInstallAuthorization,
+    PluginInstallResult,
+    PluginInstallationError,
+    PluginInstallationPlan,
+    SandboxPipPackageInstaller,
+    load_installed_plugin_references,
+    load_plugin_install_catalog,
+    load_plugin_install_result,
+    plan_plugin_installations,
+    plugin_installation_plan_to_dict,
+    recommended_docker_install_user,
 )
 from w_agent.config.dynamic_config import DynamicConfigManager
 from w_agent.container.bean_factory import BeanFactory
@@ -60,9 +95,9 @@ from w_agent.evaluation_suites import (
 from w_agent.local_runtime import (
     LocalRuntimeConfigError,
     assemble_local_provider,
-    assemble_local_runtime,
     load_local_runtime_config,
 )
+from w_agent.local_application import open_local_runtime, open_local_workflow
 from w_agent.kernel import (
     PluginLoadError,
     PluginManager,
@@ -77,6 +112,7 @@ from w_agent.models import (
     EndpointProbe,
     ModelCost,
     ModelProviderProbe,
+    ModelMessage,
     PricingError,
     ProbeMode,
     ProbeResult,
@@ -88,14 +124,33 @@ from w_agent.sessions import (
     SessionManager,
     SessionRecord,
 )
+from w_agent.sandbox import (
+    DockerSandboxProvider,
+    SandboxNetwork,
+    SandboxSpec,
+    UnsafeLocalAuthorization,
+    UnsafeLocalSandboxProvider,
+)
 from w_agent.tools import ToolEntryLoadError, load_tool_entries
 from w_agent.workflows import (
+    AgentWorkflowApproval,
+    AgentWorkflowAdapterError,
     JsonlWorkflowStore,
-    LocalWorkflowEngine,
+    SQLiteWorkflowPauseController,
+    WorkflowPauseControlError,
     WorkflowCheckpointSummary,
     WorkflowEntryLoadError,
     WorkflowStoreError,
     load_workflow_entries,
+    review_workflow_approvals,
+    open_workflow_approval_entry,
+    resume_workflow_approval,
+    WorkflowKind,
+    WorkflowApprovalLinkStatus,
+    WorkflowToolApprovalError,
+    open_workflow_tool_approval_entry,
+    review_workflow_tool_approvals,
+    resume_workflow_tool_approval,
 )
 
 app = typer.Typer(
@@ -123,6 +178,7 @@ app.add_typer(checkpoint_app, name="checkpoint")
 app.add_typer(benchmark_app, name="benchmark")
 console = Console()
 error_console = Console(stderr=True)
+register_application_commands(app)
 
 
 @app.callback()
@@ -235,7 +291,12 @@ def probe(
 
 @app.command("provider-probe")
 def provider_probe_command(
+    usage_entry: str | None = typer.Option(None, "--usage-entry", help="Trusted module:factory usage-ledger catalog."),
+    confirm_usage_code: bool = typer.Option(False, "--confirm-usage-code"),
+    confirm_usage_recording: bool = typer.Option(False, "--confirm-usage-recording"),
     config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    budget_entry: str | None = typer.Option(None, "--budget-entry", help="Trusted module:factory returning an async budget-catalog context manager."),
+    confirm_budget_code: bool = typer.Option(False, "--confirm-budget-code", help="Authorize unsandboxed host budget setup and cleanup code."),
     mode: ProbeMode = typer.Option(ProbeMode.SAFE, "--mode", case_sensitive=False),
     confirm_active_probe: bool = typer.Option(
         False,
@@ -246,29 +307,73 @@ def provider_probe_command(
 ) -> None:
     """Probe the provider assembled from strict local configuration."""
 
+    _usage_options(usage_entry, confirm_usage_code, confirm_usage_recording)
+    if budget_entry is not None and not confirm_budget_code:
+        _fail("budget code not authorized; pass --confirm-budget-code")
     if mode is not ProbeMode.SAFE and not confirm_active_probe:
         _fail("active probe not authorized; pass --confirm-active-probe")
     try:
         config_value = load_local_runtime_config(config)
-        result = asyncio.run(
-            _probe_configured_provider(
-                config_value,
-                mode=mode,
-                allow_active=confirm_active_probe,
-            )
-        )
+        async def execute():
+            selection = getattr(config_value, "shared_budget", None)
+            usage_selection = getattr(config_value, "service_usage", None)
+            async with (
+                budget_binding_scope(budget_entry, selected=selection.binding if selection else None,
+                                     confirmed=confirm_budget_code) as bindings,
+                service_usage_binding_scope(usage_entry, selected=usage_selection.binding if usage_selection else None,
+                                            confirmed=confirm_usage_code, confirm_record=confirm_usage_recording) as usage_bindings,
+            ):
+                result = await _probe_configured_provider(
+                    config_value, mode=mode, allow_active=confirm_active_probe,
+                    **({"shared_budget_bindings": bindings} if budget_entry is not None else {}),
+                    **({"service_usage_bindings": usage_bindings} if usage_entry is not None else {}),
+                )
+                return (result, await shared_budget_summary(bindings.get(selection.binding) if selection else None),
+                        await service_usage_summary(usage_bindings.get(usage_selection.binding) if usage_selection else None))
+
+        result, budget, usage = asyncio.run(execute())
     except (LocalRuntimeConfigError, ValueError) as error:
         _fail(str(error))
     except Exception as error:
         _fail(f"configured provider probe failed: {type(error).__name__}")
-    _emit(_probe_result_payload(result), json_output)
+    payload = _probe_result_payload(result)
+    if budget is not None:
+        payload["shared_budget"] = budget
+    if usage is not None:
+        payload["service_usage"] = usage
+    _emit(payload, json_output)
     if not result.successful:
         raise typer.Exit(2)
 
 
 @app.command("run")
 def run_command(
-    prompt: str = typer.Argument(..., help="User text for one configured run."),
+    usage_entry: str | None = typer.Option(None, "--usage-entry", help="Trusted module:factory usage-ledger catalog."),
+    confirm_usage_code: bool = typer.Option(False, "--confirm-usage-code"),
+    confirm_usage_recording: bool = typer.Option(False, "--confirm-usage-recording"),
+    prompt: str | None = typer.Argument(None, help="User text; mutually exclusive with --input-file."),
+    knowledge_entry: str | None = typer.Option(None, "--knowledge-entry", help="Trusted module:factory returning an async knowledge-binding catalog context manager."),
+    knowledge_query: str | None = typer.Option(None, "--knowledge-query", help="Explicit knowledge query; never inferred from prompt or history."),
+    confirm_knowledge_code: bool = typer.Option(False, "--confirm-knowledge-code", help="Authorize unsandboxed knowledge host setup/cleanup code."),
+    confirm_knowledge_query: bool = typer.Option(False, "--confirm-knowledge-query", help="Authorize retrieval/query embedding and sending retrieved text to the model."),
+    budget_entry: str | None = typer.Option(None, "--budget-entry", help="Trusted module:factory returning an async budget-catalog context manager."),
+    confirm_budget_code: bool = typer.Option(False, "--confirm-budget-code", help="Authorize unsandboxed host budget setup and cleanup code."),
+    input_file: Path | None = typer.Option(None, "--input-file", help="Strict user-message JSON; never follows file references."),
+    input_message_fields: bool = typer.Option(False, "--input-message-fields", help="Explicitly allow input-file name/metadata to be sent to the configured model."),
+    record_inputs: bool = typer.Option(False, "--record-inputs", help="Also persist current input blocks in the Session."),
+    record_input_name: bool = typer.Option(False, "--record-input-name", help="Also record input names; requires --input-message-fields and confirmed --record-inputs."),
+    record_input_metadata: bool = typer.Option(False, "--record-input-metadata", help="Also record input metadata; requires --input-message-fields and confirmed --record-inputs."),
+    confirm_input_recording: bool = typer.Option(False, "--confirm-input-recording"),
+    history: str = typer.Option("text", "--history", help="text (default), recorded, none, retrieved, or summarized."),
+    confirm_history_media: bool = typer.Option(False, "--confirm-history-media", help="Authorize resending recorded history blocks to the configured model."),
+    history_name: bool = typer.Option(False, "--history-name", help="Explicitly reuse recorded input names; requires recorded history and its confirmation."),
+    history_metadata: bool = typer.Option(False, "--history-metadata", help="Explicitly reuse recorded input metadata; independent of display and recording."),
+    confirm_history_transform: bool = typer.Option(False, "--confirm-history-transform", help="Accept lossy text-history selection or summarization; does not authorize media reuse."),
+    history_query: str | None = typer.Option(None, "--history-query", help="Explicit retrieval query, never inferred from the prompt or media file."),
+    history_recent_turns: int | None = typer.Option(None, "--history-recent-turns", help="Recent Run segments to preserve for retrieved/summarized modes; default 2."),
+    history_retrieved_turns: int | None = typer.Option(None, "--history-retrieved-turns", help="Maximum older retrieved segments; default 4."),
+    history_summary_chars: int | None = typer.Option(None, "--history-summary-chars", help="Extractive summary character limit; default 4096."),
+    history_max_bytes: int | None = typer.Option(None, "--history-max-bytes", help="Transformed history UTF-8 byte limit; default 65536, not a token budget."),
     config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
     state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
     session_id: str | None = typer.Option(None, "--session"),
@@ -295,28 +400,78 @@ def run_command(
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Run the configured text agent with persistent run/session state."""
+    """Run text or structured user messages with explicit recording/history choices."""
 
+    _usage_options(usage_entry, confirm_usage_code, confirm_usage_recording)
+    try:
+        knowledge_options = KnowledgeRunOptions(knowledge_entry, knowledge_query, confirm_knowledge_code,
+                                                confirm_knowledge_query)
+    except ValueError as error:
+        _fail(str(error))
+    if budget_entry is not None and not confirm_budget_code:
+        _fail("budget code not authorized; pass --confirm-budget-code")
     if not confirm_model_call:
         _fail("model call not authorized; pass --confirm-model-call")
     if tool_entry and not confirm_tool_code:
         _fail("tool code not authorized; pass --confirm-tool-code")
+    if record_inputs and not confirm_input_recording:
+        _fail("input recording not authorized; pass --confirm-input-recording")
+    if history == "recorded" and not confirm_history_media:
+        _fail("recorded history not authorized; pass --confirm-history-media")
+    if history in {"retrieved", "summarized"} and not confirm_history_transform:
+        _fail("history transformation not authorized; pass --confirm-history-transform")
+    if (prompt is None) == (input_file is None) or prompt == "":
+        _fail("provide exactly one nonempty prompt or --input-file")
+    if input_message_fields and input_file is None:
+        _fail("--input-message-fields requires --input-file")
+    if (record_input_name or record_input_metadata) and (not record_inputs or not input_message_fields):
+        _fail("field recording requires --record-inputs and --input-message-fields")
     try:
-        catalog = load_tool_entries(tool_entry) if tool_entry else {}
-        runtime = assemble_local_runtime(
-            load_local_runtime_config(config),
-            state_root,
-            tool_bindings=catalog,
-        )
-        run = asyncio.run(
-            _run_configured_runtime(
-                runtime,
-                prompt,
-                session_id=session_id,
-                session_title=session_title,
-                permissions=frozenset(grant_permission),
+        try:
+            history_options = BuiltinSessionHistoryOptions(
+                mode=history, query=history_query, recent_turns=history_recent_turns,
+                retrieved_turns=history_retrieved_turns, summary_chars=history_summary_chars,
+                max_output_bytes=history_max_bytes,
+                include_name=history_name, include_metadata=history_metadata,
             )
-        )
+        except ValueError as error:
+            raise ValueError(f"invalid --history options: {error}") from None
+        input_recorder = (MessageFieldsSessionInputRecorder(
+            include_name=record_input_name, include_metadata=record_input_metadata,
+        ) if record_input_name or record_input_metadata else None)
+        messages = (load_input_manifest(input_file, **({"allow_message_fields": True} if input_message_fields else {}))
+                    if input_file is not None else None)
+        catalog = load_tool_entries(tool_entry) if tool_entry else {}
+        runtime_config = load_local_runtime_config(config)
+
+        async def execute():
+            selection = getattr(runtime_config, "shared_budget", None)
+            usage_selection = getattr(runtime_config, "service_usage", None)
+            knowledge_selection = getattr(runtime_config, "knowledge", None)
+            async with (
+                budget_binding_scope(budget_entry, selected=selection.binding if selection else None,
+                                     confirmed=confirm_budget_code) as bindings,
+                knowledge_binding_scope(knowledge_options, selected=knowledge_selection.binding if knowledge_selection else None) as knowledge_bindings,
+                service_usage_binding_scope(usage_entry, selected=usage_selection.binding if usage_selection else None,
+                                            confirmed=confirm_usage_code, confirm_record=confirm_usage_recording) as usage_bindings,
+            ):
+                runtime = open_local_runtime(
+                    runtime_config, state_root, tool_bindings=catalog,
+                    **({"shared_budget_bindings": bindings} if budget_entry is not None else {}),
+                    **({"service_usage_bindings": usage_bindings} if usage_entry is not None else {}),
+                    **({"knowledge_bindings": knowledge_bindings} if knowledge_entry is not None else {}),
+                )
+                run = await _run_configured_runtime(
+                    runtime, prompt, session_id=session_id, session_title=session_title,
+                    permissions=frozenset(grant_permission), messages=messages,
+                    record_inputs=record_inputs, history=history, history_options=history_options,
+                    input_recorder=input_recorder,
+                    knowledge_options=knowledge_options,
+                )
+                return (run, await shared_budget_summary(getattr(runtime, "shared_budget", None)),
+                        await service_usage_summary(usage_bindings.get(usage_selection.binding) if usage_selection else None))
+
+        run, budget, usage = asyncio.run(execute())
     except (
         LocalRuntimeConfigError,
         SessionError,
@@ -326,13 +481,23 @@ def run_command(
         _fail(str(error))
     except Exception as error:
         _fail(f"configured run failed: {type(error).__name__}")
-    _emit(_local_run_payload(run), json_output)
+    payload = _local_run_payload(run)
+    if budget is not None:
+        payload["shared_budget"] = budget
+    if usage is not None:
+        payload["service_usage"] = usage
+    _emit(payload, json_output)
 
 
 @app.command("run-resume")
 def run_resume_command(
+    usage_entry: str | None = typer.Option(None, "--usage-entry", help="Trusted module:factory usage-ledger catalog."),
+    confirm_usage_code: bool = typer.Option(False, "--confirm-usage-code"),
+    confirm_usage_recording: bool = typer.Option(False, "--confirm-usage-recording"),
     session_id: str = typer.Argument(..., help="Session owning the checkpoint."),
     run_id: str = typer.Argument(..., help="Run/checkpoint ID to resume."),
+    budget_entry: str | None = typer.Option(None, "--budget-entry", help="Trusted module:factory returning an async budget-catalog context manager."),
+    confirm_budget_code: bool = typer.Option(False, "--confirm-budget-code", help="Authorize unsandboxed host budget setup and cleanup code."),
     approve_tool_call: list[str] = typer.Option(
         [],
         "--approve-tool-call",
@@ -364,6 +529,9 @@ def run_resume_command(
 ) -> None:
     """Resume a persisted tool-approval checkpoint with exact call IDs."""
 
+    _usage_options(usage_entry, confirm_usage_code, confirm_usage_recording)
+    if budget_entry is not None and not confirm_budget_code:
+        _fail("budget code not authorized; pass --confirm-budget-code")
     if not confirm_model_call:
         _fail("model call not authorized; pass --confirm-model-call")
     if tool_entry and not confirm_tool_code:
@@ -372,20 +540,30 @@ def run_resume_command(
         _fail("no tool call approved; pass --approve-tool-call")
     try:
         catalog = load_tool_entries(tool_entry) if tool_entry else {}
-        runtime = assemble_local_runtime(
-            load_local_runtime_config(config),
-            state_root,
-            tool_bindings=catalog,
-        )
-        run = asyncio.run(
-            _resume_configured_runtime(
-                runtime,
-                session_id,
-                run_id,
-                permissions=frozenset(grant_permission),
-                approved_call_ids=frozenset(approve_tool_call),
-            )
-        )
+        runtime_config = load_local_runtime_config(config)
+
+        async def execute():
+            selection = getattr(runtime_config, "shared_budget", None)
+            usage_selection = getattr(runtime_config, "service_usage", None)
+            async with (
+                budget_binding_scope(budget_entry, selected=selection.binding if selection else None,
+                                     confirmed=confirm_budget_code) as bindings,
+                service_usage_binding_scope(usage_entry, selected=usage_selection.binding if usage_selection else None,
+                                            confirmed=confirm_usage_code, confirm_record=confirm_usage_recording) as usage_bindings,
+            ):
+                runtime = open_local_runtime(
+                    runtime_config, state_root, tool_bindings=catalog,
+                    **({"shared_budget_bindings": bindings} if budget_entry is not None else {}),
+                    **({"service_usage_bindings": usage_bindings} if usage_entry is not None else {}),
+                )
+                run = await _resume_configured_runtime(
+                    runtime, session_id, run_id, permissions=frozenset(grant_permission),
+                    approved_call_ids=frozenset(approve_tool_call),
+                )
+                return (run, await shared_budget_summary(getattr(runtime, "shared_budget", None)),
+                        await service_usage_summary(usage_bindings.get(usage_selection.binding) if usage_selection else None))
+
+        run, budget, usage = asyncio.run(execute())
     except (
         LocalRuntimeConfigError,
         RunStoreError,
@@ -396,16 +574,29 @@ def run_resume_command(
         _fail(str(error))
     except Exception as error:
         _fail(f"configured resume failed: {type(error).__name__}")
-    _emit(_local_run_payload(run), json_output)
+    payload = _local_run_payload(run)
+    if budget is not None:
+        payload["shared_budget"] = budget
+    if usage is not None:
+        payload["service_usage"] = usage
+    _emit(payload, json_output)
 
 
 @app.command("evaluate")
 def evaluate_command(
+    usage_entry: str | None = typer.Option(None, "--usage-entry", help="Trusted usage catalog for the entire evaluation."),
+    confirm_usage_code: bool = typer.Option(False, "--confirm-usage-code"),
+    confirm_usage_recording: bool = typer.Option(False, "--confirm-usage-recording"),
     dataset: Path = typer.Argument(
         ...,
         help="Strict local JSON dataset or builtin:<name>[@version].",
     ),
     config: Path = typer.Option(Path(".wagent/config.json"), "--config"),
+    budget_entry: str | None = typer.Option(None, "--budget-entry", help="One trusted module:factory budget context for the entire evaluation."),
+    confirm_budget_code: bool = typer.Option(False, "--confirm-budget-code", help="Authorize unsandboxed host budget setup and cleanup code."),
+    knowledge_entry: str | None = typer.Option(None, "--knowledge-entry", help="One trusted module:factory knowledge catalog for all cases."),
+    confirm_knowledge_code: bool = typer.Option(False, "--confirm-knowledge-code"),
+    confirm_knowledge_queries: bool = typer.Option(False, "--confirm-knowledge-queries", help="Authorize retrieval and sending evidence for every dataset prompt."),
     scorer: list[str] = typer.Option(
         [],
         "--scorer",
@@ -453,13 +644,18 @@ def evaluate_command(
 ) -> None:
     """Evaluate the configured agent sequentially against a local dataset."""
 
+    _usage_options(usage_entry, confirm_usage_code, confirm_usage_recording)
+    if budget_entry is not None and not confirm_budget_code:
+        _fail("budget code not authorized; pass --confirm-budget-code")
     if not confirm_model_call:
         _fail("model calls not authorized; pass --confirm-model-call")
     if tool_entry and not confirm_tool_code:
         _fail("tool code not authorized; pass --confirm-tool-code")
     try:
+        knowledge_options = KnowledgeEvaluationOptions(knowledge_entry, confirm_knowledge_code, confirm_knowledge_queries)
         evaluation_dataset = load_evaluation_dataset(dataset)
         cases = evaluation_dataset.cases
+        knowledge_options.validate_queries(tuple(case.prompt for case in cases))
         scorer_names = scorer or list(evaluation_dataset.scorers)
         scorers = _evaluation_scorers(scorer_names, case_sensitive=case_sensitive)
         catalog = load_tool_entries(tool_entry) if tool_entry else {}
@@ -470,22 +666,37 @@ def evaluate_command(
             else nullcontext(state_root)
         )
         with root_context as evaluation_root:
-            runtime = assemble_local_runtime(
-                config_value,
-                evaluation_root,
-                tool_bindings=catalog,
-            )
-            report = asyncio.run(
-                _run_local_evaluation(
-                    runtime,
-                    cases,
-                    scorers,
-                    permissions=frozenset(grant_permission),
-                )
-            )
+            async def execute():
+                selection = getattr(config_value, "shared_budget", None)
+                usage_selection = getattr(config_value, "service_usage", None)
+                knowledge_selection = getattr(config_value, "knowledge", None)
+                async with (
+                    budget_binding_scope(budget_entry, selected=selection.binding if selection else None,
+                                         confirmed=confirm_budget_code) as bindings,
+                    knowledge_binding_scope(knowledge_options, selected=knowledge_selection.binding if knowledge_selection else None) as knowledge_bindings,
+                    service_usage_binding_scope(usage_entry, selected=usage_selection.binding if usage_selection else None,
+                                                confirmed=confirm_usage_code, confirm_record=confirm_usage_recording) as usage_bindings,
+                ):
+                    runtime = open_local_runtime(
+                        config_value, evaluation_root, tool_bindings=catalog,
+                        **({"shared_budget_bindings": bindings} if budget_entry is not None else {}),
+                        **({"service_usage_bindings": usage_bindings} if usage_entry is not None else {}),
+                        **({"knowledge_bindings": knowledge_bindings} if knowledge_entry is not None else {}),
+                    )
+                    report = await _run_local_evaluation(
+                        runtime, cases, scorers, permissions=frozenset(grant_permission),
+                        knowledge_options=knowledge_options,
+                    )
+                    return (report, await shared_budget_summary(getattr(runtime, "shared_budget", None)),
+                            await service_usage_summary(usage_bindings.get(usage_selection.binding) if usage_selection else None))
+
+            report, budget, usage = asyncio.run(execute())
         if report_path is not None:
             asyncio.run(
-                JsonEvaluationReporter(include_outputs=include_outputs).write(
+                JsonEvaluationReporter(
+                    include_outputs=include_outputs,
+                    **({"accounting_scope": "model-runs-only; retrieval-not-included"} if knowledge_entry is not None else {}),
+                ).write(
                     report,
                     report_path,
                 )
@@ -499,6 +710,13 @@ def evaluate_command(
     ) as error:
         _fail(str(error))
     payload = evaluation_report_to_dict(report, include_outputs=include_outputs)
+    if knowledge_entry is not None:
+        payload["knowledge"] = {"query_source": "each-case-prompt", "accounting_scope": "model-runs-only; retrieval-not-included"}
+        payload["accounting_scope"] = "model-runs-only; retrieval-not-included"
+    if budget is not None:
+        payload["shared_budget"] = budget
+    if usage is not None:
+        payload["service_usage"] = usage
     _emit_evaluation(payload, json_output=json_output)
     if report.passed != report.total:
         raise typer.Exit(1)
@@ -664,6 +882,55 @@ def plugin_validate_load(
     console.print(table)
 
 
+@plugin_app.command("session")
+def plugin_session(
+    config: Path = typer.Option(Path(".wagent/plugins.yml"), "--config"),
+    confirm_plugin_code: bool = typer.Option(
+        False, "--confirm-plugin-code",
+        help="Authorize initial trusted Python imports/setup in this process (not sandboxed).",
+    ),
+) -> None:
+    """Open a local plugin session; review/replace here, unload on exit."""
+    if not confirm_plugin_code:
+        _fail("plugin code not authorized; pass --confirm-plugin-code")
+    from w_agent.plugin_session_cli import run_plugin_session
+
+    try:
+        asyncio.run(run_plugin_session(config))
+    except Exception as error:
+        _fail(f"plugin session failed: {type(error).__name__}")
+
+
+@plugin_app.command("validate-installed")
+def plugin_validate_installed(
+    install_path: Path = typer.Argument(..., exists=True, file_okay=False),
+    confirm_plugin_code: bool = typer.Option(
+        False,
+        "--confirm-plugin-code",
+        help="Authorize importing and executing the verified installed plugin.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Verify, load, report, and unload one installed plugin site."""
+
+    if not confirm_plugin_code:
+        _fail("plugin code not authorized; pass --confirm-plugin-code")
+    try:
+        installation = load_plugin_install_result(install_path)
+        payload = asyncio.run(_validate_installed_plugin(installation))
+    except (
+        CompositionError,
+        OSError,
+        PluginInstallationError,
+        PluginLoadError,
+        ValueError,
+    ) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"installed plugin validation failed: {type(error).__name__}")
+    _emit(payload, json_output)
+
+
 @checkpoint_app.command("list")
 def checkpoint_list(
     state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
@@ -701,6 +968,70 @@ def checkpoint_list(
             ", ".join(item["pending_argument_keys"]),
         )
     console.print(table)
+
+
+@app.command("run-events")
+def run_events(
+    run_id: str = typer.Argument(..., help="Exact local run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    after_sequence: int = typer.Option(0, "--after-sequence"),
+    limit: int = typer.Option(100, "--limit"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Read a privacy-safe page of persisted events without executing a run."""
+
+    try:
+        if limit > 500:
+            raise ValueError("run event CLI limit must not exceed 500")
+        if not (state_root / "runs").is_dir():
+            raise RunStoreError("local run event store does not exist")
+        page = asyncio.run(
+            RunEventReplay(JsonlRunStore(state_root)).projected_page(
+                run_id,
+                cursor=RunEventCursor(run_id, after_sequence),
+                limit=limit,
+            )
+        )
+    except (OSError, RunStoreError, ValueError) as error:
+        _fail(str(error))
+    payload = {
+        "run_id": page.cursor.run_id,
+        "after_sequence": page.cursor.sequence,
+        "next_sequence": page.next_cursor.sequence,
+        "has_more": page.has_more,
+        "events": list(page.events),
+    }
+    if json_output:
+        _emit(payload, True)
+        return
+    console.print(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        markup=False,
+    )
+
+
+@app.command("run-view")
+def run_view_command(
+    run_id: str = typer.Argument(..., help="Exact local Run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    snapshot: Path | None = typer.Option(None, "--snapshot", help="Complete previous view JSON; trusted cache only."),
+    limit: int = typer.Option(100, "--limit", help="Events in this page, 1 to 500."),
+    include_text: bool = typer.Option(False, "--include-text"),
+    include_tools: bool = typer.Option(False, "--include-tools", help="Expose tool identities and arguments."),
+    include_tool_results: bool = typer.Option(False, "--include-tool-results"),
+    media: str = typer.Option("metadata", "--media", help="metadata, references, or content; never fetched."),
+    confirm_sensitive: bool = typer.Option(False, "--confirm-sensitive-content"),
+    trust_snapshot: bool = typer.Option(False, "--trust-snapshot"),
+) -> None:
+    """Print one accumulated read-only Run view as JSON; never execute or write a cache."""
+    options = ViewOptions(include_text=include_text, include_tools=include_tools,
+                          include_tool_results=include_tool_results, media=media,
+                          confirm_sensitive=confirm_sensitive, trust_snapshot=trust_snapshot)
+    try:
+        output = asyncio.run(run_view(run_id, state_root, options=options, snapshot=snapshot, limit=limit))
+    except ReplayViewError as error:
+        _fail(str(error))
+    typer.echo(output)
 
 
 @checkpoint_app.command("workflow-list")
@@ -767,6 +1098,11 @@ def workflow_checkpoint_resume(
         "--confirm-resume",
         help="Authorize resuming the exact persisted workflow run.",
     ),
+    enable_pause_control: bool = typer.Option(
+        False,
+        "--enable-pause-control",
+        help="Observe local SQLite pause requests at committed node boundaries.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Load an exact versioned workflow definition and resume its checkpoint."""
@@ -783,18 +1119,282 @@ def workflow_checkpoint_resume(
                 state_root,
                 run_id,
                 workflow_entry,
+                enable_pause_control=enable_pause_control,
             )
         )
     except (
         OSError,
         WorkflowEntryLoadError,
         WorkflowStoreError,
+        WorkflowPauseControlError,
         ValueError,
     ) as error:
         _fail(str(error))
     except Exception as error:
         _fail(f"workflow resume failed: {type(error).__name__}")
     _emit(_workflow_result_payload(result), json_output)
+
+
+@checkpoint_app.command("workflow-pause")
+def workflow_pause_request(
+    run_id: str = typer.Argument(..., help="Exact workflow run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    confirm_pause: bool = typer.Option(False, "--confirm-pause"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Request a boundary pause; this does not prove a worker is running."""
+
+    if not confirm_pause:
+        _fail("workflow pause not authorized; pass --confirm-pause")
+    try:
+        checkpoint = asyncio.run(JsonlWorkflowStore(state_root).load_checkpoint(run_id))
+        if checkpoint is None:
+            _fail("workflow run has no checkpoint; pause request was not written")
+        SQLiteWorkflowPauseController(state_root).request_pause(run_id)
+    except (OSError, ValueError, WorkflowStoreError, WorkflowPauseControlError) as error:
+        _fail(str(error))
+    _emit(
+        {"run_id": run_id, "request_recorded": True, "execution_acknowledged": False},
+        json_output,
+    )
+
+
+@checkpoint_app.command("workflow-pause-status")
+def workflow_pause_status(
+    run_id: str = typer.Argument(..., help="Exact workflow run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Read request/checkpoint snapshots, not process liveness or an ACK."""
+
+    try:
+        requested = SQLiteWorkflowPauseController(state_root).is_pause_requested(run_id)
+        checkpoint = asyncio.run(JsonlWorkflowStore(state_root).load_checkpoint(run_id))
+    except (OSError, ValueError, WorkflowStoreError, WorkflowPauseControlError) as error:
+        _fail(str(error))
+    _emit(
+        {
+            "run_id": run_id,
+            "pause_requested": requested,
+            "checkpoint_status": checkpoint.status.value if checkpoint else None,
+        },
+        json_output,
+    )
+
+
+@checkpoint_app.command("workflow-pause-clear")
+def workflow_pause_clear(
+    run_id: str = typer.Argument(..., help="Exact workflow run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    confirm_clear: bool = typer.Option(False, "--confirm-clear"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Clear one request without resuming a workflow or changing checkpoints."""
+
+    if not confirm_clear:
+        _fail("workflow pause clear not authorized; pass --confirm-clear")
+    try:
+        SQLiteWorkflowPauseController(state_root).clear(run_id)
+    except (OSError, ValueError, WorkflowPauseControlError) as error:
+        _fail(str(error))
+    _emit({"run_id": run_id, "request_cleared": True, "resumed": False}, json_output)
+
+
+@checkpoint_app.command("workflow-approvals")
+def workflow_approval_review(
+    run_id: str = typer.Argument(..., help="Exact parent workflow run ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    agent_state_root: Path | None = typer.Option(None, "--agent-state-root"),
+    state_key: list[str] = typer.Option(
+        [], "--state-key", help="Explicit custom approval state key; may repeat.",
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Review linked approval identities/status only; never grant or execute."""
+
+    try:
+        selected_agent_root = agent_state_root if agent_state_root is not None else state_root
+        # Store constructors create directories; refuse absent roots first so
+        # a read-only query does not initialize a workspace by accident.
+        if not (state_root / "workflows").is_dir():
+            _fail("workflow state directory does not exist")
+        if not (selected_agent_root / "runs").is_dir():
+            _fail("Agent state directory does not exist; select --agent-state-root")
+        reviews = asyncio.run(review_workflow_approvals(
+            JsonlWorkflowStore(state_root), JsonlRunStore(selected_agent_root), run_id,
+            state_keys=tuple(state_key) if state_key else None,
+        ))
+    except (OSError, ValueError, WorkflowStoreError, RunStoreError, AgentWorkflowAdapterError) as error:
+        _fail(f"workflow approval review failed: {type(error).__name__}")
+    _emit([item.to_dict() for item in reviews], json_output)
+
+
+@checkpoint_app.command("workflow-approve-resume")
+def workflow_approval_resume(
+    run_id: str = typer.Argument(..., help="Exact parent workflow run ID."),
+    workflow_factory: str = typer.Option(..., "--workflow-factory"),
+    node: str = typer.Option(..., "--node"),
+    agent_run: str = typer.Option(..., "--agent-run"),
+    agent_name: str = typer.Option(..., "--agent-name"),
+    approve_tool_call: str = typer.Option(..., "--approve-tool-call"),
+    tool_name: str = typer.Option(..., "--tool-name"),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    agent_state_root: Path | None = typer.Option(None, "--agent-state-root"),
+    state_key: list[str] = typer.Option([], "--state-key"),
+    grant_permission: list[str] = typer.Option([], "--grant-permission"),
+    confirm_workflow_code: bool = typer.Option(False, "--confirm-workflow-code"),
+    confirm_approval: bool = typer.Option(False, "--confirm-approval"),
+    confirm_resume: bool = typer.Option(False, "--confirm-resume"),
+    enable_pause_control: bool = typer.Option(False, "--enable-pause-control"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Approve one reviewed linked call and resume the parent via a trusted factory.
+
+    Recovery may run subsequent workflow nodes and billable model calls. The
+    factory must return an async context manager and use the supplied stores and
+    grants. Inspect the actual tool action before confirming its identifiers.
+    """
+
+    if not confirm_workflow_code:
+        _fail("workflow code not authorized; pass --confirm-workflow-code")
+    if not confirm_approval:
+        _fail("exact call approval not authorized; pass --confirm-approval")
+    if not confirm_resume:
+        _fail("parent execution not authorized; pass --confirm-resume")
+    selected_agent_root = agent_state_root if agent_state_root is not None else state_root
+    if not (state_root / "workflows").is_dir():
+        _fail("workflow state directory does not exist")
+    if not (selected_agent_root / "runs").is_dir():
+        _fail("Agent state directory does not exist; select --agent-state-root")
+    try:
+        reference = AgentWorkflowApproval(
+            run_id, node, agent_run, agent_name, approve_tool_call, tool_name,
+        )
+        result = asyncio.run(resume_workflow_approval(
+            JsonlWorkflowStore(state_root), JsonlRunStore(selected_agent_root), reference,
+            lambda context: open_workflow_approval_entry(workflow_factory, context),
+            permissions=frozenset(grant_permission),
+            state_keys=tuple(state_key) if state_key else None,
+            pause_source=SQLiteWorkflowPauseController(state_root) if enable_pause_control else None,
+        ))
+    except Exception as error:
+        # Imported developer code and custom stores can put private data in errors.
+        _fail(f"workflow approval resume failed: {type(error).__name__}")
+    _emit(_workflow_result_payload(result), json_output)
+
+
+def _workflow_tool_stores(
+    state_root: Path, workflow_state_root: Path | None, child_state_root: Path | None,
+) -> tuple[JsonlRunStore, JsonlWorkflowStore, JsonlRunStore]:
+    workflow_root = workflow_state_root if workflow_state_root is not None else state_root
+    child_root = child_state_root if child_state_root is not None else state_root
+    # Validate all roots before any constructor can initialize a directory.
+    for directory, label in (
+        (state_root / "runs", "parent Agent"),
+        (workflow_root / "workflows", "Workflow"),
+        (child_root / "runs", "child Agent"),
+    ):
+        if not directory.is_dir():
+            _fail(f"{label} state directory does not exist")
+    try:
+        return JsonlRunStore(state_root), JsonlWorkflowStore(workflow_root), JsonlRunStore(child_root)
+    except (OSError, ValueError) as error:
+        _fail(f"approval state stores unavailable: {type(error).__name__}")
+
+
+@checkpoint_app.command("workflow-tool-approvals")
+def workflow_tool_approval_review(
+    run_id: str = typer.Argument(..., help="Exact outer Agent run ID, not the middle Workflow ID."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    workflow_state_root: Path | None = typer.Option(None, "--workflow-state-root"),
+    child_state_root: Path | None = typer.Option(None, "--child-state-root"),
+    state_key: list[str] = typer.Option([], "--state-key"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Inspect Agent -> Workflow -> Agent approval links without loading code."""
+    stores = _workflow_tool_stores(state_root, workflow_state_root, child_state_root)
+    try:
+        reviews = asyncio.run(review_workflow_tool_approvals(
+            *stores, run_id, state_keys=tuple(state_key) if state_key else None,
+        ))
+    except Exception as error:
+        _fail(f"workflow tool approval review failed: {type(error).__name__}")
+    _emit([item.to_dict() for item in reviews], json_output)
+
+
+@checkpoint_app.command("workflow-tool-approve-resume")
+def workflow_tool_approval_resume(
+    run_id: str = typer.Argument(..., help="Exact outer Agent run ID."),
+    agent_factory: str = typer.Option(..., "--agent-factory", help="Trusted module:attribute async parent-loop factory."),
+    parent_call: str = typer.Option(..., "--parent-call"),
+    parent_tool: str = typer.Option(..., "--parent-tool"),
+    workflow_run: str = typer.Option(..., "--workflow-run"),
+    workflow_name: str = typer.Option(..., "--workflow-name"),
+    workflow_version: str = typer.Option(..., "--workflow-version"),
+    workflow_kind: WorkflowKind = typer.Option(..., "--workflow-kind"),
+    sequence: int = typer.Option(..., "--sequence", min=1, help="Workflow event sequence from the reviewed boundary."),
+    node: str = typer.Option(..., "--node"),
+    child_run: str = typer.Option(..., "--child-run"),
+    child_agent: str = typer.Option(..., "--child-agent"),
+    child_call: str = typer.Option(..., "--child-call"),
+    child_tool: str = typer.Option(..., "--child-tool"),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    workflow_state_root: Path | None = typer.Option(None, "--workflow-state-root"),
+    child_state_root: Path | None = typer.Option(None, "--child-state-root"),
+    state_key: list[str] = typer.Option([], "--state-key"),
+    parent_permission: list[str] = typer.Option([], "--parent-permission"),
+    child_permission: list[str] = typer.Option([], "--child-permission"),
+    confirm_agent_code: bool = typer.Option(False, "--confirm-agent-code"),
+    confirm_parent_approval: bool = typer.Option(False, "--confirm-parent-approval"),
+    confirm_child_approval: bool = typer.Option(False, "--confirm-child-approval"),
+    confirm_resume: bool = typer.Option(False, "--confirm-resume"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Approve two exact calls and resume the outer Agent via its owned chain.
+
+    All identities and the event boundary must match a fresh review. Continuing
+    may execute later nodes/tools and billable model calls. The factory owns
+    clients and explicitly configures execution/pause policies; this is not a
+    sandbox or a shortcut to independently resuming the middle Workflow.
+    """
+    for confirmed, option in (
+        (confirm_agent_code, "--confirm-agent-code"),
+        (confirm_parent_approval, "--confirm-parent-approval"),
+        (confirm_child_approval, "--confirm-child-approval"),
+        (confirm_resume, "--confirm-resume"),
+    ):
+        if not confirmed:
+            _fail(f"two-layer recovery not authorized; pass {option}")
+    stores = _workflow_tool_stores(state_root, workflow_state_root, child_state_root)
+    keys = tuple(state_key) if state_key else None
+
+    async def recover() -> RunResult:
+        reviews = await review_workflow_tool_approvals(*stores, run_id, state_keys=keys)
+        inner = AgentWorkflowApproval(workflow_run, node, child_run, child_agent, child_call, child_tool)
+        selected = [item for item in reviews if (
+            item.parent.agent_run_id == run_id
+            and item.parent.call_id == parent_call and item.parent.tool_name == parent_tool
+            and item.parent.workflow_run_id == workflow_run
+            and item.parent.workflow_name == workflow_name
+            and item.parent.workflow_version == workflow_version
+            and item.parent.workflow_kind == workflow_kind
+            and item.sequence == sequence and item.child.reference == inner
+            and item.child.link_status is WorkflowApprovalLinkStatus.MATCHED
+        )]
+        if len(selected) != 1:
+            raise WorkflowToolApprovalError("selected chain is absent, stale, or not pending")
+        return await resume_workflow_tool_approval(
+            *stores, selected[0],
+            lambda context: open_workflow_tool_approval_entry(agent_factory, context),
+            parent_permissions=frozenset(parent_permission),
+            child_permissions=frozenset(child_permission), state_keys=keys,
+        )
+
+    try:
+        result = asyncio.run(recover())
+    except Exception as error:
+        _fail(f"workflow tool approval resume failed: {type(error).__name__}")
+    _emit(_approval_run_result_payload(result), json_output)
 
 
 @config_app.command("list")
@@ -936,6 +1536,188 @@ def composition_plan(
     console.print(table)
 
 
+@composition_app.command("install-plan")
+def composition_install_plan(
+    code: str = typer.Argument(...),
+    catalog: Path = typer.Option(
+        ...,
+        "--catalog",
+        exists=True,
+        dir_okay=False,
+        help="Explicit locked plugin-package catalog.",
+    ),
+    inventory: Path | None = typer.Option(
+        None,
+        "--inventory",
+        exists=True,
+        dir_okay=False,
+        help="Optional installed-plugin inventory.",
+    ),
+    python_version: str | None = typer.Option(None, "--python-version"),
+    wagent_version: str | None = typer.Option(None, "--wagent-version"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Create a locked package-install plan without network or imports."""
+
+    try:
+        install_plan = _build_plugin_install_plan(
+            code,
+            catalog,
+            inventory,
+            python_version=python_version,
+            wagent_version=wagent_version,
+        )
+    except (CompositionError, OSError, ValueError) as error:
+        _fail(str(error))
+    payload = plugin_installation_plan_to_dict(install_plan)
+    if json_output:
+        _emit(payload, True)
+        return
+    console.print(
+        f"Composition digest: {install_plan.composition_digest}\n"
+        f"Installable: {install_plan.installable}\n"
+        "No network was accessed and no package or plugin code was executed.",
+        markup=False,
+    )
+    table = Table(title="Locked plugin package requests")
+    table.add_column("Plugin")
+    table.add_column("Version")
+    table.add_column("Source")
+    table.add_column("Index origin")
+    table.add_column("Request digest")
+    table.add_column("Packages")
+    for request in install_plan.requests:
+        table.add_row(
+            request.lock.name,
+            request.lock.version,
+            request.lock.source,
+            request.index.origin,
+            request.digest,
+            ", ".join(
+                f"{item.name}=={item.version}" for item in request.lock.packages
+            ),
+        )
+    console.print(table)
+    if install_plan.blockers:
+        blocker_table = Table(title="Installation blockers")
+        blocker_table.add_column("Plugin")
+        blocker_table.add_column("Reason")
+        for blocker in install_plan.blockers:
+            blocker_table.add_row(blocker.plugin_name or "environment", blocker.reason)
+        console.print(blocker_table)
+
+
+@composition_app.command("install")
+def composition_install(
+    code: str = typer.Argument(...),
+    request_digest: str = typer.Argument(
+        ...,
+        help="Exact request digest shown by composition install-plan.",
+    ),
+    catalog: Path = typer.Option(
+        ...,
+        "--catalog",
+        exists=True,
+        dir_okay=False,
+    ),
+    inventory: Path | None = typer.Option(
+        None,
+        "--inventory",
+        exists=True,
+        dir_okay=False,
+    ),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root"),
+    backend: str = typer.Option("docker", "--backend", help="docker or unsafe-local"),
+    docker_image: str = typer.Option("python:3.11-slim", "--docker-image"),
+    confirm_network: bool = typer.Option(False, "--confirm-network"),
+    confirm_package_code: bool = typer.Option(False, "--confirm-package-code"),
+    confirm_unsafe_local: bool = typer.Option(False, "--confirm-unsafe-local"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Install one exact locked request through an explicitly selected sandbox."""
+
+    try:
+        install_plan = _build_plugin_install_plan(code, catalog, inventory)
+        if install_plan.blockers:
+            reasons = ", ".join(item.reason for item in install_plan.blockers)
+            raise PluginInstallationError(f"installation plan is blocked: {reasons}")
+        matches = [
+            item for item in install_plan.requests if item.digest == request_digest
+        ]
+        if len(matches) != 1:
+            raise PluginInstallationError(
+                "request digest is absent or ambiguous; run install-plan again"
+            )
+        request = matches[0]
+        authorization = PluginInstallAuthorization.grant(
+            request.digest,
+            "cli",
+            acknowledge_network_access=confirm_network,
+            acknowledge_package_code=confirm_package_code,
+        )
+        normalized_backend = backend.strip().lower()
+        if normalized_backend not in {"docker", "unsafe-local"}:
+            raise ValueError("plugin install backend must be docker or unsafe-local")
+        if normalized_backend == "unsafe-local" and not confirm_unsafe_local:
+            raise PermissionError(
+                "unsafe local install not authorized; pass --confirm-unsafe-local"
+            )
+        workspace = state_root.resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        if normalized_backend == "docker":
+            provider = DockerSandboxProvider()
+            sandbox = SandboxSpec(
+                workspace,
+                image=docker_image,
+                network=SandboxNetwork.BRIDGE,
+                user=recommended_docker_install_user(),
+            )
+            python_executable = "python"
+        elif normalized_backend == "unsafe-local":
+            local_authorization = UnsafeLocalAuthorization.grant(
+                "plugin-install-cli",
+                acknowledge_host_access=True,
+            )
+            provider = UnsafeLocalSandboxProvider(local_authorization)
+            sandbox = SandboxSpec(
+                workspace,
+                network=SandboxNetwork.BRIDGE,
+                inherit_host_environment=True,
+            )
+            python_executable = sys.executable
+        result = asyncio.run(
+            SandboxPipPackageInstaller(
+                provider,
+                sandbox,
+                python_executable=python_executable,
+            ).install(request, authorization)
+        )
+    except (
+        CompositionError,
+        OSError,
+        PermissionError,
+        PluginInstallationError,
+        ValueError,
+    ) as error:
+        _fail(str(error))
+    except Exception as error:
+        _fail(f"plugin package installation failed: {type(error).__name__}")
+    _emit(
+        {
+            "request_digest": result.request_digest,
+            "composition_digest": result.composition_digest,
+            "plugin": result.plugin_name,
+            "version": result.plugin_version,
+            "source": result.source,
+            "entry": result.entry,
+            "target": str(result.target),
+            "tree_digest": result.tree_digest,
+            "plugin_load_authorized": False,
+        },
+        json_output,
+    )
+
+
 @composition_app.command("save")
 def composition_save(
     code: str = typer.Argument(...),
@@ -1036,6 +1818,45 @@ def session_show(
     except (SessionError, ValueError) as error:
         _fail(str(error))
     _emit(_session_payload(session, include_details=True), json_output)
+
+
+@session_app.command("view")
+def session_view_command(
+    session_id: str = typer.Argument(..., help="Exact local Session ID."),
+    root: Path = typer.Option(Path(".wagent/sessions"), "--root", help="Existing Session store."),
+    state_root: Path = typer.Option(Path(".wagent"), "--state-root", help="Existing Run state root."),
+    snapshot: Path | None = typer.Option(None, "--snapshot", help="Complete previous view JSON; trusted cache only."),
+    run_offset: int = typer.Option(0, "--run-offset"),
+    run_limit: int = typer.Option(10, "--run-limit", help="Registered Runs to read, 1 to 32."),
+    event_limit: int = typer.Option(100, "--event-limit", help="Events per selected Run, 1 to 500."),
+    include_text: bool = typer.Option(False, "--include-text", help="Expose recorded model text."),
+    include_session_text: bool = typer.Option(False, "--include-session-text"),
+    input_media: str | None = typer.Option(None, "--input-media", help="Session input blocks: metadata, references, or content; off by default."),
+    include_input_name: bool = typer.Option(False, "--include-input-name", help="Expose explicitly recorded input message names; requires sensitive-content consent."),
+    include_input_metadata: bool = typer.Option(False, "--include-input-metadata", help="Expose explicitly recorded input message metadata; independent from media and Session text."),
+    include_tools: bool = typer.Option(False, "--include-tools", help="Expose tool identities and arguments."),
+    include_tool_results: bool = typer.Option(False, "--include-tool-results"),
+    media: str = typer.Option("metadata", "--media", help="metadata, references, or content; never fetched."),
+    allow_unscoped_events: bool = typer.Option(False, "--allow-unscoped-events", help="Allow legacy events with no Session ID, never a different Session."),
+    confirm_sensitive: bool = typer.Option(False, "--confirm-sensitive-content"),
+    trust_snapshot: bool = typer.Option(False, "--trust-snapshot"),
+) -> None:
+    """Print one bounded Session view as JSON; membership offsets do not imply completion."""
+    options = ViewOptions(include_text=include_text, include_tools=include_tools,
+                          include_tool_results=include_tool_results, media=media,
+                          include_session_text=include_session_text,
+                          input_media=input_media,
+                          include_input_name=include_input_name, include_input_metadata=include_input_metadata,
+                          confirm_sensitive=confirm_sensitive, trust_snapshot=trust_snapshot)
+    try:
+        output = asyncio.run(session_view(
+            session_id, state_root, root, options=options, snapshot=snapshot,
+            run_offset=run_offset, run_limit=run_limit, event_limit=event_limit,
+            allow_unscoped_events=allow_unscoped_events,
+        ))
+    except ReplayViewError as error:
+        _fail(str(error))
+    typer.echo(output)
 
 
 @session_app.command("usage")
@@ -1165,12 +1986,14 @@ async def _run_local_evaluation(
     scorers: tuple[EvaluationScorer, ...],
     *,
     permissions: frozenset[str],
+    knowledge_options: KnowledgeEvaluationOptions | None = None,
 ) -> EvaluationReport:
     async def target(case: EvaluationCase):
         run = await runtime.run(
             case.prompt,
             session_title=f"Evaluation: {case.name}",
             permissions=permissions,
+            **(knowledge_options.runtime_options(case.prompt) if knowledge_options is not None else {}),
         )
         return run.result
 
@@ -1180,19 +2003,31 @@ async def _run_local_evaluation(
 
 async def _run_configured_runtime(
     runtime: Any,
-    prompt: str,
+    prompt: str | None,
     *,
     session_id: str | None,
     session_title: str | None,
     permissions: frozenset[str],
+    messages: tuple[ModelMessage, ...] | None = None,
+    record_inputs: bool = False,
+    history: str = "text",
+    history_options: BuiltinSessionHistoryOptions | None = None,
+    input_recorder: SessionInputRecorder | None = None,
+    knowledge_options: KnowledgeRunOptions | None = None,
 ) -> Any:
     async with runtime:
-        return await runtime.run(
-            prompt,
-            session_id=session_id,
-            session_title=session_title,
-            permissions=permissions,
-        )
+        options: dict[str, Any] = {"session_id": session_id, "session_title": session_title, "permissions": permissions}
+        if record_inputs:
+            options["record_inputs"] = True
+        if input_recorder is not None:
+            options["input_recorder"] = input_recorder
+        selection = history_options if history_options is not None else BuiltinSessionHistoryOptions(mode=history)
+        options.update(selection.runtime_options())
+        if knowledge_options is not None:
+            options.update(knowledge_options.runtime_options())
+        if messages is not None:
+            return await runtime.run_messages(messages, **options)
+        return await runtime.run(prompt, **options)
 
 
 async def _resume_configured_runtime(
@@ -1217,8 +2052,13 @@ async def _probe_configured_provider(
     *,
     mode: ProbeMode,
     allow_active: bool,
+    shared_budget_bindings: Mapping[str, Any] | None = None,
+    service_usage_bindings: Mapping[str, Any] | None = None,
 ) -> ProbeResult:
-    assembly = assemble_local_provider(config)
+    assembly = assemble_local_provider(
+        config, **({"shared_budget_bindings": shared_budget_bindings} if shared_budget_bindings is not None else {}),
+        **({"service_usage_bindings": service_usage_bindings} if service_usage_bindings is not None else {}),
+    )
     async with assembly:
         return await ModelProviderProbe().probe(
             assembly.name,
@@ -1233,6 +2073,8 @@ async def _resume_workflow_checkpoint(
     state_root: Path,
     run_id: str,
     workflow_entries: list[str],
+    *,
+    enable_pause_control: bool = False,
 ):
     store = JsonlWorkflowStore(state_root)
     checkpoint = await store.load_checkpoint(run_id)
@@ -1250,7 +2092,57 @@ async def _resume_workflow_checkpoint(
         )
     if definition.kind is not checkpoint.kind:
         raise WorkflowStoreError("loaded workflow kind differs from the checkpoint")
-    return await LocalWorkflowEngine(store).resume(definition, run_id)
+    pause_source = (
+        SQLiteWorkflowPauseController(state_root) if enable_pause_control else None
+    )
+    async with open_local_workflow(state_root, pause_source=pause_source) as host:
+        return await host.invoke("resume", definition, run_id)
+
+
+def _build_plugin_install_plan(
+    code: str,
+    catalog_path: Path,
+    inventory: Path | None,
+    *,
+    python_version: str | None = None,
+    wagent_version: str | None = None,
+) -> PluginInstallationPlan:
+    preview = inspect_composition(code)
+    candidates = load_plugin_candidates(inventory) if inventory else ()
+    dependency_plan = plan_composition(
+        preview.manifest,
+        CompositionEnvironment(
+            python_version or platform.python_version(),
+            wagent_version or get_version(),
+        ),
+        StaticCompositionDependencyResolver(candidates),
+    )
+    return plan_plugin_installations(
+        dependency_plan,
+        load_plugin_install_catalog(catalog_path),
+    )
+
+
+async def _validate_installed_plugin(
+    installation: PluginInstallResult,
+) -> tuple[dict[str, Any], ...]:
+    manager = PluginManager()
+    batch = None
+    try:
+        batch = await load_installed_plugin_references(
+            manager,
+            (InstalledPluginReference(installation),),
+        )
+        return tuple(
+            _plugin_record_payload(record)
+            for record in manager.records()
+            if record.state.value == "active"
+        )
+    finally:
+        if batch is not None:
+            await batch.unload()
+        else:
+            await manager.close()
 
 
 async def _validate_plugin_batch(
@@ -1306,6 +2198,12 @@ def _emit_evaluation(payload: dict[str, Any], *, json_output: bool) -> None:
             f"{case['tool_successes']}/{case['tool_failures']}",
         )
     console.print(table)
+    if "shared_budget" in payload:
+        console.print("Shared pool (not evaluation-only usage): " + json.dumps(payload["shared_budget"], ensure_ascii=False),
+                      markup=False)
+    if "service_usage" in payload:
+        console.print("Service usage (host operation, not evaluation-only usage): " + json.dumps(payload["service_usage"], ensure_ascii=False),
+                      markup=False)
 
 
 def _probe_result_payload(result: ProbeResult) -> dict[str, Any]:
@@ -1539,6 +2437,27 @@ def _workflow_checkpoint_payload(
     }
 
 
+def _approval_run_result_payload(result: RunResult) -> dict[str, Any]:
+    """Status/accounting only; no model output, arguments, or event bodies."""
+    pending = result.pending_tool_call
+    return {
+        "run_id": result.run_id, "checkpoint_id": result.checkpoint_id,
+        "stop_reason": result.stop_reason.value, "steps": result.steps,
+        "tool_calls": result.tool_calls,
+        "pending_call_id": pending.id if pending is not None else None,
+        "pending_tool_name": pending.name if pending is not None else None,
+        "usage": {
+            "input_tokens": result.usage.input_tokens,
+            "output_tokens": result.usage.output_tokens,
+            "cached_input_tokens": result.usage.cached_input_tokens,
+            "total_tokens": result.usage.total_tokens,
+            "complete": result.usage_complete,
+        },
+        "cost": _cost_payload(result.cost), "cost_complete": result.cost_complete,
+        "selected_child_execution_confirmed": False,
+    }
+
+
 def _workflow_result_payload(result: Any) -> dict[str, Any]:
     safe_fields = {
         "workflow",
@@ -1639,6 +2558,23 @@ def _aggregate_costs(costs: tuple[ModelCost | None, ...]) -> ModelCost | None:
 def _fail(message: str) -> None:
     error_console.print(f"Error: {message}", markup=False)
     raise typer.Exit(2)
+
+
+def _usage_options(entry: str | None, code: bool, recording: bool) -> None:
+    """Validate recording separately, before input files or any host code."""
+    try:
+        ServiceUsageOptions(entry, code, recording)
+    except ValueError as error:
+        _fail(str(error))
+
+
+register_knowledge_commands(app)
+register_knowledge_index_commands(app)
+register_knowledge_plan_actions(app)
+register_knowledge_build_commands(app)
+register_knowledge_sync_commands(app)
+register_knowledge_archive_commands(app)
+register_service_usage_commands(app)
 
 
 def main() -> None:

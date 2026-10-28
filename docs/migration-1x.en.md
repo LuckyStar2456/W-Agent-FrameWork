@@ -1,6 +1,12 @@
 # Migrating from 1.x
 
+> Applies to 2.0.0. `Experimental` APIs remain experimental; `Planned` / `Reserved` does not mean implemented. See [release verification](./acceptance-2026-10-01-stable-release.en.md).
+
 English | [简体中文](./migration-1x.md)
+
+> Release scope: the new framework core described here is included in 2.1.0. Earlier “unpublished” labels and candidate 2.0.0 metadata below record pre-release stages, not the 2.1.0 package status. See [2.1.0 notes](./releases/2.1.0.en.md); upload status is on [PyPI](https://pypi.org/project/wagent-framework/2.1.0/).
+
+The unpublished new core preserves decorator names but requires explicit `compile_decorated()` and `ApplicationContext` to obtain new lifecycle semantics. Legacy BeanFactory keeps its old behavior; `borrow_legacy_singletons()` can borrow created singletons without registering disposal in both containers. New contexts invoke only marked lifecycle methods, not guessed names; replace `prototype` with an explicit run/step scope. See [decorator migration usage](./annotation-development.en.md) for configuration factories, qualifiers and Value binding.
 
 Status: `Experimental`. `LegacyAgentAdapter` is implemented; bridges from EventBus, configuration, and legacy sandboxes into current protocols remain `Planned`.
 
@@ -47,7 +53,19 @@ result = await LocalWorkflowEngine().start(
 
 ## BeanFactory and component decorators
 
-The existing IOC container may serve as a plugin-construction backend during migration. The unified Registry becomes the long-term composition mechanism. Decorators remain a syntax entry point but produce the same `PluginSpec` as explicit Python construction.
+Legacy BeanFactory retains its semantics. New assembly uses `AssemblyPlan` / `ApplicationContext`; Registry only indexes capabilities. Component decorators compile into `ComponentDefinition`, not automatically into `PluginSpec`. Use `ApplicationPlugin` explicitly for a plugin boundary. Borrowing old singletons does not transfer disposal ownership.
+
+## New-core migration map (unpublished)
+
+| Existing usage | New usage | Boundary |
+|---|---|---|
+| Manual construction and cleanup | `compile_assembly` + `ApplicationContext` | Owned factories versus borrowed external instances; no duplicate cleanup |
+| Decorators / BeanFactory | `compile_decorated` or `compile_configured` | Explicit loaded-module scans and allowlisted configuration catalogs |
+| Manual `ProxyFactory` proxies | `Aspect` and plan `aspects` | No automatic upgrade; self-calls and undeclared special methods bypass new proxies |
+| `assemble_local_runtime` | `async with open_local_runtime(...) as runtime` | Old synchronous function remains; new entry starts on enter and executes through Host |
+| Custom business entry | `ApplicationProject(plan, operations)` | Python/CLI/TUI reuse the project; CLI/TUI inputs/results must be JSON-expressible |
+
+Migration is opt-in, never an import-time rewrite of old containers. Start with the runnable [three Harness tutorials](./harness-development.en.md). Declare custom plugin scope hierarchies with `ApplicationPlugin(..., scope_order=...)`; borrowed imports retain scope-capture checks.
 
 ## EventBus
 

@@ -2,6 +2,7 @@ import pytest
 
 from w_agent import (
     AgentDefinition,
+    AudioContent,
     BlockEnd,
     BlockStart,
     FinishEvent,
@@ -19,6 +20,7 @@ from w_agent import (
     ModelRequest,
     ModelRegistry,
     ModelRouter,
+    NativeCursorRecovery,
     JsonlRunStore,
     CostBudget,
     CostEstimate,
@@ -32,6 +34,7 @@ from w_agent import (
     RunContext,
     RunEventType,
     StopReason,
+    StandardMultimodalEventEncoder,
     TextContent,
     TextDelta,
     TokenBudget,
@@ -39,14 +42,21 @@ from w_agent import (
     TokenEstimationError,
     TokenUsage,
     ToolCallContent,
+    ToolCallDelta,
     ToolExecutionContext,
     ToolExecutor,
     ToolRegistry,
     ToolResultContent,
     ToolSideEffect,
+    ToolBinding,
+    ToolContinuation,
+    ToolContinuationError,
+    ToolDefinition,
+    CheckpointStatus,
     UsageEvent,
     WeightedRoutingPolicy,
     python_tool,
+    safe_run_event_to_dict,
 )
 
 
@@ -84,6 +94,8 @@ class AgentProvider:
             yield BlockStart(index, block.type)
             if isinstance(block, TextContent):
                 yield TextDelta(index, block.text)
+            elif isinstance(block, ToolCallContent):
+                yield ToolCallDelta(index, block.id, block.name, block.arguments)
             yield BlockEnd(index, block)
         if len(response) == 3:
             yield UsageEvent(response[2])
@@ -99,6 +111,9 @@ def _loop(
     pricing=None,
     token_estimator=None,
     cost_estimator=None,
+    stream_recovery=None,
+    output_event_encoder=None,
+    tool_result_event_encoder=None,
 ):
     provider = AgentProvider(responses)
     models = ModelRegistry()
@@ -119,6 +134,9 @@ def _loop(
         pricing=pricing,
         token_estimator=token_estimator,
         cost_estimator=cost_estimator,
+        stream_recovery=stream_recovery,
+        output_event_encoder=output_event_encoder,
+        tool_result_event_encoder=tool_result_event_encoder,
     ), provider
 
 
@@ -128,6 +146,331 @@ def _context(**kwargs):
         (ModelMessage.text(MessageRole.USER, "calculate"),),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize("record", [False, True])
+async def test_tool_result_recording_is_opt_in_and_safe_projection_hides_body(record):
+    writes = []
+    def write():
+        writes.append(True)
+        return "PRIVATE_RESULT"
+    loop, provider = _loop([
+        ((ToolCallContent("call", "write", "{}"),), FinishReason.TOOL_CALLS),
+        ((TextContent("done"),), FinishReason.STOP),
+    ], python_tool(write))
+    result = await loop.run(AgentDefinition("agent", emit_tool_results=record), _context())
+    event = next(e for e in result.events if e.type is RunEventType.TOOL_COMPLETED)
+    assert result.stop_reason is StopReason.COMPLETED and writes == [True]
+    assert len(provider.requests) == 2
+    if record:
+        assert event.data["result_recording"] == "recorded"
+        assert event.data["result"] == {"kind": "text", "text": "PRIVATE_RESULT", "is_error": False}
+    else:
+        assert "result_recording" not in event.data and "result" not in event.data
+    assert "PRIVATE_RESULT" not in str(safe_run_event_to_dict(event))
+    assert provider.requests[1].messages[-1].content[0].content == "PRIVATE_RESULT"
+
+
+async def test_failed_tool_records_only_its_model_visible_error():
+    def broken():
+        raise RuntimeError("PRIVATE_EXCEPTION")
+    loop, provider = _loop([
+        ((ToolCallContent("call", "broken", "{}"),), FinishReason.TOOL_CALLS),
+        ((TextContent("done"),), FinishReason.STOP),
+    ], python_tool(broken))
+    result = await loop.run(AgentDefinition("agent", emit_tool_results=True), _context())
+    event = next(e for e in result.events if e.type is RunEventType.TOOL_COMPLETED)
+    model_result = provider.requests[1].messages[-1].content[0]
+    assert event.data["result"]["text"] == model_result.content
+    assert event.data["result"]["is_error"] is True
+    assert "PRIVATE_EXCEPTION" not in str(dict(event.data))
+
+
+@pytest.mark.parametrize("mode", ["off", "omit", "raise", "oversize", "invalid", "redact"])
+async def test_result_encoder_failure_or_omission_never_replays_completed_tool(mode):
+    writes, encoded = [], []
+    def write():
+        writes.append(True)
+        return "PRIVATE_RESULT"
+    class Encoder:
+        def encode(self, result, *, name):
+            encoded.append((result.content, name))
+            if mode == "omit":
+                return None
+            if mode in {"off", "raise"}:
+                raise RuntimeError("PRIVATE_ENCODER_ERROR")
+            if mode == "oversize":
+                return {"text": "x" * 1024}
+            if mode == "invalid":
+                return {"value": float("nan")}
+            return {"kind": "application.redacted", "text": "[MASKED]"}
+    loop, provider = _loop([
+        ((ToolCallContent("call", "write", "{}"),), FinishReason.TOOL_CALLS),
+        ((TextContent("done"),), FinishReason.STOP),
+    ], python_tool(write), tool_result_event_encoder=Encoder())
+    result = await loop.run(AgentDefinition(
+        "agent", emit_tool_results=mode != "off", max_tool_result_event_bytes=128,
+    ), _context())
+    event = next(e for e in result.events if e.type is RunEventType.TOOL_COMPLETED)
+    assert result.stop_reason is StopReason.COMPLETED and writes == [True]
+    assert provider.requests[1].messages[-1].content[0].content == "PRIVATE_RESULT"
+    assert "PRIVATE" not in str(dict(event.data))
+    if mode == "off":
+        assert encoded == [] and "result_recording" not in event.data
+    else:
+        assert encoded == [("PRIVATE_RESULT", "write")]
+        expected = "recorded" if mode == "redact" else "omitted" if mode == "omit" else "failed"
+        assert event.data["result_recording"] == expected
+        assert ("result" in event.data) is (mode == "redact")
+
+
+@pytest.mark.parametrize("encoder_fails", [False, True])
+async def test_tool_result_recording_survives_continuation_restart_without_recording_ticket(tmp_path, encoder_fails):
+    starts, resumes = [], []
+    async def prepare(arguments, context):
+        starts.append(True)
+        return ToolContinuation("application.wait", {"PRIVATE_TICKET": "reference"})
+    async def resume(arguments, ticket, context):
+        resumes.append(True)
+        return "PRIVATE_FINISHED"
+    binding = ToolBinding(ToolDefinition("wait", "wait", {"type": "object"}), prepare, resume_handler=resume)
+    first, first_provider = _loop([
+        ((ToolCallContent("call", "wait", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=JsonlRunStore(tmp_path))
+    waiting = await first.run(AgentDefinition(
+        "agent", emit_tool_results=True, max_tool_result_event_bytes=2048,
+    ), _context())
+    checkpoint = await first.store.load_checkpoint("run-1")
+    assert checkpoint.definition.emit_tool_results is True
+    assert checkpoint.definition.max_tool_result_event_bytes == 2048
+    boundary = next(e for e in waiting.events if e.type is RunEventType.TOOL_COMPLETED)
+    assert "result" not in boundary.data and "result_recording" not in boundary.data
+    class Encoder:
+        def encode(self, result, *, name):
+            raise RuntimeError("PRIVATE_ENCODING")
+    restarted, provider = _loop([
+        ((TextContent("done"),), FinishReason.STOP),
+    ], binding, store=JsonlRunStore(tmp_path), tool_result_event_encoder=Encoder() if encoder_fails else None)
+    finished = await restarted.resume("run-1", tool_context=ToolExecutionContext(approved_call_ids={"call"}))
+    assert finished.stop_reason is StopReason.COMPLETED and starts == resumes == [True]
+    assert len(first_provider.requests) == len(provider.requests) == 1
+    completed = [e for e in await restarted.store.events("run-1") if e.type is RunEventType.TOOL_COMPLETED]
+    assert completed[-1].data["result_recording"] == ("failed" if encoder_fails else "recorded")
+    assert "PRIVATE_TICKET" not in str([dict(e.data) for e in completed])
+    assert await restarted.store.load_checkpoint("run-1") is None
+
+
+async def test_tool_result_event_store_failure_retains_uncertain_continuation(tmp_path):
+    from w_agent import RunStoreError
+    class FailingStore(JsonlRunStore):
+        async def append(self, event):
+            if event.type is RunEventType.TOOL_COMPLETED and event.data.get("result_recording") == "recorded":
+                raise RunStoreError("store unavailable")
+            await super().append(event)
+    starts, resumes = [], []
+    async def prepare(arguments, context):
+        starts.append(True)
+        return ToolContinuation("application.wait", {})
+    async def resume(arguments, ticket, context):
+        resumes.append(True)
+        return "done"
+    binding = ToolBinding(ToolDefinition("wait", "wait", {"type": "object"}), prepare, resume_handler=resume)
+    loop, provider = _loop([
+        ((ToolCallContent("call", "wait", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=FailingStore(tmp_path))
+    await loop.run(AgentDefinition("agent", emit_tool_results=True), _context())
+    authority = ToolExecutionContext(approved_call_ids={"call"})
+    with pytest.raises(RunStoreError):
+        await loop.resume("run-1", tool_context=authority)
+    assert (await loop.store.load_checkpoint("run-1")).status is CheckpointStatus.RESUMING
+    with pytest.raises(RunResumeConflictError):
+        await loop.resume("run-1", tool_context=authority)
+    assert starts == resumes == [True] and len(provider.requests) == 1
+
+
+@pytest.mark.parametrize("coordinated", [False, True])
+async def test_workflow_tool_suspends_parent_and_requires_separate_child_authority(tmp_path, coordinated):
+    from contextlib import asynccontextmanager
+    from w_agent import (
+        DagWorkflowDefinition, JsonlWorkflowStore, LocalWorkflowEngine,
+        ScopePath, WorkflowApprovalGrants, WorkflowNode, approval_agent_workflow_node,
+        resumable_workflow_tool, review_workflow_approvals,
+        resume_workflow_tool_approval, review_workflow_tool_approvals,
+    )
+
+    writes, after = [], []
+    def write():
+        writes.append("write")
+        return "written"
+    child_store = JsonlRunStore(tmp_path / "inner-agent")
+    inner, inner_provider = _loop([
+        ((ToolCallContent("inner-call", "write", "{}"),), FinishReason.TOOL_CALLS),
+        ((TextContent("child done"),), FinishReason.STOP),
+    ], python_tool(write, side_effect=ToolSideEffect.WRITE,
+                   required_permissions=frozenset({"write.allowed"})), store=child_store)
+    grants = WorkflowApprovalGrants()
+    node = approval_agent_workflow_node(
+        "agent", inner, AgentDefinition("inner"), child_store,
+        tool_context=lambda ctx: ToolExecutionContext(permissions={"write.allowed"}),
+        approval_context=grants,
+    )
+    workflow = DagWorkflowDefinition("child", (node, WorkflowNode("after", lambda _: after.append(True))),
+                                     {"after": ("agent",)})
+    workflow_store = JsonlWorkflowStore(tmp_path / "workflow")
+    binding = resumable_workflow_tool(LocalWorkflowEngine(workflow_store), workflow, workflow_store)
+    parent_store = JsonlRunStore(tmp_path / "parent")
+    parent, initial_provider = _loop([
+        ((ToolCallContent("outer-call", "run_child", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=parent_store)
+    authority = ToolExecutionContext(permissions={"workflow.execute"}, approved_call_ids={"outer-call"},
+                                     agent_run_id="FORGED_PARENT")
+    result = await parent.run(AgentDefinition("outer"), _context(tool_context=authority))
+    assert result.stop_reason is StopReason.NEEDS_APPROVAL
+    ticket = (await parent_store.load_checkpoint("run-1")).tool_continuation
+    assert ticket.payload["reference"]["agent_run_id"] == "run-1"
+    child_id = ticket.payload["reference"]["workflow_run_id"]
+    assert await workflow_store.events(child_id) == ()
+    assert inner_provider.requests == [] and writes == []
+
+    # Fresh parent/store/binding resumes from persisted ticket without model replay.
+    fresh_workflow_store = JsonlWorkflowStore(tmp_path / "workflow")
+    fresh_binding = resumable_workflow_tool(LocalWorkflowEngine(fresh_workflow_store), workflow, fresh_workflow_store)
+    resumed, provider = _loop([((TextContent("all done"),), FinishReason.STOP)], fresh_binding,
+                              store=JsonlRunStore(tmp_path / "parent"))
+    stopped = await resumed.resume("run-1", tool_context=authority)
+    assert stopped.stop_reason is StopReason.NEEDS_APPROVAL
+    assert writes == [] and after == [] and provider.requests == []
+    assert len(inner_provider.requests) == 1
+    stopped_again = await resumed.resume("run-1", tool_context=authority)
+    assert stopped_again.stop_reason is StopReason.NEEDS_APPROVAL
+    assert writes == [] and len(inner_provider.requests) == 1
+    reviews = await review_workflow_approvals(fresh_workflow_store, child_store, child_id)
+    reference = reviews[0].reference
+    if coordinated:
+        selected, = await review_workflow_tool_approvals(resumed.store, fresh_workflow_store, child_store, "run-1")
+        service_providers = []
+        @asynccontextmanager
+        async def factory(context):
+            approval_node = approval_agent_workflow_node(
+                "agent", inner, context.child_definition, context.child_store,
+                approval_context=context.grants,
+            )
+            assembled = DagWorkflowDefinition("child", (
+                approval_node, WorkflowNode("after", lambda _: after.append(True)),
+            ), {"after": ("agent",)})
+            tool = resumable_workflow_tool(LocalWorkflowEngine(context.workflow_store), assembled, context.workflow_store)
+            parent_loop, final_provider = _loop([((TextContent("all done"),), FinishReason.STOP)], tool,
+                                               store=context.parent_store)
+            service_providers.append(final_provider)
+            yield parent_loop
+        completed = await resume_workflow_tool_approval(
+            resumed.store, fresh_workflow_store, child_store, selected, factory,
+            parent_permissions={"workflow.execute"}, child_permissions={"write.allowed"},
+        )
+        assert provider.requests == []
+        provider = service_providers[0]
+    else:
+        grants.grant(reference, scope=ScopePath.application(), permissions={"write.allowed"})
+        completed = await resumed.resume("run-1", tool_context=authority)
+    assert completed.stop_reason is StopReason.COMPLETED
+    assert writes == ["write"] and after == [True]
+    assert len(initial_provider.requests) == 1 and len(provider.requests) == 1
+    assert len(inner_provider.requests) == 2 and completed.tool_calls == 1
+    assert await resumed.store.load_checkpoint("run-1") is None
+
+
+async def test_failed_workflow_child_keeps_parent_uncertain_without_model_success(tmp_path):
+    from w_agent import JsonlWorkflowStore, LocalWorkflowEngine, PythonWorkflowDefinition, resumable_workflow_tool
+
+    calls = []
+    def fail(context):
+        calls.append("entered")
+        raise RuntimeError("PRIVATE_CHILD_ERROR")
+    store = JsonlWorkflowStore(tmp_path / "workflow")
+    binding = resumable_workflow_tool(LocalWorkflowEngine(store), PythonWorkflowDefinition("child", fail), store)
+    loop, provider = _loop([
+        ((ToolCallContent("call", "run_child", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=JsonlRunStore(tmp_path / "parent"))
+    authority = ToolExecutionContext(permissions={"workflow.execute"}, approved_call_ids={"call"})
+    await loop.run(AgentDefinition("agent"), _context(tool_context=authority))
+    with pytest.raises(ToolContinuationError) as caught:
+        await loop.resume("run-1", tool_context=authority)
+    assert "PRIVATE" not in str(caught.value)
+    checkpoint = await loop.store.load_checkpoint("run-1")
+    assert checkpoint.status is CheckpointStatus.RESUMING
+    assert checkpoint.tool_continuation is not None
+    assert not any(message.role is MessageRole.TOOL for message in checkpoint.messages)
+    with pytest.raises(RunResumeConflictError):
+        await loop.resume("run-1", tool_context=authority)
+    assert calls == ["entered"] and len(provider.requests) == 1
+
+
+async def test_tool_continuation_survives_restart_without_start_or_model_replay(tmp_path):
+    starts, resumes = [], []
+    async def prepare(arguments, context):
+        starts.append(context.invocation.id)
+        return ToolContinuation("workflow.reference", {"child": "child-1", "phase": 0})
+    async def resume(arguments, continuation, context):
+        resumes.append(continuation.payload["phase"])
+        if continuation.payload["phase"] == 0:
+            return ToolContinuation("workflow.reference", {"child": "child-1", "phase": 1})
+        return "finished"
+    binding = ToolBinding(
+        ToolDefinition("wait", "wait", {"type": "object"}), prepare, resume_handler=resume,
+    )
+    first, initial_provider = _loop([
+        ((ToolCallContent("call", "wait", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=JsonlRunStore(tmp_path))
+    waiting = await first.run(AgentDefinition("agent"), _context())
+    assert waiting.stop_reason is StopReason.NEEDS_APPROVAL
+    assert starts == ["call"] and resumes == [] and len(initial_provider.requests) == 1
+    assert not any(message.role is MessageRole.TOOL for message in waiting.messages)
+    stored = await JsonlRunStore(tmp_path).load_checkpoint("run-1")
+    assert stored.schema_version == 2 and stored.tool_continuation.payload["phase"] == 0
+
+    restarted, provider = _loop([
+        ((TextContent("done"),), FinishReason.STOP),
+    ], binding, store=JsonlRunStore(tmp_path))
+    held = await restarted.resume("run-1", tool_context=ToolExecutionContext())
+    assert held.stop_reason is StopReason.NEEDS_APPROVAL and resumes == []
+    assert provider.requests == []
+    authority = ToolExecutionContext(approved_call_ids={"call"})
+    second = await restarted.resume("run-1", tool_context=authority)
+    assert second.stop_reason is StopReason.NEEDS_APPROVAL
+    assert starts == ["call"] and resumes == [0] and provider.requests == []
+    finished = await restarted.resume("run-1", tool_context=authority)
+    assert finished.stop_reason is StopReason.COMPLETED
+    assert starts == ["call"] and resumes == [0, 1] and len(provider.requests) == 1
+    assert finished.tool_calls == 1
+    assert await restarted.store.load_checkpoint("run-1") is None
+
+
+@pytest.mark.parametrize("unsupported", [False, True])
+async def test_failed_continuation_retains_uncertain_parent(tmp_path, unsupported):
+    async def prepare(arguments, context):
+        return ToolContinuation("kind", {"child": "child"})
+    async def resume(arguments, continuation, context):
+        raise RuntimeError("PRIVATE_CHILD_FAILURE")
+    binding = ToolBinding(ToolDefinition("wait", "wait", {"type": "object"}), prepare,
+                          resume_handler=resume)
+    loop, provider = _loop([
+        ((ToolCallContent("call", "wait", "{}"),), FinishReason.TOOL_CALLS),
+    ], binding, store=JsonlRunStore(tmp_path))
+    await loop.run(AgentDefinition("agent"), _context())
+    if unsupported:
+        class ExecutorWithoutResume:
+            async def execute(self, call, context=None):
+                pytest.fail("continuation must not replay execute")
+        loop.tool_executor = ExecutorWithoutResume()
+    with pytest.raises(ToolContinuationError) as caught:
+        await loop.resume("run-1", tool_context=ToolExecutionContext(approved_call_ids={"call"}))
+    assert "PRIVATE" not in str(caught.value)
+    checkpoint = await loop.store.load_checkpoint("run-1")
+    assert checkpoint.status is CheckpointStatus.RESUMING
+    assert checkpoint.tool_continuation is not None and checkpoint.schema_version == 2
+    assert len(provider.requests) == 1
+    with pytest.raises(RunResumeConflictError):
+        await loop.resume("run-1", tool_context=ToolExecutionContext(approved_call_ids={"call"}))
 
 
 @pytest.mark.asyncio
@@ -217,6 +560,142 @@ async def test_react_model_text_deltas_are_disabled_by_default():
 
     assert all(
         event.type is not RunEventType.MODEL_TEXT_DELTA for event in result.events
+    )
+    assert all(
+        event.type is not RunEventType.MODEL_TOOL_CALL_DELTA
+        for event in result.events
+    )
+    assert all(
+        event.type is not RunEventType.MODEL_OUTPUT_BLOCK
+        for event in result.events
+    )
+
+
+@pytest.mark.asyncio
+async def test_react_explicitly_persists_provider_neutral_media_outputs():
+    loop, _ = _loop(
+        [
+            (
+                (
+                    ImageContent(data=b"png", media_type="image/png"),
+                    AudioContent(url="https://media.test/reply.wav"),
+                ),
+                FinishReason.STOP,
+            )
+        ],
+        python_tool(lambda: "unused", name="unused"),
+    )
+
+    result = await loop.run(
+        AgentDefinition("media", emit_output_blocks=True),
+        _context(),
+    )
+
+    events = [
+        event
+        for event in result.events
+        if event.type is RunEventType.MODEL_OUTPUT_BLOCK
+    ]
+    assert [event.data["block"]["kind"] for event in events] == [
+        "image",
+        "audio",
+    ]
+    assert events[0].data["block"]["data_base64"] == "cG5n"
+    assert events[0].data["block"]["size_bytes"] == 3
+    assert events[1].data["block"]["url"] == (
+        "https://media.test/reply.wav"
+    )
+    completed = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.MODEL_COMPLETED
+    )
+    assert events[-1].sequence < completed.sequence
+
+
+@pytest.mark.asyncio
+async def test_react_stops_cleanly_when_explicit_media_encoding_fails():
+    loop, _ = _loop(
+        [
+            (
+                (ImageContent(data=b"too-large", media_type="image/png"),),
+                FinishReason.STOP,
+                TokenUsage(3, 2),
+            )
+        ],
+        python_tool(lambda: "unused", name="unused"),
+        output_event_encoder=StandardMultimodalEventEncoder(
+            max_inline_bytes=2
+        ),
+    )
+
+    result = await loop.run(
+        AgentDefinition("media", emit_output_blocks=True),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.OUTPUT_EVENT_ERROR
+    failure = next(
+        event
+        for event in result.events
+        if event.type is RunEventType.MODEL_OUTPUT_BLOCK_FAILED
+    )
+    assert failure.data == {
+        "step": 1,
+        "block_index": 0,
+        "code": "output-event-encoding-failed",
+    }
+    assert result.usage == TokenUsage(3, 2)
+    assert result.events[-1].type is RunEventType.RUN_COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_react_tool_deltas_require_separate_opt_in_and_safe_view_hides_body(
+    tmp_path,
+):
+    store = JsonlRunStore(tmp_path)
+    loop, _ = _loop(
+        [
+            (
+                (ToolCallContent("call-1", "lookup", '{"secret":"hidden"}'),),
+                FinishReason.TOOL_CALLS,
+            ),
+            ((TextContent("done"),), FinishReason.STOP),
+        ],
+        python_tool(lambda secret: "ok", name="lookup"),
+        store=store,
+    )
+
+    result = await loop.run(
+        AgentDefinition("tool-delta", emit_tool_call_deltas=True),
+        _context(),
+    )
+
+    deltas = [
+        event
+        for event in result.events
+        if event.type is RunEventType.MODEL_TOOL_CALL_DELTA
+    ]
+    assert result.stop_reason is StopReason.COMPLETED
+    assert len(deltas) == 1
+    assert deltas[0].data["call_id"] == "call-1"
+    assert deltas[0].data["arguments_delta"] == '{"secret":"hidden"}'
+    assert all(
+        event.type is not RunEventType.MODEL_TEXT_DELTA
+        for event in result.events
+    )
+    assert safe_run_event_to_dict(deltas[0])["data"] == {
+        "step": 1,
+        "block_index": 0,
+    }
+    persisted = await JsonlRunStore(tmp_path).events("run-1")
+    assert (
+        next(
+            event
+            for event in persisted
+            if event.type is RunEventType.MODEL_TOOL_CALL_DELTA
+        ).data["arguments_delta"]
+        == '{"secret":"hidden"}'
     )
 
 
@@ -698,6 +1177,53 @@ async def test_cost_preflight_stops_before_model_from_replay_envelope():
 
 
 @pytest.mark.asyncio
+async def test_stream_cursor_resumes_are_included_in_cost_preflight():
+    class FixedTokenEstimator:
+        async def estimate(self, request):
+            return TokenEstimate(3, "exact:test", exact=True)
+
+    pricing = PricingCatalog(
+        (
+            PriceTable(
+                "prices-v1",
+                "USD",
+                (ModelPrice("fake", "chat", "1000000", "1000000"),),
+            ),
+        )
+    )
+    loop, provider = _loop(
+        [((TextContent("must not run"),), FinishReason.STOP)],
+        python_tool(lambda: "unused", name="unused"),
+        pricing=pricing,
+        token_estimator=FixedTokenEstimator(),
+        stream_recovery=NativeCursorRecovery(max_resumes=2),
+    )
+
+    result = await loop.run(
+        AgentDefinition(
+            "cursor-cost-preflight",
+            max_output_tokens=4,
+            emit_text_deltas=True,
+            cost_budget=CostBudget(
+                "10",
+                "prices-v1",
+                estimate_before_call=True,
+                require_estimate=True,
+            ),
+        ),
+        _context(),
+    )
+
+    assert result.stop_reason is StopReason.COST_BUDGET
+    assert provider.requests == []
+    estimated = next(
+        event for event in result.events if event.type is RunEventType.COST_ESTIMATED
+    )
+    assert estimated.data["attempt_count"] == 3
+    assert estimated.data["cost"]["total"] == "21"
+
+
+@pytest.mark.asyncio
 async def test_required_cost_preflight_fails_closed_without_token_estimate():
     pricing = PricingCatalog(
         (
@@ -915,6 +1441,8 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
         AgentDefinition(
             "writer",
             emit_text_deltas=True,
+            emit_tool_call_deltas=True,
+            emit_output_blocks=True,
             token_budget=TokenBudget(
                 require_estimate=True,
                 soft_limit_ratio="0.8",
@@ -933,9 +1461,13 @@ async def test_attempt_checkpoint_persists_ledger_without_failure_message(tmp_pa
     assert checkpoint.attempts[0].failure is not None
     assert checkpoint.definition.token_budget is not None
     assert checkpoint.definition.emit_text_deltas is True
+    assert checkpoint.definition.emit_tool_call_deltas is True
+    assert checkpoint.definition.emit_output_blocks is True
     assert checkpoint.definition.token_budget.require_estimate is True
     assert str(checkpoint.definition.token_budget.soft_limit_ratio) == "0.8"
     assert '"soft_limit_ratio":"0.8"' in persisted
+    assert '"emit_tool_call_deltas":true' in persisted
+    assert '"emit_output_blocks":true' in persisted
     assert "omitted" in checkpoint.attempts[0].failure.message
     assert "secret provider response" not in persisted
 

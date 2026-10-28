@@ -76,6 +76,7 @@ async def test_docker_sandbox_builds_hardened_container_and_cleans_up(tmp_path):
     handle = await provider.open(spec)
     created = runner.calls[1][0]
     assert created[:3] == ("docker", "run", "--detach")
+    assert created[created.index("--pull") + 1] == "never"
     assert created[created.index("--network") + 1] == SandboxNetwork.NONE.value
     assert created[created.index("--cap-drop") + 1] == "ALL"
     assert "no-new-privileges:true" in created
@@ -130,6 +131,8 @@ def test_sandbox_spec_rejects_invalid_environment_and_resources(tmp_path):
         SandboxSpec(tmp_path, cpu_limit=0)
     with pytest.raises(ValueError, match="workdir"):
         SandboxSpec(tmp_path, container_workdir="../escape")
+    with pytest.raises(ValueError, match="pull policy"):
+        DockerSandboxProvider(pull_policy="sometimes")
 
 
 def test_unsafe_local_requires_explicit_runtime_authorization():

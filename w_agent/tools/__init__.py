@@ -44,6 +44,15 @@ from .mcp_client import (
     McpToolExecutionError,
     McpTransportError,
 )
+from .mcp_legacy import (
+    MCP_LEGACY_VERSIONS,
+    McpLegacyClient,
+    McpLegacyStreamableHttpTransport,
+    McpLegacyTransport,
+)
+from .mcp_handlers import McpClientHandlers, McpNotificationHandler, McpRequestHandler
+from .mcp_duplex import McpDuplexStdioTransport
+from .mcp_http_duplex import McpLegacyDuplexHttpTransport, McpStreamingHttpTransport
 from .loading import ToolEntryLoadError, load_tool_entries, load_tool_entry
 from .policies import (
     PermissionPolicy,
@@ -59,6 +68,10 @@ from .types import (
     ToolAuditSink,
     ToolBinding,
     ToolCall,
+    ToolContinuation,
+    ToolContinuationError,
+    ToolResumeHandler,
+    ResumableToolExecutorProtocol,
     ToolExecutionContext,
     ToolExecutorProtocol,
     ToolFailure,
@@ -86,9 +99,19 @@ __all__ = [
     "HttpxToolTransport",
     "InMemoryToolAuditSink",
     "MCP_PROTOCOL_VERSION",
+    "MCP_LEGACY_VERSIONS",
     "HttpxMcpExchange",
     "McpClient",
+    "McpLegacyClient",
+    "McpLegacyStreamableHttpTransport",
+    "McpLegacyTransport",
     "McpClientInfo",
+    "McpClientHandlers",
+    "McpNotificationHandler",
+    "McpRequestHandler",
+    "McpDuplexStdioTransport",
+    "McpStreamingHttpTransport",
+    "McpLegacyDuplexHttpTransport",
     "McpError",
     "McpHttpExchange",
     "McpHttpRequest",
@@ -112,6 +135,10 @@ __all__ = [
     "ToolAuditSink",
     "ToolBinding",
     "ToolCall",
+    "ToolContinuation",
+    "ToolContinuationError",
+    "ToolResumeHandler",
+    "ResumableToolExecutorProtocol",
     "ToolExecutionContext",
     "ToolExecutor",
     "ToolExecutorProtocol",

@@ -23,8 +23,11 @@ class NsJailSkillSandbox(SkillSandbox):
         rootfs_path: Path | None = None,
         python_executable: str = "/usr/bin/python3",
     ):
-        if max_cpu_seconds <= 0 or max_memory_bytes <= 0:
-            raise ValueError("sandbox resource limits must be positive")
+        if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0
+               for value in (max_cpu_seconds, max_memory_bytes)):
+            raise ValueError("sandbox resource limits must be positive integers")
+        if max_memory_bytes < 1024 * 1024:
+            raise ValueError("nsjail memory limit must be at least one MiB")
         python_path = PurePosixPath(python_executable)
         if not python_path.is_absolute() or ".." in python_path.parts:
             raise ValueError("python_executable must be an absolute path inside rootfs")

@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import uuid
 from builtins import ExceptionGroup
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Awaitable, Callable, Mapping, Protocol
+from typing import Any, Awaitable, Callable, Mapping, Protocol, TypeVar
 
 from packaging.version import InvalidVersion, Version
 
@@ -22,6 +23,35 @@ from .scope import ScopePath
 Disposer = Callable[[], None | Awaitable[None]]
 Setup = Callable[["PluginContext"], Any]
 logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+async def _drain_cleanup(operation: Awaitable[_T]) -> _T:
+    """Finish owned cleanup despite repeated caller cancellation, then propagate it.
+
+    This deliberately supplies no timeout: trusted plugin cleanup owns its I/O
+    bounds. The task is always observed; cancellation never leaves it detached.
+    """
+    task = asyncio.ensure_future(operation)
+    interrupted: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            interrupted = interrupted or error
+        except BaseException:
+            break
+    try:
+        result = task.result()
+    except BaseException as error:
+        if interrupted is not None:
+            if error is not interrupted:
+                interrupted.add_note(f"cleanup finished with {type(error).__name__}")
+            raise interrupted from error
+        raise
+    if interrupted is not None:
+        raise interrupted
+    return result
 
 
 class PluginState(StrEnum):
@@ -111,6 +141,7 @@ class EffectScope:
         self._disposers: list[Disposer] = []
         self._closed = False
         self._lock = asyncio.Lock()
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     @property
     def closed(self) -> bool:
@@ -129,20 +160,33 @@ class EffectScope:
         """Run every disposer once in reverse registration order."""
 
         async with self._lock:
-            if self._closed:
-                return
-            self._closed = True
-            disposers = tuple(reversed(self._disposers))
-            self._disposers.clear()
+            if self._cleanup_task is None:
+                self._closed = True
+                disposers = tuple(reversed(self._disposers))
+                self._disposers.clear()
+                self._cleanup_task = asyncio.create_task(self._dispose(disposers))
+            task = self._cleanup_task
+        if task is asyncio.current_task():
+            return  # A disposer may idempotently close its own scope.
+        await _drain_cleanup(task)
 
+    @staticmethod
+    async def _dispose(disposers: tuple[Disposer, ...]) -> None:
         failures: list[Exception] = []
+        cancelled: asyncio.CancelledError | None = None
         for disposer in disposers:
             try:
                 result = disposer()
                 if inspect.isawaitable(result):
                     await result
+            except asyncio.CancelledError as error:
+                cancelled = cancelled or error
             except Exception as exc:  # noqa: BLE001 - continue cleanup
                 failures.append(exc)
+        if cancelled is not None:
+            if failures:
+                cancelled.add_note(f"{len(failures)} other disposer(s) failed")
+            raise cancelled
         if failures:
             raise ExceptionGroup("plugin effect cleanup failed", failures)
 
@@ -247,16 +291,33 @@ class PluginRecord:
 class PluginHandle:
     """Handle for an installed plugin instance."""
 
-    def __init__(self, manager: "PluginManager", name: str) -> None:
+    def __init__(
+        self, manager: "PluginManager", name: str, *, _record: PluginRecord | None = None
+    ) -> None:
         self._manager = manager
         self.name = name
+        self._record = _record if _record is not None else manager.record(name)
 
     @property
     def state(self) -> PluginState:
-        return self._manager.record(self.name).state
+        return self._record.state
 
     async def unload(self) -> None:
-        await self._manager.unload(self.name)
+        await self._manager.unload(self.name, _expected_record=self._record)
+
+
+@dataclass(frozen=True, slots=True)
+class PluginReplacementPlan:
+    """Process-local preview; approval does not authorize imports or installation."""
+
+    plan_id: str
+    previous: PluginSpec
+    replacement: PluginSpec
+    unload_order: tuple[str, ...]
+
+
+class PluginReplacementError(RuntimeError):
+    """A replacement was rejected or could not finish; inspect manager records."""
 
 
 class PluginManager:
@@ -274,6 +335,7 @@ class PluginManager:
         self.api_version = api_version
         self._records: dict[str, PluginRecord] = {}
         self._lock = asyncio.Lock()
+        self._replacement_plans: dict[str, tuple[Any, ...]] = {}
 
     def record(self, name: str) -> PluginRecord:
         """Return the current lifecycle record for ``name``."""
@@ -305,69 +367,261 @@ class PluginManager:
         plugin_object = coerce_plugin(plugin_instance)
         spec = plugin_object.spec
         async with self._lock:
-            current = self._records.get(spec.name)
-            if current and current.state not in {
-                PluginState.DISPOSED,
-                PluginState.FAILED,
-            }:
-                raise PluginLoadError(f"plugin {spec.name!r} is already loaded")
+            record = await self._load_locked(plugin_object, config=config)
 
-            record = PluginRecord(plugin_object)
-            self._records[spec.name] = record
+        try:
+            await self._publish_lifecycle("plugin/loaded", record)
+        except asyncio.CancelledError as cancellation:
+            # No handle was delivered; release the committed record as well.
             try:
-                record.state = PluginState.RESOLVING
-                self._resolve_dependencies(spec)
-                record.state = PluginState.LOADING
-                effects = EffectScope()
-                record.effects = effects
-                context = PluginContext(
-                    spec=spec,
-                    registry=self.registry,
-                    events=self.events,
-                    effects=effects,
-                    config=config or {},
-                )
-                await plugin_object.load(context)
-                self._verify_provides(spec)
-                record.state = PluginState.ACTIVE
-            except Exception as exc:  # noqa: BLE001 - transactional rollback
-                record.error = exc
+                await _drain_cleanup(self.unload(spec.name, _expected_record=record))
+            except (Exception, asyncio.CancelledError) as cleanup_error:
+                cancellation.add_note(f"load notification cleanup finished with {type(cleanup_error).__name__}")
+            raise cancellation
+        return PluginHandle(self, spec.name, _record=record)
+
+    async def _load_locked(
+        self, plugin_object: Plugin, *, config: Mapping[str, Any] | None = None
+    ) -> PluginRecord:
+        spec = plugin_object.spec
+        current = self._records.get(spec.name)
+        if current and current.state not in {
+            PluginState.DISPOSED,
+            PluginState.FAILED,
+        }:
+            raise PluginLoadError(f"plugin {spec.name!r} is already loaded")
+
+        record = PluginRecord(plugin_object)
+        self._records[spec.name] = record
+        try:
+            record.state = PluginState.RESOLVING
+            self._resolve_dependencies(spec)
+            record.state = PluginState.LOADING
+            effects = EffectScope()
+            record.effects = effects
+            context = PluginContext(
+                spec=spec,
+                registry=self.registry,
+                events=self.events,
+                effects=effects,
+                config=config or {},
+            )
+            await plugin_object.load(context)
+            self._verify_provides(spec)
+            record.state = PluginState.ACTIVE
+        except BaseException as exc:  # cleanup also on task cancellation
+            record.error = exc
+            try:
+                await _drain_cleanup(self._rollback_load(record))
+            except asyncio.CancelledError as cancellation:
+                if not isinstance(exc, asyncio.CancelledError):
+                    cancellation.add_note(f"plugin load failed with {type(exc).__name__}")
+                    raise cancellation from exc
+            except Exception as cleanup_error:  # noqa: BLE001
+                exc.add_note(f"partial plugin cleanup failed: {type(cleanup_error).__name__}")
+            if not isinstance(exc, Exception):
+                raise
+            raise PluginLoadError(f"plugin {spec.name!r} failed to load") from exc
+        return record
+
+    @staticmethod
+    async def _rollback_load(record: PluginRecord) -> None:
+        failures: list[Exception] = []
+        cancelled: asyncio.CancelledError | None = None
+        try:
+            try:
+                await record.plugin.unload()
+            except asyncio.CancelledError as error:
+                cancelled = error
+            except Exception as error:
+                failures.append(error)
+            if record.effects is not None:
                 try:
-                    await plugin_object.unload()
-                except Exception as unload_error:  # noqa: BLE001
-                    exc.add_note(f"partial plugin unload also failed: {unload_error!r}")
-                if record.effects is not None:
-                    try:
-                        await record.effects.close()
-                    except Exception as cleanup_error:  # noqa: BLE001
-                        exc.add_note(f"cleanup also failed: {cleanup_error!r}")
-                record.state = PluginState.FAILED
-                raise PluginLoadError(f"plugin {spec.name!r} failed to load") from exc
+                    await record.effects.close()
+                except asyncio.CancelledError as error:
+                    cancelled = cancelled or error
+                except Exception as error:
+                    failures.append(error)
+        finally:
+            record.state = PluginState.FAILED
+        if cancelled is not None:
+            if failures:
+                cancelled.add_note(f"{len(failures)} other partial cleanup operation(s) failed")
+            raise cancelled
+        if failures:
+            raise ExceptionGroup("partial plugin cleanup failed", failures)
 
-        await self._publish_lifecycle("plugin/loaded", record)
-        return PluginHandle(self, spec.name)
-
-    async def unload(self, name: str) -> None:
+    async def unload(
+        self, name: str, *, _expected_record: PluginRecord | None = None
+    ) -> None:
         """Unload active dependents, then the requested plugin."""
 
         unloaded: list[PluginRecord] = []
+        try:
+            async with self._lock:
+                if _expected_record is not None and self.record(name) is not _expected_record:
+                    raise PluginUnloadError("stale plugin handle cannot unload a replacement")
+                await _drain_cleanup(self._unload_locked(name, visiting=set(), unloaded=unloaded))
+        finally:
+            for record in unloaded:
+                await _drain_cleanup(self._publish_lifecycle("plugin/unloaded", record))
+
+    def _replacement_snapshot(self) -> tuple[Any, ...]:
+        return (
+            self.api_version,
+            tuple((id(record), record.state, id(record.spec)) for record in self.records()),
+            tuple(id(item) for item in self.registry._items()),
+        )
+
+    def _replacement_unload_order(self, name: str) -> tuple[str, ...]:
+        ordered: list[str] = []
+        visiting: set[str] = set()
+
+        def visit(current: str) -> None:
+            if current in visiting:
+                raise PluginReplacementError("cyclic replacement dependency")
+            if current in ordered:
+                return
+            visiting.add(current)
+            provided = {item.capability for item in self.record(current).spec.provides}
+            for candidate in self.records():
+                if (
+                    candidate.state == PluginState.ACTIVE
+                    and candidate.spec.name != current
+                    and any(item.capability in provided for item in candidate.spec.requires)
+                ):
+                    visit(candidate.spec.name)
+            visiting.remove(current)
+            ordered.append(current)
+
+        visit(name)
+        return tuple(ordered)
+
+    def _preflight_replacement(self, spec: PluginSpec, removed: tuple[str, ...]) -> None:
+        # Simulate post-unload resolution and declared registration without running code.
+        registry = Registry()
+        for contribution in self.registry._items():
+            if contribution.owner not in removed:
+                registry.register(contribution)
+        checker = PluginManager(registry, api_version=self.api_version)
+        checker._resolve_dependencies(spec)
+        for declaration in spec.provides:
+            registry.register(Contribution(
+                capability=declaration.capability, provider=None,
+                name=declaration.name, version=declaration.version,
+                scope=spec.scope, exclusive=declaration.exclusive, owner=spec.name,
+            ))
+        for record in self.records():
+            if record.state == PluginState.ACTIVE and record.spec.name not in removed:
+                checker._resolve_dependencies(record.spec)
+
+    async def plan_replacement(self, replacement: Plugin | Setup) -> PluginReplacementPlan:
+        """Preview an already constructed same-name plugin without executing setup.
+
+        Consumers in unload_order stay disposed after replacement. The host must
+        stop runs and retain no live snapshots before approving this plan.
+        """
+        candidate = coerce_plugin(replacement)
         async with self._lock:
-            await self._unload_locked(name, visiting=set(), unloaded=unloaded)
-        for record in unloaded:
-            await self._publish_lifecycle("plugin/unloaded", record)
+            current = self.record(candidate.spec.name)
+            if current.state != PluginState.ACTIVE:
+                raise PluginReplacementError("replacement requires an active previous plugin")
+            if candidate is current.plugin:
+                raise PluginReplacementError("replacement requires a fresh plugin instance")
+            order = self._replacement_unload_order(candidate.spec.name)
+            self._preflight_replacement(candidate.spec, order)
+            plan = PluginReplacementPlan(uuid.uuid4().hex, current.spec, candidate.spec, order)
+            # Only the latest preview is executable; avoids retaining arbitrary code forever.
+            self._replacement_plans.clear()
+            self._replacement_plans[plan.plan_id] = (
+                plan, candidate, self._replacement_snapshot(),
+                (*self.records(), *self.registry._items()),
+            )
+            return plan
+
+    async def replace(
+        self, plan: PluginReplacementPlan, *, expected_plan_id: str,
+        host_quiescent: bool = False, config: Mapping[str, Any] | None = None,
+    ) -> PluginHandle:
+        """Consume an approved plan while holding the lifecycle lock.
+
+        This is not hot migration or transactional rollback of external effects.
+        On cleanup failure no new setup runs; on setup failure the old version and
+        consumers remain stopped. Explicit host recovery is required.
+        """
+        if host_quiescent is not True:
+            raise PluginReplacementError("host must explicitly confirm quiescence")
+        unloaded: list[PluginRecord] = []
+        loaded: PluginRecord | None = None
+        try:
+            async with self._lock:
+                approved = self._replacement_plans.get(expected_plan_id)
+                if approved is None or approved[0] is not plan:
+                    raise PluginReplacementError("unknown, stale, or unapproved replacement plan")
+                _, candidate, snapshot, _retained = approved
+                if snapshot != self._replacement_snapshot() or candidate.spec != plan.replacement:
+                    raise PluginReplacementError("plugin or registry changed; create a new plan")
+                self._preflight_replacement(candidate.spec, plan.unload_order)
+                self._replacement_plans.clear()
+                await _drain_cleanup(self._unload_locked(plan.previous.name, set(), unloaded))
+                loaded = await self._load_locked(candidate, config=config)
+        finally:
+            try:
+                for record in unloaded:
+                    await self._publish_lifecycle("plugin/unloaded", record)
+                if loaded is not None:
+                    await self._publish_lifecycle("plugin/loaded", loaded)
+            except asyncio.CancelledError as cancellation:
+                if loaded is not None:
+                    try:
+                        await _drain_cleanup(self.unload(loaded.spec.name, _expected_record=loaded))
+                    except (Exception, asyncio.CancelledError) as cleanup_error:
+                        cancellation.add_note(f"replacement notification cleanup finished with {type(cleanup_error).__name__}")
+                raise cancellation
+        return PluginHandle(self, plan.replacement.name, _record=loaded)
+
+    def discard_replacement(self, plan: PluginReplacementPlan) -> None:
+        """Release only this exact pending preview; never invalidate a newer plan."""
+        pending = self._replacement_plans.get(plan.plan_id)
+        if pending is not None and pending[0] is plan:
+            del self._replacement_plans[plan.plan_id]
 
     async def close(self) -> None:
         """Unload every active plugin and release all owned effects."""
+
+        await _drain_cleanup(self._close_all())
+
+    async def _close_all(self) -> None:
+        failures: list[Exception] = []
+        cancelled: asyncio.CancelledError | None = None
+        blocked: set[str] = set()
 
         while True:
             active = [
                 record.spec.name
                 for record in reversed(self.records())
-                if record.state == PluginState.ACTIVE
+                if record.state == PluginState.ACTIVE and record.spec.name not in blocked
             ]
             if not active:
-                return
-            await self.unload(active[0])
+                break
+            name = active[0]
+            before = tuple((id(record), record.state) for record in self.records())
+            try:
+                await self.unload(name)
+            except asyncio.CancelledError as error:
+                cancelled = cancelled or error
+            except Exception as error:
+                failures.append(error)
+            # A malformed dependency cycle must not cause an infinite cleanup loop.
+            if before == tuple((id(record), record.state) for record in self.records()):
+                blocked.add(name)
+        if cancelled is not None:
+            if failures:
+                cancelled.add_note(f"{len(failures)} other plugin close operation(s) failed")
+            raise cancelled
+        if failures:
+            failures[0].add_note(f"manager cleanup completed with {len(failures)} failure(s)")
+            raise failures[0]
 
     async def _unload_locked(
         self,
@@ -397,6 +651,7 @@ class PluginManager:
             await self._unload_locked(dependent, visiting, unloaded)
 
         failures: list[Exception] = []
+        cancelled: asyncio.CancelledError | None = None
         record.state = PluginState.QUIESCING
         quiesce = getattr(record.plugin, "quiesce", None)
         if quiesce is not None:
@@ -404,23 +659,34 @@ class PluginManager:
                 result = quiesce()
                 if inspect.isawaitable(result):
                     await result
+            except asyncio.CancelledError as error:
+                cancelled = error
             except Exception as exc:  # noqa: BLE001
                 failures.append(exc)
 
         record.state = PluginState.UNLOADING
         try:
             await record.plugin.unload()
+        except asyncio.CancelledError as error:
+            cancelled = cancelled or error
         except Exception as exc:  # noqa: BLE001
             failures.append(exc)
         if record.effects is not None:
             try:
                 await record.effects.close()
+            except asyncio.CancelledError as error:
+                cancelled = cancelled or error
             except Exception as exc:  # noqa: BLE001
                 failures.append(exc)
         record.state = PluginState.DISPOSED
         visiting.remove(name)
         unloaded.append(record)
 
+        if cancelled is not None:
+            if failures:
+                cancelled.add_note(f"{len(failures)} other unload operation(s) failed")
+            record.error = cancelled
+            raise cancelled
         if failures:
             error = PluginUnloadError(f"plugin {name!r} did not unload cleanly")
             error.__cause__ = ExceptionGroup("plugin unload failures", failures)

@@ -2,319 +2,72 @@
 
 English | [简体中文](./guide.md)
 
-## 1. Check capability status first
+This guide targets **2.0.0**, requiring Python 3.11+. Install the release from [PyPI](https://pypi.org/project/wagent-framework/2.0.0/); see the [release record](./acceptance-2026-10-01-stable-release.en.md) for verification evidence.
 
-The current stable PyPI release is 1.5.2 and the latest alpha is `2.0.0a3`; main subsequently adds workflow-checkpoint recovery, offline composition dependency planning, confirmed general-plugin lifecycle operations, Responses/vLLM model adapters, verified-prefix text-stream recovery, pre-call token/cost estimation with replay envelopes, agent text-delta RunEvents, cross-session per-agent usage/cost summaries, and versioned support/coding evaluation suites. Current source implements the plugin microkernel, model/tool foundations, single-agent ReAct, token/cost budgets, local sessions and workflows, agent/workflow adapters, support/coding templates, Docker/explicitly authorized local sandboxes, composition encoding/version storage, and experimental CLI/TUI/evaluation. Parallel/nested workflows, online plugin source catalogs, and package installation remain `Planned`.
+## 1. Install and run offline first
 
-The 1.x examples match the current PyPI release. Phase 2A examples use repository source and require Python 3.11+. “Planned usage” defines the target experience and is not an executable API today.
-
-## 2. Install the current release
+Install in your own virtual environment and run the [README quickstart](../README_EN.md#quickstart):
 
 ```bash
-pip install wagent-framework
+python -m pip install "wagent-framework==2.0.0"
+wagent --help
 ```
 
-Install the published alpha with:
+For framework development or the complete repository support/coding examples, use an editable installation from the matching source root:
 
-```bash
-pip install --pre wagent-framework==2.0.0a3
+```powershell
+python -m pip install -e .
+python -m examples.basic_development support
+python -m examples.basic_development coding
+wagent --help
 ```
 
-Optional capabilities:
+The examples use modern templates, registries and actual tool execution. Final text comes from tool results; no real model is called. Dependency installation may access the network and is separate from offline execution. See [basic development](./basic-development.en.md).
 
-```bash
-pip install "wagent-framework[fastapi]"
-pip install "wagent-framework[langchain]"
-pip install "wagent-framework[opentelemetry]"
-pip install "wagent-framework[models]"
-pip install "wagent-framework[wasm]"
-```
+With a PyPI installation, you can also copy `examples/basic_development.py` from matching source into your own project and run `python basic_development.py support`; do not assume the wheel includes an `examples` package.
 
-Current 1.x metadata supports Python 3.9+. The next-generation runtime targets Python 3.11+.
+Choose extras as needed: `models` for HTTP models, `tui` for Textual, `knowledge-documents` for PDF/DOCX/XLSX/PPTX, `mcp` for HTTP MCP paths, and `media-preview` for character-image previews. Others include `fastapi`, `langchain`, `opentelemetry`, `testing` and platform-limited `wasm`. Example: `python -m pip install -e ".[models,tui]"`. Installation does not authorize service calls.
 
-## 3. Current 1.x agent
+## 2. Choose the smallest development path
 
-Status: `Implemented`.
+- Support/RAG: start with `customer_support_agent` and sample `support_tools()`, replace local documents and retain sources; then add [knowledge tools](./knowledge-tools.en.md) or [named assembly](./knowledge-runtime.en.md).
+- Coding: start with `coding_agent` and `coding_tools(source)`. The example reads host-supplied text only; no implicit IDE, arbitrary file access, shell or writes.
+- Single agent: compose a Provider, ModelRegistry/Router/Executor, ToolRegistry/Executor and ReactAgentLoop. Templates do not register tools or grant authority; see [agents](./agents.en.md) and [tools](./tools.en.md).
+- Workflow: select DAG, state-graph or Python definitions and public Agent adapters. Recovery covers supported node boundaries, not arbitrary Python instruction stacks; see [workflows](./workflows.en.md).
 
-```python
-import asyncio
+## 3. Add a real model and durable Runtime
 
-from w_agent import AgentComponent, BaseAgent, BeanFactory
+[Basic development](./basic-development.en.md) provides optional Ollama substitution; [provider templates](./provider-templates.en.md) cover other services. Supply your own endpoint, model and credentials, then authorize requests and potential costs. Declared catalogs/capabilities do not prove connectivity, authentication or generation quality; see [routing/probes](./model-routing.en.md).
 
-
-@AgentComponent(name="echo_agent")
-class EchoAgent(BaseAgent):
-    async def arun(self, prompt: str) -> str:
-        return prompt
-
-
-async def main() -> None:
-    factory = BeanFactory()
-    factory.register_bean("echo_agent", EchoAgent())
-    agent = await factory.get_bean("echo_agent")
-    print(await agent.arun("hello"))
-
-
-asyncio.run(main())
-```
-
-`BaseAgent` currently defines only `arun(prompt)` and does not provide model integration, a tool loop, or durable sessions. Reuse an old agent in a current workflow with `LegacyAgentAdapter(old_agent).workflow_node("legacy")`; this bridge carries text and a final result only.
-
-## 4. Current configuration management
-
-Status: `Implemented`.
-
-```python
-from w_agent import DynamicConfigManager
-
-config = DynamicConfigManager()
-config.set("agent.timeout", 30)
-timeout = config.get("agent.timeout")
-```
-
-Property binding:
-
-```python
-class Settings:
-    timeout = 0
-
-
-settings = Settings()
-config.bind("agent.timeout", settings, "timeout")
-```
-
-## 5. Current event bus
-
-Status: `Implemented`.
-
-```python
-from w_agent import Event, EventBus
-
-bus = EventBus()
-
-
-@bus.on("job.completed")
-async def on_completed(event: Event) -> None:
-    print(event.payload)
-
-
-await bus.emit(Event("job.completed", {"id": "job-1"}))
-```
-
-The 1.x event bus is not the planned typed run-event and pipeline API. A compatibility adapter will bridge it during migration.
-
-## 6. Current skill sandboxes
-
-Status: `Implemented`.
-
-Wasm and nsjail backends fail closed when real isolation is unavailable. The Wasm SDK is not installed on native Windows; Windows users can use WSL2. The next-generation `DockerSandboxProvider` is implemented but requires a local Docker CLI/daemon and usable image. Legacy Wasm/nsjail classes are not yet connected to the new provider contract.
-
-Never treat ordinary subprocess execution as a safe fallback for an unavailable sandbox backend.
-
-## 7. Planned open composition
-
-Status: `Planned`. This example shows only the target experience:
-
-```python
-from w_agent import Application, OpenAIProvider, ReactAgentLoop
-
-app = Application()
-app.register(OpenAIProvider(name="primary", endpoint="..."))
-app.register(ReactAgentLoop(name="react"))
-
-result = await app.agent("coding").run("fix the failing test")
-```
-
-The same composition may come from decorators, YAML, or Python entry points; every path enters the same registry.
-
-## 8. Current model and probe APIs
-
-Status: the Python API, OpenAI-compatible provider, generic HTTP mapping layer, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, explicit text-prefix stream recovery, explicit register-and-safe-probe service, and credential-free L1 plus configured provider CLI/TUI probe entry points are `Implemented`/`Experimental`; provider-native cursor continuation remains `Planned`.
-
-After a custom provider implements `list_models()`, `resolve()`, and `stream()`, it can register with `ModelRegistry`. Routing and safe endpoint sniffing use public APIs:
-
-```python
-from w_agent import (
-    EndpointProbe,
-    ModelRegistry,
-    ModelRouter,
-    OpenAICompatibleProvider,
-    YamlRoutingPolicy,
-)
-
-models = ModelRegistry()
-provider = OpenAICompatibleProvider(
-    name="local",
-    base_url="http://127.0.0.1:11434/v1",
-    default_model="my-model",
-)
-models.register("local", provider, version="1.0.0")
-
-policy = YamlRoutingPolicy.from_yaml("preferred_providers: [local]")
-decision = await ModelRouter(models, policy).route(request)
-reachability = await EndpointProbe().probe("https://example.com/v1")
-```
-
-Active provider probes may incur cost and require per-call authorization:
-
-```python
-from w_agent import ModelProviderProbe, ProbeMode
-
-result = await ModelProviderProbe().probe(
-    "local",
-    provider,
-    mode=ProbeMode.ACTIVE,
-    allow_active=True,
-)
-```
-
-Anthropic, Gemini, Ollama, Qwen-native, DeepSeek, GLM, Qwen-compatible, and Turbo templates can be assembled through `builtin_provider_template_registry()`. Qwen has both native DashScope and compatible entry points. The Turbo template means Turbo AI/SIAM.AI and requires a deployment URL. See [HTTP providers and vendor templates](./provider-templates.en.md).
-
-Use the separate `ModelExecutor` to execute a route decision. The default performs one call; retry or fallback happens only after explicitly raising `InvocationPolicy.max_attempts_per_route` or `max_routes`. `invoke()` returns a fully collected result; `stream()` yields standard events in real time and prohibits retry or failover after the first event becomes visible:
-
-```python
-execution = executor.stream(request)
-async for event in execution:
-    print(event)
-
-assert execution.response is not None
-```
-
-For a non-generating safety probe immediately after registration, use `ModelRegistrationProbeService.register()`; direct `ModelRegistry.register()` never initiates network I/O. See [Models, routing, and endpoint probing](./model-routing.en.md#invocation-retry-and-failover).
-
-The current CLI performs credential-free L1 probing without a request body:
+Use [local Runtime](./local-runtime.en.md) for configuration, Sessions, durable Runs and approval recovery. First initialize directories and inspect the environment:
 
 ```text
-wagent probe https://example.com/v1
+wagent init
+wagent doctor
+wagent profile list
 ```
 
-Configured provider probes use the same strict configuration:
+`wagent init` only creates directories and an empty `{}` configuration, not a runnable model configuration. Fill `.wagent/config.json` using the [local Runtime configuration example](./local-runtime.en.md), supplying a working Provider, model, endpoint and credentials. Then explicitly authorize execution:
 
 ```text
-wagent provider-probe --config .wagent/config.json --mode safe
-wagent provider-probe --config .wagent/config.json --mode active --confirm-active-probe
+wagent run "hello" --config .wagent/config.json --confirm-model-call --json
 ```
 
-`safe` invokes the provider catalog contract without generating content. Some compatible providers use a static catalog, so a safe success does not necessarily prove the remote generation path. `active` sends a minimal request capped at 8 output tokens and verifies generation plus stream termination; it may incur cost and requires per-run confirmation. `capability` performs the same active check and then reports L6/L7 declarations while explicitly noting that no vendor-specific active verifier is installed.
+`run` contacts the service and may incur costs. After installing the `tui` extra, use `wagent tui` to open the terminal interface; the interface does not replace valid model configuration. Factories belong on your project's normal import path, e.g. `my_project_tools:open_tools`; do not depend on repository `examples.*` in a wheel. Factory loading, tool selection, per-run permissions and exact-call approval are independent; configuration references are not authorization.
 
-## 9. Current tool-execution API
+## 4. Knowledge, state and safety
 
-Status: the Python-function template, scoped registration, argument validation, permission/per-call approval, timeout, cancellation, and audit are `Implemented`.
+The smallest knowledge path uses local keyword retrieval. The advanced path is [file preview/locked save → fixed trace → sync plan → independent execution approval](./knowledge-sync-entries.en.md). Parser and [structural/overlapping splitter](./knowledge-splitting.en.md) settings are bound to preview digests. [Raw archives](./knowledge-archive-entries.en.md) use explicit reads/writes/new-file exports, not automatic restoration over files. Read consent is not embedding, upsert or delete consent.
 
-```python
-from w_agent import ToolCall, ToolExecutor, ToolRegistry, python_tool
+[Runs/Sessions](./sessions.en.md), [replay](./event-replay.en.md), [shared budgets](./shared-budget.en.md) and [service usage](./service-usage-runtime.en.md) have separate storage/accounting boundaries. Unknown prices/usage stay unknown; budgets are not exact invoices. The example helper owns and closes its Provider; real hosts must define shared-resource, task-cancellation and Store lifecycles.
 
+Use [sandboxes](./sandbox.en.md) for untrusted code; unavailable isolation fails closed. Explicit unsafe-local provides no isolation guarantee. Ordinary Python handlers/plugins are trusted host code; WRITE/EXTERNAL permissions do not replace per-call approval, and unknown effects are not automatically replayed.
 
-def lookup(query: str) -> str:
-    return f"result for {query}"
+## 5. Testing, sharing and compatibility
 
+- [Testing/evaluation](./testing-evaluation.en.md): start with scripted offline models/contracts, then authorize real-model tests. Local passes do not certify vendor quality or billing.
+- [Project sharing](./project-sharing.en.md): preview configuration/plugin references offline; installation, imports and execution need separate authority.
+- [1.x migration](./migration-1x.en.md): retain the engineering foundation and `BaseAgent.arun()`; `LegacyAgentAdapter` bridges text/final results only, not an implicit tool loop or durable Session.
+- [Developer guide](./developer.en.md), [API](./api.en.md) and [documentation index](./README.en.md): replace modules and find complete interfaces.
 
-tools = ToolRegistry()
-tools.register_binding(python_tool(lookup))
-result = await ToolExecutor(tools).execute(
-    ToolCall("lookup-1", "lookup", {"query": "W-Agent"})
-)
-```
-
-The default policy automatically executes only calls that need no approval. Write, destructive, and external effects require the local application to approve the specific call ID. See [Tool registration, policy, and execution](./tools.en.md).
-
-The same runtime also includes `http_tool()`, shell-free `command_tool()`, and `mcp_tool()`. HTTP requires `network.http`, commands require `process.execute`, and MCP requires `mcp.call` by default. All three default to external effects and per-call approval. The command adapter is not a sandbox.
-
-## 10. Current single-agent ReAct loop
-
-Status: public run/loop contracts, a bounded ReAct/tool loop, and an in-process event stream are `Implemented`.
-
-```python
-from w_agent import AgentDefinition, ReactAgentLoop, RunContext
-
-loop = ReactAgentLoop(model_executor, tools, tool_executor)
-result = await loop.run(AgentDefinition("assistant"), run_context)
-```
-
-The loop exposes tool definitions from the current scope to the model, executes calls, and sends normalized results into the next model turn. `max_steps` and `max_tool_calls` bound a run. A call requiring approval returns `StopReason.NEEDS_APPROVAL`, the pending call, and a checkpoint without executing it. With `JsonlRunStore`, a new process can call `resume()` from that boundary without repeating the earlier model request; uncertain side-effect state rejects automatic replay. See [Agent runtime and ReAct loop](./agents.en.md).
-
-## 11. Current local workflows
-
-Status: DAG, state-graph, and Python entry points plus node-boundary recovery are `Implemented`.
-
-```python
-from w_agent import (
-    DagWorkflowDefinition,
-    LocalWorkflowEngine,
-    WorkflowContext,
-    WorkflowNode,
-)
-
-workflow = DagWorkflowDefinition(
-    "hello",
-    (WorkflowNode("format", lambda context: f"hello {context.input}"),),
-)
-result = await LocalWorkflowEngine().start(
-    workflow,
-    WorkflowContext("workflow-1", input="W-Agent"),
-)
-```
-
-Use `JsonlWorkflowStore` for durable local recovery. A node returning `WorkflowNodeResult(pause=True)` saves a checkpoint; a new process resumes with a definition of the same name, version, and kind. Recovery occurs only at node boundaries, and an interrupted node that may have produced effects is never repeated automatically. See [Workflows and node-boundary recovery](./workflows.en.md).
-
-## 12. Current sandbox selection
-
-Status: the unified provider, Docker/OCI, and explicitly authorized local execution are `Implemented`.
-
-```python
-from pathlib import Path
-
-from w_agent import DockerSandboxProvider, SandboxCommand, SandboxSpec
-
-provider = DockerSandboxProvider()
-handle = await provider.open(
-    SandboxSpec(Path.cwd(), image="python:3.11-slim")
-)
-try:
-    result = await handle.execute(SandboxCommand(("python", "-V")))
-finally:
-    await handle.close()
-```
-
-Docker defaults to no network and bounded resources. Host execution first requires `UnsafeLocalAuthorization.grant(..., acknowledge_host_access=True)`, constructing `UnsafeLocalSandboxProvider`, and explicitly selecting `SandboxNetwork.BRIDGE` plus read-write workspace access. Docker failure never falls back to local mode. See [Sandbox and local execution](./sandbox.en.md).
-
-## 13. Current portable project compositions
-
-Status: encoding, offline safety preview, storage, versions, and aliases are `Implemented`. Current main's offline dependency planning and general-plugin confirmation operations are `Experimental`; online source catalogs and package installation remain `Planned`.
-
-```text
-wagent composition export manifest.json
-wagent composition inspect <composition-code>
-wagent composition plan <composition-code> --inventory plugin-inventory.json --json
-wagent composition save <composition-code> --alias stable
-```
-
-Preview shows the composition name, version, core requirement, plugin dependencies, permissions, and sandbox policy without network access, plugin imports, or code execution. Codes contain no secrets. `composition plan` checks environment and plugin constraints against an explicit candidate inventory and emits per-item actions. It never queries the network, installs a package, or grants plugin-load authority. Users may then separately review and load selected YAML references through `plugin inspect`, `plugin validate-load --confirm-plugin-code`, or the TUI Plugins screen. Automatic conversion of a plan into install/load references is not implemented.
-
-## 14. Current TUI foundation
-
-Status: the launchable local Textual foundation is `Experimental`.
-
-```text
-wagent tui
-```
-
-The TUI currently covers profiles, credential-free/configured provider probing, offline composition inspection/dependency planning, general-plugin preview/confirmed load/unload, local session lifecycle and cross-session per-agent summaries, configured text-agent runs, privacy-safe agent/workflow checkpoint listing, exact tool/workflow recovery, privacy-safe live events, and local evaluation. It uses public Python APIs and needs no hosted backend; cross-session summaries, workflow recovery, dependency planning, and general-plugin screens are unpublished main capabilities.
-
-## 15. Current local evaluation
-
-Status: the API, CLI, and TUI are `Experimental`.
-
-```text
-wagent evaluate cases.json --confirm-model-call --report report.json
-```
-
-Datasets use strict JSON or `builtin:customer-support@1.0.0` / `builtin:coding@1.0.0`. The CLI/TUI execute a configured agent sequentially, use disposable state by default, and expose input/output tokens, metering completeness, latency, errors, and tool outcomes. The TUI requires `EVALUATE`; importing evaluation tool code separately requires `LOAD EVAL TOOLS`, and neither authorization is retained. Reports omit prompts and model outputs by default. See [Local testing, model replay, and evaluation](./testing-evaluation.en.md).
-
-## 16. Next steps
-
-- Architecture and extension points: [Architecture](./architecture.en.md)
-- Delivery order: [Roadmap](./roadmap.en.md)
-- Plugin authors: [Developer guide](./developer.en.md)
-- Workflow development: [Workflows and node-boundary recovery](./workflows.en.md)
-- Migrating from 1.x: [Migration guide](./migration-1x.en.md)
+The [roadmap](./roadmap.en.md) governs capability status. `Planned` / `Reserved` are not executable APIs; semantic chunking, cross-store transactions, advanced recovery and multi-agent enhancements are not prerequisites for basic use. See the [release record](./acceptance-2026-10-01-stable-release.en.md) for current release verification; historical alpha reports do not replace that evidence.

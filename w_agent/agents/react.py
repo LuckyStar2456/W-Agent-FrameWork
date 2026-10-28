@@ -18,23 +18,40 @@ from w_agent.models import (
     ModelInvocationError,
     ModelMessage,
     ModelRequest,
+    NativeCursorRecovery,
     PricingError,
     PricingResolver,
     RouteDecision,
+    StreamRecoveryStrategy,
     TextDelta,
     TokenUsage,
     ToolCallContent,
+    ToolCallDelta,
     ToolResultContent,
 )
 from w_agent.tools import (
     ToolCall,
+    ToolContinuation,
+    ToolContinuationError,
     ToolExecutionContext,
     ToolExecutorProtocol,
     ToolOutcome,
+    ToolResult,
     ToolRegistry,
 )
 
+from .media_events import (
+    ModelOutputEventEncoder,
+    ModelOutputEventEncodingError,
+    StandardMultimodalEventEncoder,
+    normalize_model_output_event,
+)
 from .persistence import InMemoryRunStore, RunStore
+from .tool_events import (
+    TextToolResultEventEncoder,
+    ToolResultEventEncoder,
+    normalize_tool_result_event,
+)
 from .budgeting import (
     CostEstimate,
     CostEstimateRequest,
@@ -201,6 +218,11 @@ class ReactAgentLoop:
         pricing: PricingResolver | None = None,
         token_estimator: TokenEstimator | None = None,
         cost_estimator: CostEstimator | None = None,
+        stream_recovery: (
+            StreamRecoveryStrategy | NativeCursorRecovery | None
+        ) = None,
+        output_event_encoder: ModelOutputEventEncoder | None = None,
+        tool_result_event_encoder: ToolResultEventEncoder | None = None,
     ) -> None:
         self.models = models
         self.tools = tools
@@ -213,6 +235,19 @@ class ReactAgentLoop:
             if cost_estimator is not None
             else (PricingCostEstimator(pricing) if pricing is not None else None)
         )
+        self.stream_recovery = stream_recovery
+        self.output_event_encoder = (
+            output_event_encoder
+            if output_event_encoder is not None
+            else StandardMultimodalEventEncoder()
+        )
+        if not callable(getattr(self.output_event_encoder, "encode", None)):
+            raise ValueError("output_event_encoder needs an encode method")
+        # None uses a per-definition bounded encoder; a custom encoder is trusted
+        # application code and never invoked unless recording is explicitly on.
+        if tool_result_event_encoder is not None and not callable(getattr(tool_result_event_encoder, "encode", None)):
+            raise ValueError("tool_result_event_encoder needs an encode method")
+        self.tool_result_event_encoder = tool_result_event_encoder
 
     def stream(
         self,
@@ -363,6 +398,8 @@ class ReactAgentLoop:
         if pricing_error is not None or (
             checkpoint.definition.cost_budget is not None and state.cost is None
         ):
+            if checkpoint.tool_continuation is not None:
+                raise ToolContinuationError("cannot resume tool with unavailable checkpoint pricing")
             yield await execution.emit(
                 RunEventType.COST_BUDGET_STOPPED,
                 reason=StopReason.COST_UNAVAILABLE.value,
@@ -385,6 +422,7 @@ class ReactAgentLoop:
                 remaining=remaining,
                 requested=True,
                 resumable=True,
+                continuation=checkpoint.tool_continuation,
             )
             for event in events:
                 yield event
@@ -584,6 +622,10 @@ class ReactAgentLoop:
                                 estimate,
                                 request.max_output_tokens,
                                 cost_budget,
+                                streaming=(
+                                    definition.emit_text_deltas
+                                    or definition.emit_tool_call_deltas
+                                ),
                             )
                         )
                 if cost_estimate_error is not None:
@@ -659,20 +701,37 @@ class ReactAgentLoop:
                 ),
             )
             try:
-                if definition.emit_text_deltas:
+                if (
+                    definition.emit_text_deltas
+                    or definition.emit_tool_call_deltas
+                ):
                     invocation = self.models.stream(
                         request,
                         decision=decision,
                         scope=context.scope,
                         cancellation=cancellation,
+                        stream_recovery=self.stream_recovery,
                     )
                     async for model_event in invocation:
-                        if isinstance(model_event, TextDelta):
+                        if definition.emit_text_deltas and isinstance(
+                            model_event, TextDelta
+                        ):
                             yield await execution.emit(
                                 RunEventType.MODEL_TEXT_DELTA,
                                 step=state.steps,
                                 block_index=model_event.index,
                                 text=model_event.text,
+                            )
+                        elif definition.emit_tool_call_deltas and isinstance(
+                            model_event, ToolCallDelta
+                        ):
+                            yield await execution.emit(
+                                RunEventType.MODEL_TOOL_CALL_DELTA,
+                                step=state.steps,
+                                block_index=model_event.index,
+                                call_id=model_event.id,
+                                name=model_event.name,
+                                arguments_delta=model_event.arguments_delta,
                             )
                 else:
                     invocation = await self.models.invoke(
@@ -731,6 +790,38 @@ class ReactAgentLoop:
                 state.messages.append(
                     ModelMessage(MessageRole.ASSISTANT, response.blocks)
                 )
+            if definition.emit_output_blocks:
+                for block_index, block in enumerate(response.blocks):
+                    try:
+                        encoded_block = self.output_event_encoder.encode(
+                            block,
+                            index=block_index,
+                        )
+                        if encoded_block is not None:
+                            encoded_block = normalize_model_output_event(
+                                encoded_block
+                            )
+                    except ModelOutputEventEncodingError:
+                        yield await execution.emit(
+                            RunEventType.MODEL_OUTPUT_BLOCK_FAILED,
+                            step=state.steps,
+                            block_index=block_index,
+                            code="output-event-encoding-failed",
+                        )
+                        yield await self._finish_terminal(
+                            execution,
+                            state,
+                            StopReason.OUTPUT_EVENT_ERROR,
+                        )
+                        return
+                    if encoded_block is None:
+                        continue
+                    yield await execution.emit(
+                        RunEventType.MODEL_OUTPUT_BLOCK,
+                        step=state.steps,
+                        block_index=block_index,
+                        block=encoded_block,
+                    )
             yield await execution.emit(
                 RunEventType.MODEL_COMPLETED,
                 step=state.steps,
@@ -940,6 +1031,7 @@ class ReactAgentLoop:
         remaining: tuple[ToolCallContent, ...],
         requested: bool,
         resumable: bool,
+        continuation: ToolContinuation | None = None,
     ) -> tuple[list[RunEvent], bool]:
         events: list[RunEvent] = []
         if not requested:
@@ -960,15 +1052,27 @@ class ReactAgentLoop:
                     pending=call,
                     remaining=remaining,
                     status=CheckpointStatus.RESUMING,
+                    continuation=continuation,
                 )
             )
 
         result = None
         if parse_error is None:
-            result = await self.tool_executor.execute(
-                call,
-                _tool_context(execution._context),
-            )
+            if continuation is None:
+                result = await self.tool_executor.execute(call, _tool_context(execution._context))
+            elif call.id not in execution._context.tool_context.approved_call_ids:
+                result = ToolResult(
+                    call.id, call.name, ToolOutcome.NEEDS_APPROVAL, continuation=continuation,
+                )
+            else:
+                resume = getattr(self.tool_executor, "resume", None)
+                if not callable(resume):
+                    raise ToolContinuationError("executor cannot resume a suspended tool")
+                result = await resume(call, continuation, _tool_context(execution._context))
+                if result.call_id != call.id or result.tool_name != call.name:
+                    raise ToolContinuationError("executor returned another tool call identity")
+                if result.outcome not in (ToolOutcome.SUCCEEDED, ToolOutcome.NEEDS_APPROVAL):
+                    raise ToolContinuationError("tool continuation did not reach a safe boundary")
 
         if result is not None and result.outcome == ToolOutcome.NEEDS_APPROVAL:
             await self.store.save_checkpoint(
@@ -978,6 +1082,7 @@ class ReactAgentLoop:
                     pending=call,
                     remaining=remaining,
                     status=CheckpointStatus.PENDING_APPROVAL,
+                    continuation=result.continuation or continuation,
                 )
             )
             events.append(
@@ -1016,13 +1121,32 @@ class ReactAgentLoop:
             is_error = result.is_error
             outcome = result.outcome.value
             failure_code = result.failure.code if result.failure else None
+        tool_message = ToolResultContent(call.id, content, is_error)
         state.messages.append(
             ModelMessage(
                 MessageRole.TOOL,
-                (ToolResultContent(call.id, content, is_error),),
+                (tool_message,),
                 name=call.name,
             )
         )
+        result_event: dict[str, Any] = {}
+        if execution._definition.emit_tool_results:
+            limit = execution._definition.max_tool_result_event_bytes
+            encoder = self.tool_result_event_encoder
+            if encoder is None:
+                encoder = TextToolResultEventEncoder(max_text_bytes=limit)
+            try:
+                encoded = encoder.encode(tool_message, name=call.name)
+                if encoded is None:
+                    result_event = {"result_recording": "omitted"}
+                else:
+                    body = normalize_tool_result_event(encoded, max_bytes=limit)
+                    result_event = {"result_recording": "recorded", "result": body}
+            except Exception:
+                # Auxiliary disclosure must not turn completed side effects into
+                # a retry. Never put exception text, tickets or partial bodies in
+                # the log. Store failures below still follow existing semantics.
+                result_event = {"result_recording": "failed"}
         events.append(
             await execution.emit(
                 RunEventType.TOOL_COMPLETED,
@@ -1031,6 +1155,7 @@ class ReactAgentLoop:
                 name=call.name,
                 outcome=outcome,
                 failure_code=failure_code,
+                **result_event,
             )
         )
         if resumable:
@@ -1054,6 +1179,7 @@ class ReactAgentLoop:
         pending: ToolCall | None,
         remaining: tuple[ToolCallContent, ...],
         status: CheckpointStatus,
+        continuation: ToolContinuation | None = None,
     ) -> RunCheckpoint:
         return RunCheckpoint(
             run_id=execution._context.run_id,
@@ -1067,6 +1193,8 @@ class ReactAgentLoop:
             tool_calls=state.tool_calls,
             latest_output=state.latest_output,
             status=status,
+            schema_version=2 if continuation is not None else 1,
+            tool_continuation=continuation,
             usage=state.usage,
             model_calls=state.model_calls,
             reported_usage_calls=state.reported_usage_calls,
@@ -1112,10 +1240,24 @@ class ReactAgentLoop:
         token_estimate: TokenEstimate,
         max_output_tokens: int,
         budget: CostBudget,
+        *,
+        streaming: bool,
     ) -> tuple[CostEstimate | None, str | None]:
         if self.cost_estimator is None:
             return None, "cost-estimator-unavailable"
         policy = self.models.policy
+        extra_stream_attempts = 0
+        if streaming and isinstance(self.stream_recovery, NativeCursorRecovery):
+            extra_stream_attempts = self.stream_recovery.max_resumes
+        elif streaming and self.stream_recovery is not None:
+            configured_replays = getattr(policy, "max_stream_replays", 0)
+            if (
+                isinstance(configured_replays, bool)
+                or not isinstance(configured_replays, int)
+                or configured_replays < 0
+            ):
+                return None, "invalid-stream-replay-limit"
+            extra_stream_attempts = configured_replays
         routes = (
             (decision.provider, decision.model),
             *decision.fallbacks,
@@ -1125,7 +1267,7 @@ class ReactAgentLoop:
                 CostEstimateRoute(
                     provider,
                     model,
-                    attempts=policy.max_attempts_per_route,
+                    attempts=policy.max_attempts_per_route + extra_stream_attempts,
                 )
                 for provider, model in routes
             ),
@@ -1383,9 +1525,14 @@ def _exhausted_budget_limits(
 
 def _tool_context(context: RunContext) -> ToolExecutionContext:
     cancellation = context.cancellation or context.tool_context.cancellation
-    if cancellation is context.tool_context.cancellation:
+    if (
+        cancellation is context.tool_context.cancellation
+        and context.tool_context.agent_run_id == context.run_id
+    ):
         return context.tool_context
-    return replace(context.tool_context, cancellation=cancellation)
+    return replace(
+        context.tool_context, cancellation=cancellation, agent_run_id=context.run_id
+    )
 
 
 def _parse_arguments(value: str) -> tuple[Mapping[str, Any], str | None]:

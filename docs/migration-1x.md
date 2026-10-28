@@ -1,6 +1,12 @@
 # 从 1.x 迁移
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./migration-1x.en.md) | 简体中文
+
+> 版本说明：本页新框架核心纳入 2.1.0。下方“未发布”与候选 2.0.0 元数据属于发布前阶段记录，不代表 2.1.0 包状态。参见[2.1.0 发布说明](./releases/2.1.0.md)；上传状态以 [PyPI](https://pypi.org/project/wagent-framework/2.1.0/) 为准。
+
+未发布的新核心保留既有装饰器名称，但需显式使用 `compile_decorated()` 与 `ApplicationContext` 才获得新生命周期语义。旧 BeanFactory 继续原有语义，可经 `borrow_legacy_singletons()` 借用已创建单例；不能在两边同时登记销毁。新容器仅执行标记的生命周期方法，不按普通方法名猜测；`prototype` 请改为明确 run/step 作用域。配置工厂、限定注入和 Value 绑定见[注解迁移用法](./annotation-development.md)。
 
 状态：`Experimental`。`LegacyAgentAdapter` 已实现；EventBus、配置和旧沙箱到新协议的 Bridge 仍为 `Planned`。
 
@@ -47,7 +53,19 @@ result = await LocalWorkflowEngine().start(
 
 ## BeanFactory 与组件装饰器
 
-现有 IOC 可以在过渡期作为插件构造后端。长期装配以统一 Registry 为准。装饰器仍可作为语法入口，但最终必须生成与显式 Python 构造相同的 `PluginSpec`。
+旧 BeanFactory 保持原语义；新装配以 `AssemblyPlan` / `ApplicationContext` 为准，Registry 只负责能力索引。组件注解编译为 `ComponentDefinition`，并不自动变成 `PluginSpec`；需要插件边界时显式使用 `ApplicationPlugin`。借用旧单例不转移销毁权。
+
+## 新核心迁移对照（未发布）
+
+| 既有用法 | 新用法 | 注意 |
+|---|---|---|
+| 手动构造和清理对象 | `compile_assembly` + `ApplicationContext` | 工厂托管、外部实例借用；不要重复登记清理 |
+| 装饰器 / BeanFactory | `compile_decorated` 或 `compile_configured` | 显式扫描已加载模块，配置只能选允许目录 |
+| `ProxyFactory` 手工代理 | `Aspect` 与计划 `aspects` | 老代理不自动升级；自调用与未声明特殊方法不被新代理拦截 |
+| `assemble_local_runtime` | `async with open_local_runtime(...) as runtime` | 旧同步函数仍保留；新入口在 enter 时启动并经 Host 执行 |
+| 自定义业务入口 | `ApplicationProject(plan, operations)` | Python/CLI/TUI 复用项目，CLI/TUI 限 JSON 可表达输入输出 |
+
+新语义是主动迁移，不在导入时改写旧容器。完整可运行迁移起点见[三条 Harness 教程](./harness-development.md)。插件的自定义作用域可通过 `ApplicationPlugin(..., scope_order=...)` 明确层级；借用导入仍遵守作用域捕获限制。
 
 ## EventBus
 

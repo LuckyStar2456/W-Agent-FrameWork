@@ -1,6 +1,7 @@
 """Open sandbox contracts and local provider implementations."""
 
 from .docker import DockerSandboxHandle, DockerSandboxProvider, OciCliRunner
+from .nsjail import NsJailSandboxHandle, NsJailSandboxProvider
 from .registry import SANDBOX_PROVIDER_CAPABILITY, SandboxRegistry
 from .types import (
     SandboxCommand,
@@ -25,6 +26,8 @@ from .unsafe_local import (
 __all__ = [
     "DockerSandboxHandle",
     "DockerSandboxProvider",
+    "NsJailSandboxHandle",
+    "NsJailSandboxProvider",
     "OciCliRunner",
     "SANDBOX_PROVIDER_CAPABILITY",
     "SandboxCommand",

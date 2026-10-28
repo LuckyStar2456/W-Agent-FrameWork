@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
@@ -258,8 +259,17 @@ class HttpModelProvider:
         if default_model is not None:
             known.add(default_model)
         self._descriptors = {model: self._descriptor(model) for model in known}
+        self._catalog_probe_scope: ContextVar[str] = ContextVar(
+            "http_catalog_probe_scope", default="unknown"
+        )
+
+    @property
+    def catalog_probe_scope(self) -> str:
+        """Evidence from the last successful catalog call in this task context."""
+        return self._catalog_probe_scope.get()
 
     async def list_models(self) -> tuple[ModelDescriptor, ...]:
+        self._catalog_probe_scope.set("unknown")
         catalog = self.mapping.catalog_request()
         if catalog is not None:
             request = self._prepare(catalog)
@@ -268,7 +278,9 @@ class HttpModelProvider:
             )
             for model in self.mapping.parse_catalog(payload):
                 self._descriptors[model] = self._descriptor(model)
-        return tuple(self._descriptors[key] for key in sorted(self._descriptors))
+        result = tuple(self._descriptors[key] for key in sorted(self._descriptors))
+        self._catalog_probe_scope.set("remote" if catalog is not None else "local")
+        return result
 
     async def resolve(self, model: str) -> ModelDescriptor:
         descriptor = self._descriptors.get(model)
@@ -295,6 +307,21 @@ class HttpModelProvider:
     ) -> AsyncIterator[StreamEvent]:
         if cancellation is not None:
             cancellation.raise_if_cancelled()
+        model = self._generation_model(request)
+        wire_request = self._prepare(self.mapping.generation_request(request, model))
+        decoder = self.mapping.stream_decoder(request, model)
+        async for frame in self.transport.stream(
+            self._url(wire_request), request=wire_request, timeout=self.timeout
+        ):
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            for event in decoder.feed(frame):
+                yield event
+        for event in decoder.finish():
+            yield event
+
+    def _generation_model(self, request: ModelRequest) -> str:
+        """Resolve and validate a request without issuing network traffic."""
         model = request.model or self.default_model
         if model is None:
             raise ModelError(
@@ -318,17 +345,7 @@ class HttpModelProvider:
                     model=model,
                 )
             )
-        wire_request = self._prepare(self.mapping.generation_request(request, model))
-        decoder = self.mapping.stream_decoder(request, model)
-        async for frame in self.transport.stream(
-            self._url(wire_request), request=wire_request, timeout=self.timeout
-        ):
-            if cancellation is not None:
-                cancellation.raise_if_cancelled()
-            for event in decoder.feed(frame):
-                yield event
-        for event in decoder.finish():
-            yield event
+        return model
 
     async def aclose(self) -> None:
         await self.transport.aclose()

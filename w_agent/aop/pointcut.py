@@ -2,6 +2,8 @@ from typing import Callable, Optional, Dict, Any, List, Type
 import re
 import inspect
 
+from .joinpoint import JoinPoint
+
 class AspectJPointcut:
     """AspectJ切点表达式"""
     def __init__(self, expression: str):

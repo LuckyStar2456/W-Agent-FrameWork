@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol
@@ -281,11 +282,21 @@ class OpenAICompatibleProvider:
         }
         if not discover_models and not self._profiles:
             raise ValueError("profiles are required when model discovery is disabled")
+        self._catalog_probe_scope: ContextVar[str] = ContextVar(
+            "compatible_catalog_probe_scope", default="unknown"
+        )
+
+    @property
+    def catalog_probe_scope(self) -> str:
+        """Evidence from the last successful catalog call in this task context."""
+        return self._catalog_probe_scope.get()
 
     async def list_models(self) -> tuple[ModelDescriptor, ...]:
         """Return configured profiles plus models discovered from ``/models``."""
 
-        if self.discover_models:
+        self._catalog_probe_scope.set("unknown")
+        discover_models = self.discover_models
+        if discover_models:
             payload = await self.transport.get_json(
                 f"{self.base_url}/models",
                 headers=self._request_headers(),
@@ -305,7 +316,9 @@ class OpenAICompatibleProvider:
                 if isinstance(item, Mapping) and isinstance(item.get("id"), str):
                     model = item["id"]
                     self._descriptors[model] = self._descriptor(model)
-        return tuple(self._descriptors[key] for key in sorted(self._descriptors))
+        result = tuple(self._descriptors[key] for key in sorted(self._descriptors))
+        self._catalog_probe_scope.set("remote" if discover_models else "local")
+        return result
 
     async def resolve(self, model: str) -> ModelDescriptor:
         """Resolve a known model, refreshing discovery once when necessary."""

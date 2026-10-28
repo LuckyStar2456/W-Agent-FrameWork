@@ -25,6 +25,8 @@ from .invocation import (
 from .native_mappings import (
     AnthropicMessagesMapping,
     GeminiGenerateContentMapping,
+    GeminiMediaOutputMapper,
+    GeminiOutputPartMapper,
     OllamaChatMapping,
     QwenDashScopeMapping,
 )
@@ -35,6 +37,12 @@ from .openai_compatible import (
     OpenAICompatibleTransport,
 )
 from .openai_responses import OpenAIResponsesMapping
+from .responses_checkpoints import (
+    ResponsesCheckpoint,
+    ResponsesCheckpointStore,
+    SqliteResponsesCheckpointStore,
+)
+from .responses_resume import OpenAIResponsesResumableProvider
 from .probing import (
     EndpointProbe,
     ModelRegistrationProbeService,
@@ -61,6 +69,8 @@ from .pricing import (
 from .provider import (
     MODEL_PROVIDER_CAPABILITY,
     CancellationToken,
+    CursorResumableModelProvider,
+    CursorStreamItem,
     ModelProvider,
     ModelRegistry,
 )
@@ -79,6 +89,7 @@ from .routing import (
     YamlRoutingPolicy,
 )
 from .stream_recovery import (
+    NativeCursorRecovery,
     StreamRecoveryStrategy,
     StreamReplayFilter,
     VerifiedTextPrefixRecovery,
@@ -139,6 +150,8 @@ __all__ = [
     "BlockEnd",
     "BlockStart",
     "CancellationToken",
+    "CursorResumableModelProvider",
+    "CursorStreamItem",
     "CandidateEvaluation",
     "CandidateMetrics",
     "CandidateState",
@@ -183,12 +196,19 @@ __all__ = [
     "ModelRouter",
     "ModelStreamProtocolError",
     "ModelStreamValidator",
+    "NativeCursorRecovery",
     "GeminiGenerateContentMapping",
+    "GeminiMediaOutputMapper",
+    "GeminiOutputPartMapper",
     "OllamaChatMapping",
     "OpenAICompatibleModelProfile",
     "OpenAICompatibleProvider",
     "OpenAICompatibleTransport",
     "OpenAIResponsesMapping",
+    "OpenAIResponsesResumableProvider",
+    "ResponsesCheckpoint",
+    "ResponsesCheckpointStore",
+    "SqliteResponsesCheckpointStore",
     "PeriodicProbeService",
     "ProbeCache",
     "ProbeCheck",

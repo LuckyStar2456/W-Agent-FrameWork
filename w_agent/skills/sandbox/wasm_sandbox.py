@@ -11,6 +11,7 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import os
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -83,8 +84,11 @@ except BaseException as exc:
             raise ValueError("use either precompiled_path or cache_root, not both")
         if not python_package:
             raise ValueError("python_package must not be empty")
-        if max_execution_seconds <= 0:
-            raise ValueError("max_execution_seconds must be positive")
+        if (isinstance(max_execution_seconds, bool)
+                or not isinstance(max_execution_seconds, (int, float))
+                or not math.isfinite(max_execution_seconds)
+                or max_execution_seconds <= 0):
+            raise ValueError("max_execution_seconds must be finite and positive")
 
         configured_cache = cache_root or precompiled_path
         default_cache = Path(
@@ -174,7 +178,7 @@ except BaseException as exc:
             )
 
         try:
-            args_json = json.dumps(args, ensure_ascii=False)
+            args_json = json.dumps(args, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as exc:
             raise SkillSandboxError(f"Skill args are not JSON serializable: {exc}") from exc
 
@@ -227,7 +231,7 @@ except BaseException as exc:
             payload = json.loads(raw_output.strip())
         except (AttributeError, TypeError, json.JSONDecodeError) as exc:
             raise SkillSandboxError("Wasmer sandbox returned invalid JSON") from exc
-        if not isinstance(payload, dict) or "ok" not in payload:
+        if not isinstance(payload, dict) or not isinstance(payload.get("ok"), bool):
             raise SkillSandboxError("Wasmer sandbox returned an invalid envelope")
         if not payload["ok"]:
             error_type = payload.get("error_type", "SkillError")

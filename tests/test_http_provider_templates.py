@@ -1,8 +1,10 @@
 import pytest
 
 from w_agent import (
+    AudioContent,
     BUILTIN_PROVIDER_TEMPLATES,
     FinishReason,
+    GeminiMediaOutputMapper,
     HttpModelProfile,
     HttpRequest,
     HttpStreamFormat,
@@ -12,6 +14,7 @@ from w_agent import (
     MessageRole,
     ModelCapability,
     ModelMessage,
+    ModelError,
     ModelRequest,
     OpenAICompatibleProvider,
     ProviderTemplate,
@@ -219,6 +222,126 @@ async def test_gemini_native_mapping_uses_sse_and_normalizes_response():
     assert wire.stream_format == HttpStreamFormat.SSE
     assert wire.headers["x-goog-api-key"] == "secret"
     assert wire.body["tools"][0]["functionDeclarations"][0]["name"] == "lookup"
+
+
+@pytest.mark.asyncio
+async def test_gemini_native_mapping_preserves_interleaved_media_output_order():
+    transport = FakeHttpTransport(
+        frames=(
+            _frame(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {"text": "first"},
+                                    {
+                                        "inlineData": {
+                                            "mimeType": "image/png",
+                                            "data": "cG5n",
+                                        }
+                                    },
+                                    {
+                                        "fileData": {
+                                            "mimeType": "audio/wav",
+                                            "fileUri": "gs://generated/voice.wav",
+                                        }
+                                    },
+                                    {"text": "last"},
+                                ]
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ]
+                }
+            ),
+        )
+    )
+    provider = gemini_provider(
+        default_model="gemini-media",
+        transport=transport,
+    )
+
+    response = await collect_stream(
+        provider.stream(
+            ModelRequest(
+                messages=(ModelMessage.text(MessageRole.USER, "draw"),),
+            )
+        )
+    )
+
+    assert response.text == "firstlast"
+    assert [block.type for block in response.blocks] == [
+        "text",
+        "image",
+        "audio",
+        "text",
+    ]
+    assert isinstance(response.blocks[1], ImageContent)
+    assert response.blocks[1].data == b"png"
+    assert isinstance(response.blocks[2], AudioContent)
+    assert response.blocks[2].url == "gs://generated/voice.wav"
+
+
+def test_gemini_media_mapper_fails_closed_on_unsupported_or_large_output():
+    with pytest.raises(ModelError, match="unsupported Gemini output media type"):
+        GeminiMediaOutputMapper().map_part(
+            {"inlineData": {"mimeType": "video/mp4", "data": "cG5n"}}
+        )
+    with pytest.raises(ModelError, match="exceeds its limit"):
+        GeminiMediaOutputMapper(max_inline_bytes=2).map_part(
+            {"inlineData": {"mimeType": "image/png", "data": "cG5n"}}
+        )
+    with pytest.raises(ModelError, match="not Base64"):
+        GeminiMediaOutputMapper().map_part(
+            {"inlineData": {"mimeType": "image/png", "data": "!!!!"}}
+        )
+
+
+@pytest.mark.asyncio
+async def test_gemini_template_accepts_replaceable_output_mapper():
+    class CustomMapper:
+        def map_part(self, part):
+            if "fileData" in part:
+                return ImageContent(url="asset://rewritten")
+            return None
+
+    transport = FakeHttpTransport(
+        frames=(
+            _frame(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "fileData": {
+                                            "mimeType": "image/png",
+                                            "fileUri": "gs://generated/image.png",
+                                        }
+                                    }
+                                ]
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ]
+                }
+            ),
+        )
+    )
+    provider = gemini_provider(
+        default_model="gemini-media",
+        transport=transport,
+        output_part_mapper=CustomMapper(),
+    )
+
+    response = await collect_stream(
+        provider.stream(
+            ModelRequest(messages=(ModelMessage.text(MessageRole.USER, "draw"),))
+        )
+    )
+
+    assert response.blocks == (ImageContent(url="asset://rewritten"),)
 
 
 @pytest.mark.asyncio

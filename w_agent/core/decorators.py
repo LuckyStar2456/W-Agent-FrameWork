@@ -85,13 +85,15 @@ def PreDestroy(func=None, *, order: int = 0):
 
 class Value:
     """配置值注入装饰器"""
-    def __init__(self, key: str, default: Any = None):
+    def __init__(self, key: str, default: Any = None, *, required: bool = False):
         self.key = key
         self.default = default
+        self.required = required
     
     def __call__(self, func):
         setattr(func, "__value_key__", self.key)
         setattr(func, "__value_default__", self.default)
+        setattr(func, "__value_required__", self.required)
         return func
 
 class Autowired:

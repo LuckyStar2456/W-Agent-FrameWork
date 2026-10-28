@@ -33,7 +33,16 @@ from w_agent import (
     plugin,
 )
 from w_agent.tui import WAgentTui
-from textual.widgets import TabbedContent
+from textual.widgets import TabbedContent, TabPane
+
+
+@pytest.fixture(autouse=True)
+def disable_unrelated_docker_probe(monkeypatch):
+    """UI contracts must not depend on or contact a local Docker service."""
+    async def unavailable():
+        return False
+
+    monkeypatch.setattr(tui_module.DockerSandboxProvider, "available", staticmethod(unavailable))
 
 
 def test_tui_projects_token_estimate_metadata_without_prompt_content():
@@ -95,7 +104,12 @@ async def test_tui_mounts_all_first_release_sections_and_inspects_code(tmp_path)
 
     async with app.run_test(size=(140, 50)) as pilot:
         assert "Workspace:" in str(app.query_one("#home-summary").content)
-        assert len(app.query("TabPane")) == 10
+        assert {pane.id for pane in app.query(TabPane)} == {
+            "application",
+            "home", "models", "profiles", "plugins", "composition", "sessions",
+            "run", "replay", "checkpoints", "approval-chains", "sandbox", "evaluation",
+            "knowledge", "knowledge-index", "knowledge-plans", "knowledge-builds", "knowledge-sync",
+        }
         assert "No agent checkpoints" in str(
             app.query_one("#checkpoint-result").content
         )
@@ -241,6 +255,116 @@ async def test_tui_builds_offline_composition_plan_without_importing_code(
 
 
 @pytest.mark.asyncio
+async def test_tui_locked_install_plan_and_exact_install_confirmation(
+    tmp_path,
+    monkeypatch,
+):
+    from w_agent import PluginInstallResult
+
+    module_name = "tui_install_plan_must_not_import"
+    code = encode_composition(
+        CompositionManifest(
+            "install-stack",
+            "1.0.0",
+            requires_wagent=">=2.0.0a1,<3",
+            plugins=(PluginRequirement("router", "==1.4.0", "pypi"),),
+        )
+    )
+    catalog = tmp_path / "install-lock.json"
+    catalog.write_text(
+        f"""
+{{
+  "schema_version": 1,
+  "sources": [
+    {{"source": "pypi", "url": "https://packages.example/SECRET_INDEX_PATH/simple"}}
+  ],
+  "plugins": [
+    {{
+      "name": "router",
+      "version": "1.4.0",
+      "source": "pypi",
+      "entry": "{module_name}:setup",
+      "packages": [
+        {{
+          "name": "router-distribution",
+          "version": "1.4.0",
+          "sha256": ["{'a' * 64}"]
+        }}
+      ]
+    }}
+  ]
+}}
+""".lstrip(),
+        encoding="utf-8",
+    )
+    installed_target = tmp_path / "installed"
+    installed_target.mkdir()
+
+    class FakeInstaller:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def install(self, request, authorization):
+            assert authorization.request_digest == request.digest
+            return PluginInstallResult(
+                request.digest,
+                request.composition_digest,
+                request.lock.name,
+                request.lock.version,
+                request.lock.source,
+                request.lock.entry,
+                installed_target,
+                "b" * 64,
+                request.lock.packages,
+            )
+
+    monkeypatch.setattr(tui_module, "SandboxPipPackageInstaller", FakeInstaller)
+    app = WAgentTui(tmp_path)
+    async with app.run_test(size=(140, 70)) as pilot:
+        app.query_one(TabbedContent).active = "composition"
+        await pilot.pause()
+        app.query_one("#composition-code").value = code
+        app.query_one("#composition-install-catalog").value = str(catalog)
+        app._plan_plugin_installation()
+        rendered = str(app.query_one("#composition-result").content)
+        assert '"installable": true' in rendered
+        assert '"index_origin": "https://packages.example"' in rendered
+        assert "SECRET_INDEX_PATH" not in rendered
+        assert module_name not in sys.modules
+
+        request = app._current_plugin_install_plan().requests[0]
+        app.query_one("#composition-install-request").value = request.digest
+        await app._install_plugin_package()
+        assert f"type INSTALL {request.digest}" in str(
+            app.query_one("#composition-result").content
+        )
+
+        app.query_one("#composition-install-confirm").value = (
+            f"INSTALL {request.digest}"
+        )
+        await app._install_plugin_package()
+        rendered = str(app.query_one("#composition-result").content)
+        assert "Plugin code was not loaded" in rendered
+        assert app.query_one("#plugin-installed-path").value == str(installed_target)
+
+
+@pytest.mark.asyncio
+async def test_tui_unsafe_local_install_needs_distinct_host_confirmation(tmp_path):
+    app = WAgentTui(tmp_path)
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.query_one(TabbedContent).active = "composition"
+        await pilot.pause()
+        app.query_one("#composition-install-request").value = "a" * 64
+        app.query_one("#composition-install-backend").value = "unsafe-local"
+        app.query_one("#composition-install-confirm").value = f"INSTALL {'a' * 64}"
+
+        await app._install_plugin_package()
+
+        rendered = str(app.query_one("#composition-result").content)
+        assert f"type INSTALL LOCAL {'a' * 64}" in rendered
+
+
+@pytest.mark.asyncio
 async def test_tui_plugin_preview_does_not_import_or_reveal_config_values(
     tmp_path,
 ):
@@ -355,7 +479,11 @@ async def test_tui_run_requires_explicit_confirmation_before_config_or_network(
         app.query_one(TabbedContent).active = "run"
         await pilot.pause()
         app.query_one("#run-prompt").value = "hello"
+        app.query_one("#run-button").scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#run-button")
+        if app._agent_worker is not None:
+            await app._agent_worker.wait()
         await pilot.pause()
 
         rendered = str(app.query_one("#run-result").content)
@@ -388,7 +516,11 @@ async def test_tui_tool_code_requires_separate_import_confirmation(
         app.query_one("#run-prompt").value = "hello"
         app.query_one("#run-tool-entries").value = "my_tools:bindings"
         app.query_one("#run-confirm").value = "RUN"
+        app.query_one("#run-button").scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#run-button")
+        if app._agent_worker is not None:
+            await app._agent_worker.wait()
         await pilot.pause()
 
         assert loaded == []
@@ -450,7 +582,7 @@ async def test_tui_projects_live_events_without_prompt_or_arguments(
     )
     monkeypatch.setattr(
         tui_module,
-        "assemble_local_runtime",
+        "open_local_runtime",
         lambda config, state_root, *, tool_bindings: runtime,
     )
     app = WAgentTui(tmp_path)
@@ -463,12 +595,17 @@ async def test_tui_projects_live_events_without_prompt_or_arguments(
         app.query_one("#run-permissions").value = "notes.write"
         app.query_one("#run-tool-confirm").value = "LOAD TOOLS"
         app.query_one("#run-confirm").value = "RUN"
+        app.query_one("#run-button").scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#run-button")
+        if app._agent_worker is not None:
+            await app._agent_worker.wait()
         await pilot.pause()
 
         rendered = str(app.query_one("#run-events").content)
         assert "tool-requested" in rendered
-        assert "call_id=call-1" in rendered
+        assert "step=1" in rendered
+        assert "call_id" not in rendered
         assert "SECRET_PROMPT" not in rendered
         assert "SECRET_ARGUMENT" not in rendered
         assert "SECRET_OUTPUT" not in rendered
@@ -520,7 +657,7 @@ async def test_tui_resumes_exact_approved_call_with_live_events(
     monkeypatch.setattr(tui_module, "load_tool_entries", lambda entries: {})
     monkeypatch.setattr(
         tui_module,
-        "assemble_local_runtime",
+        "open_local_runtime",
         lambda config, state_root, *, tool_bindings: runtime,
     )
     app = WAgentTui(tmp_path)
@@ -535,6 +672,8 @@ async def test_tui_resumes_exact_approved_call_with_live_events(
         app.query_one("#checkpoint-permissions").value = "notes.write"
         app.query_one("#checkpoint-tool-confirm").value = "LOAD TOOLS"
         app.query_one("#checkpoint-confirm").value = "RESUME"
+        app.query_one("#checkpoint-resume").scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#checkpoint-resume")
         await pilot.pause()
 
@@ -543,7 +682,8 @@ async def test_tui_resumes_exact_approved_call_with_live_events(
         )
         events = str(app.query_one("#checkpoint-events").content)
         assert "run-resumed" in events
-        assert "pending_call_id=call-1" in events
+        assert "checkpoint_status=resuming" in events
+        assert "pending_call_id" not in events
         assert app.query_one("#checkpoint-confirm").value == ""
         assert app.query_one("#checkpoint-tool-confirm").value == ""
 
@@ -793,7 +933,7 @@ async def test_tui_runs_private_evaluation_and_closes_runtime(tmp_path, monkeypa
     monkeypatch.setattr(tui_module, "load_local_runtime_config", lambda path: object())
     monkeypatch.setattr(
         tui_module,
-        "assemble_local_runtime",
+        "open_local_runtime",
         lambda config, state_root, tool_bindings: runtime,
     )
     app = WAgentTui(tmp_path)

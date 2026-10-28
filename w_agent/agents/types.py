@@ -19,7 +19,7 @@ from w_agent.models import (
     TokenUsage,
     ToolCallContent,
 )
-from w_agent.tools import ToolCall, ToolExecutionContext
+from w_agent.tools import ToolCall, ToolContinuation, ToolExecutionContext
 
 
 class StopReason(StrEnum):
@@ -33,6 +33,7 @@ class StopReason(StrEnum):
     COST_BUDGET = "cost-budget"
     COST_UNAVAILABLE = "cost-unavailable"
     COST_ESTIMATE_UNAVAILABLE = "cost-estimate-unavailable"
+    OUTPUT_EVENT_ERROR = "output-event-error"
     MODEL_ERROR = "model-error"
     CANCELLED = "cancelled"
 
@@ -41,6 +42,9 @@ class RunEventType(StrEnum):
     RUN_STARTED = "run-started"
     MODEL_STARTED = "model-started"
     MODEL_TEXT_DELTA = "model-text-delta"
+    MODEL_TOOL_CALL_DELTA = "model-tool-call-delta"
+    MODEL_OUTPUT_BLOCK = "model-output-block"
+    MODEL_OUTPUT_BLOCK_FAILED = "model-output-block-failed"
     MODEL_COMPLETED = "model-completed"
     MODEL_FAILED = "model-failed"
     TOKEN_USAGE = "token-usage"
@@ -194,6 +198,10 @@ class AgentDefinition:
     token_budget: TokenBudget | None = None
     cost_budget: CostBudget | None = None
     emit_text_deltas: bool = False
+    emit_tool_call_deltas: bool = False
+    emit_output_blocks: bool = False
+    emit_tool_results: bool = False
+    max_tool_result_event_bytes: int = 64 * 1024
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
@@ -202,6 +210,14 @@ class AgentDefinition:
             raise ValueError("agent budgets are invalid")
         if not isinstance(self.emit_text_deltas, bool):
             raise ValueError("emit_text_deltas must be a boolean")
+        if not isinstance(self.emit_tool_call_deltas, bool):
+            raise ValueError("emit_tool_call_deltas must be a boolean")
+        if not isinstance(self.emit_output_blocks, bool):
+            raise ValueError("emit_output_blocks must be a boolean")
+        if type(self.emit_tool_results) is not bool:
+            raise ValueError("emit_tool_results must be a boolean")
+        if type(self.max_tool_result_event_bytes) is not int or self.max_tool_result_event_bytes <= 0:
+            raise ValueError("max_tool_result_event_bytes must be a positive integer")
         object.__setattr__(self, "extensions", MappingProxyType(dict(self.extensions)))
 
 
@@ -265,10 +281,20 @@ class RunCheckpoint:
     attempts: tuple[AttemptRecord, ...] = ()
     cost: ModelCost | None = None
     priced_usage_calls: int = 0
+    tool_continuation: ToolContinuation | None = None
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version not in (1, 2):
             raise ValueError("unsupported run checkpoint schema version")
+        if self.schema_version == 2 and self.tool_continuation is None:
+            raise ValueError("schema 2 checkpoint requires a tool continuation")
+        if self.tool_continuation is not None and (
+            not isinstance(self.tool_continuation, ToolContinuation)
+            or self.schema_version != 2 or self.pending_tool_call is None
+            or self.pending_tool_call.scope != self.scope
+            or self.status not in (CheckpointStatus.PENDING_APPROVAL, CheckpointStatus.RESUMING)
+        ):
+            raise ValueError("tool continuation requires schema 2 and a pending call")
         if min(
             self.steps,
             self.tool_calls,
@@ -399,3 +425,15 @@ class AgentLoop(Protocol):
         definition: AgentDefinition,
         context: RunContext,
     ) -> AgentExecution: ...
+
+
+class ResumableAgentLoop(AgentLoop, Protocol):
+    """Optional approval continuation capability; base loops remain unchanged."""
+
+    async def resume(
+        self,
+        run_id: str,
+        *,
+        tool_context: ToolExecutionContext,
+        cancellation: CancellationToken | None = None,
+    ) -> RunResult: ...

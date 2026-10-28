@@ -1,12 +1,20 @@
 # W-Agent 开发者指南
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./developer.en.md) | 简体中文
+
+> 版本说明：本页新框架核心纳入 2.1.0。下方“未发布”与候选 2.0.0 元数据属于发布前阶段记录，不代表 2.1.0 包状态。参见[2.1.0 发布说明](./releases/2.1.0.md)；上传状态以 [PyPI](https://pypi.org/project/wagent-framework/2.1.0/) 为准。
+
+从[开发自己的 Harness](./harness-development.md)开始：显式自定义装配、注解客服、配置编码。这些使用未发布新核心；[应用上下文](./application-assembly.md)、[注解](./annotation-development.md)、[切面](./application-aspects.md)和[默认装配](./default-assembly.md)共用同一计划与生命周期。交付证据和剩余边界见[M5 验收](./harness-acceptance.md)。下文保留已发布组件的扩展方式。
+
+现提供 [Run/Session 用量持久关联](./service-usage-links.md)、[结构与重叠分块](./knowledge-splitting.md)、[原始归档 CLI](./knowledge-archive-entries.md)。关联在准备前写入，分块默认保持 v1，导出只创建新文件；均为Experimental（随 2.0.0 发布）。验证与剩余模块见[本轮记录](./acceptance-2026-10-01-links-splitting-archives.md)。
 
 ## 1. 开发基线
 
-当前包元数据和最新 Alpha 均为 `2.0.0a3`；main 已继续承载未发布改动。Phase 1 微内核、Phase 2 模型基础、Phase 3 Agent/工具基础和 Phase 4 本地 Workflow 基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记发布边界与状态。
+本文面向已发布的 `2.0.0`；验证证据见[正式版记录](./acceptance-2026-10-01-stable-release.md)，基础范围见[基础清单](./stable-release-baseline.md)，能力状态以[路线图](./roadmap.md)为准。历史 alpha 记录仅说明对应版本的验证范围。Phase 1 微内核、Phase 2 模型基础、Phase 3 Agent/工具基础和 Phase 4 本地 Workflow 基础已经实现，1.x API 继续保留。任何新能力都必须同步更新中英文文档，并标记发布边界与状态。
 
-下一代实现目标：
+开发约束：
 
 - Python 3.11+。
 - 异步内核，同步 API 只在用户边界提供。
@@ -20,6 +28,8 @@
 
 ```text
 w_agent/
+├── application/     # 统一装配、上下文、注解、切面与执行
+├── local_application.py # 可选默认 Runtime/Workflow 装配
 ├── aop/             # 切点、通知和代理
 ├── agents/          # Run 协议与可替换 ReAct Loop
 ├── config/          # 动态配置
@@ -41,7 +51,7 @@ w_agent/
 └── workflows/       # DAG、状态图、Python Workflow、Store 与本地引擎
 ```
 
-新的 ReAct Runtime 与本地 Workflow Engine 已独立于 `BaseAgent.arun()` 实现；后续持久化 Session 和组合适配继续建立在公开协议上。
+ReAct Runtime 与本地 Workflow Engine 独立于 `BaseAgent.arun()`；已实现的持久化 Session 和组合适配同样建立在公开协议上。
 
 ## 3. 插件设计规则
 
@@ -102,6 +112,8 @@ scope: application
 
 配置层不执行任意 Python 表达式。秘密值通过环境变量或凭据引用注入，不能进入装配编码。
 
+分发插件时，Manifest 只声明可移植约束；宿主锁目录另行固定插件版本、`module:attribute`、完整 wheel 依赖闭包和 artifact SHA-256。自定义来源解析使用 `CompositionDependencyResolver`，自定义包格式或安装后端实现 `PackageInstaller`。离线规划、包安装和插件加载必须保持三个独立阶段，不能让 Resolver 或配置解析器隐式访问网络或执行代码。
+
 ## 6. 类型与扩展字段
 
 稳定协议使用 dataclass、Protocol、Enum 和 Pydantic 边界模型。进程内可信类型不重复解析；文件、网络、插件配置、持久化和模型输出边界必须校验。
@@ -134,6 +146,7 @@ extensions={
 - 工程装配导入不能携带或授予本地执行许可。
 - 沙箱不可用时失败关闭。
 - 插件安装、升级和首次运行需要明确操作。
+- 默认包安装只接受精确版本、完整哈希 wheel 闭包和显式来源；安装授权绑定请求摘要，且不能替代插件加载授权。
 - 日志、事件和导出清单不得包含凭据。
 
 ## 9. 测试要求

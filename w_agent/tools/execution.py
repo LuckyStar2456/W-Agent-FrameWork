@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 from datetime import UTC, datetime
+from dataclasses import replace
 from typing import Any, Mapping
 
 from w_agent.kernel import CapabilityNotFoundError
@@ -17,6 +18,8 @@ from .types import (
     ToolAuditSink,
     ToolBinding,
     ToolCall,
+    ToolContinuation,
+    ToolContinuationError,
     ToolExecutionContext,
     ToolFailure,
     ToolOutcome,
@@ -59,7 +62,22 @@ class ToolExecutor:
         call: ToolCall,
         context: ToolExecutionContext | None = None,
     ) -> ToolResult:
+        return await self._execute(call, context, continuation=None)
+
+    async def resume(
+        self, call: ToolCall, continuation: ToolContinuation,
+        context: ToolExecutionContext | None = None,
+    ) -> ToolResult:
+        if not isinstance(continuation, ToolContinuation):
+            raise ValueError("tool resume requires a typed continuation")
+        return await self._execute(call, context, continuation=continuation)
+
+    async def _execute(
+        self, call: ToolCall, context: ToolExecutionContext | None,
+        *, continuation: ToolContinuation | None,
+    ) -> ToolResult:
         context = context or ToolExecutionContext()
+        context = replace(context, invocation=call)
         started_at = datetime.now(UTC)
         started = time.perf_counter()
         binding: ToolBinding | None = None
@@ -105,12 +123,17 @@ class ToolExecutor:
                         f"tool policy raised {type(error).__name__}",
                     )
                 else:
-                    result = await self._execute_decision(
-                        binding,
-                        call,
-                        context,
-                        decision,
-                    )
+                    try:
+                        result = await self._execute_decision(
+                            binding, call, context, decision, continuation,
+                        )
+                    except ToolContinuationError:
+                        await self._record(call, binding, _failure_result(
+                            call, ToolOutcome.FAILED, "tool-continuation-invalid",
+                            "tool continuation contract is unavailable or invalid",
+                            policy_decision=decision,
+                        ), started_at, started)
+                        raise
 
         await self._record(call, binding, result, started_at, started)
         return result
@@ -121,7 +144,16 @@ class ToolExecutor:
         call: ToolCall,
         context: ToolExecutionContext,
         decision,
+        continuation: ToolContinuation | None = None,
     ) -> ToolResult:
+        if continuation is not None and (
+            decision.action != ToolPolicyAction.ALLOW or call.id not in context.approved_call_ids
+        ):
+            return ToolResult(
+                call.id, call.name, ToolOutcome.NEEDS_APPROVAL,
+                failure=ToolFailure("tool-continuation-needs-approval", "fresh exact-call authority and policy allowance required"),
+                policy_decision=decision, continuation=continuation,
+            )
         if decision.action == ToolPolicyAction.DENY:
             return ToolResult(
                 call.id,
@@ -138,7 +170,7 @@ class ToolExecutor:
                 failure=ToolFailure("tool-needs-approval", decision.reason),
                 policy_decision=decision,
             )
-        return await self._invoke(binding, call, context, decision)
+        return await self._invoke(binding, call, context, decision, continuation)
 
     async def _invoke(
         self,
@@ -146,8 +178,15 @@ class ToolExecutor:
         call: ToolCall,
         context: ToolExecutionContext,
         decision,
+        continuation: ToolContinuation | None = None,
     ) -> ToolResult:
-        handler_task = asyncio.create_task(binding.handler(call.arguments, context))
+        if continuation is not None:
+            if binding.resume_handler is None:
+                raise ToolContinuationError("binding has no continuation handler")
+            invocation = binding.resume_handler(call.arguments, continuation, context)
+        else:
+            invocation = binding.handler(call.arguments, context)
+        handler_task = asyncio.create_task(invocation)
         cancellation_task: asyncio.Task[None] | None = None
         if context.cancellation is not None:
             cancellation_task = asyncio.create_task(context.cancellation.wait())
@@ -198,6 +237,14 @@ class ToolExecutor:
                 cancellation_task.cancel()
                 await _drain_cancelled(cancellation_task)
 
+        if isinstance(value, ToolContinuation):
+            if binding.resume_handler is None:
+                raise ToolContinuationError("suspending binding must provide a resume handler")
+            return ToolResult(
+                call.id, call.name, ToolOutcome.NEEDS_APPROVAL,
+                failure=ToolFailure("tool-suspended", "tool is awaiting explicit continuation"),
+                policy_decision=decision, continuation=value,
+            )
         return ToolResult(
             call.id,
             call.name,

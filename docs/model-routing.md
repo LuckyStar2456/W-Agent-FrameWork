@@ -1,8 +1,10 @@
 # 模型、路由与接口探测
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./model-routing.en.md) | 简体中文
 
-状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式验证前缀的文本流恢复、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（当前 main）；Provider 原生游标续传为 `Planned`。
+状态：Phase 2A 基础，以及 Phase 2B 通用 HTTP 映射层、OpenAI-compatible Provider、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/逐事件透传执行器、显式验证前缀的文本流恢复、显式注册安全探测服务和 CLI/TUI 探测入口为 `Implemented`/`Experimental`（`2.0.0a4`）。原生游标协议与执行器接线已有独立 Responses Provider 和 SQLite 跨进程事件恢复实现，普通模板及完整 Agent 会话尚未接入；详见[Responses 续流](responses-continuation.md)。
 
 ## 已实现边界
 
@@ -172,6 +174,17 @@ final_response = execution.response
 
 需要恢复已经可见的纯文本流时，调用者必须同时配置正数 `InvocationPolicy.max_stream_replays` 并向 `stream()` 传入 `VerifiedTextPrefixRecovery()`（或自定义 `StreamRecoveryStrategy`）。内置策略只接受单个文本块且拒绝工具、多块、Usage 后失败等情况；它在同一 Provider/模型上重新发起请求，按文本语义校验已公开前缀，并只输出未见后缀。分歧或不完整重放是不可重试的协议错误。每次重放都进入 `AttemptRecord`，可能重复计费，不会切换路由，也不等同于 Provider 原生游标续传或跨进程恢复。默认 `max_stream_replays=0`，因此现有安全边界不变。
 
+`2.0.0a4`另外提供 `CursorResumableModelProvider`、`CursorStreamItem` 与 `NativeCursorRecovery(max_resumes=N)`。开发者须实现返回“紧接当前事件之后”的不重复游标的 `stream_with_cursor()`，以及从同一次生成中该游标之后继续输出的 `resume_stream()`；调用时还须显式传入 `NativeCursorRecovery`。执行器沿用同一个流校验器跨连接处理文本、工具或多模态事件，拒绝重复游标，并把初始请求和每次续传分别记入尝试账本。游标只在进程内传给原 Provider，不进入公开事件、审计记录或装配编码；`replay_safe=False` 禁止续传。
+
+```python
+execution = executor.stream(
+    request,
+    stream_recovery=NativeCursorRecovery(max_resumes=2),
+)
+```
+
+这条路径不重发完整模型请求，也不使用文本前缀猜测去重；同一次生成、游标精确位置及不重复内容的真实性由 Provider 实现负责。核心只能检测游标复用，不能证明不同游标没有重复语义内容。普通模板未自动启用续流；独立 `OpenAIResponsesResumableProvider` 可显式装配，要求请求开启后台保存，通过 SQLite 帧日志与事件内偏移恢复原响应。宿主可保存 Provider API 返回的游标并在新进程恢复，但执行器本身不持久化游标或 Agent 状态。失败尝试若无独立用量报告仍计为未知，严格 Token/费用预算不会将其当作零。ReAct Loop 的 `stream_recovery` 仅用于已启用文本或工具参数增量流的 Agent；调用前估算包含续流连接的保守上界，共享预算包装器继续禁止原生恢复。默认不启用；[详见边界与示例](responses-continuation.md)。
+
 调用者可传入 `replay_safe=False` 强制只执行选中路由一次，即使装配策略允许重试。`AttemptRecord` 保存 Provider、模型、序号、耗时、已输出事件数、标准失败、下次退避，以及 Provider 明确报告时的 TokenUsage/`usage_reported`；它不保存消息、Prompt、请求体或凭据。失败尝试未报告用量时保持未知，不推断为零。普通模型执行不会自动修改 `CandidateState`；健康反馈必须通过显式观测或注册探测服务接入。
 
 ## 接口探测
@@ -179,18 +192,24 @@ final_response = execution.response
 | 级别 | 当前行为 | 是否可能产生模型费用 |
 |---|---|---|
 | L1 | `EndpointProbe` 检查 URL、DNS、TCP、TLS、HTTP | 否 |
-| L2 | Provider 是否接受模型目录请求，并归一化访问失败 | 否 |
+| L2 | 归一化访问失败；目录成功不证明鉴权或生成权限，保持 `SKIPPED` | 否 |
 | L3 | 读取模型目录与声明能力 | 否 |
 | L4 | 最小文本生成 | 是；必须 `allow_active=True` |
 | L5 | 验证完整流终止协议 | 是；必须 `allow_active=True` |
 | L6 | 工具/结构化能力仅报告声明，状态为 `SKIPPED` | 当前不执行 |
 | L7 | 多模态能力仅报告声明，状态为 `SKIPPED` | 当前不执行 |
 
-`EndpointProbe` 不发送凭据和请求体，结果目标会移除 URL 用户信息、查询串和片段。HTTP 4xx/5xx 仍证明端点可达；鉴权语义由 Provider Probe 处理。
+`EndpointProbe` 不发送凭据和请求体，结果目标会移除 URL 用户信息、查询串和片段。HTTP 4xx/5xx 仍证明端点可达，但不证明鉴权或模型生成权限。
+
+Provider 可选声明只读 `catalog_probe_scope` 属性（`remote` / `local` / `unknown`），不改变必需的 `ModelProvider` 协议。`remote` 是适配器承诺本次 `list_models()` 通过传输请求目录，而非读缓存；仅请求成功后产生 L1 `catalog-connectivity=PASS`。自定义缓存 Provider 必须返回 `local` 或 `unknown`。缺失、异常或不认识的值按未知处理。内置 HTTP 与 OpenAI-compatible 适配器按目录行为声明，预算/用量包装器透传声明；Qwen 原生配置目录、Turbo 默认本地 profiles、关闭 discovery 的兼容模板不会假称连通。传输本身是可替换的；注入模拟传输只证明该模拟调用，不代表真实联网验收。
+
+L3 的 `PASS` 只代表模型清单读取成功。即使远端目录请求成功，L2 仍 `SKIPPED`，因为公开目录不一定校验凭据，也不能证明生成权限。只有 L1/L2/L4/L5 的实际通过观察参与 `HEALTHY` 判定；只有本地清单/能力声明时为 `UNKNOWN`。`ProbeResult.successful=True` 只表示已执行项目没有失败，不表示所有检查已执行或远端可用。旧 Provider 无须新增属性，但其仅目录的安全探测将保守地变为 `UNKNOWN`。默认不会为消除未知而额外请求或执行付费生成。
 
 `ProbeResult` 包含模式、分项状态、时间、延迟、失败类别、探测器版本、过期时间和实际发现的 Provider/模型路由。`ProbeCache` 不返回过期结果。`PeriodicProbeService` 可以周期运行任意探测回调，但只产生结果，不修改用户配置。
 
 手动 Python API 和通用周期调度已经实现。需要“注册即安全探测”的装配使用 `ModelRegistrationProbeService.register()`：它始终运行 `ProbeMode.SAFE`、不会调用生成接口，把结果写入缓存，并通过 `ProbeHealthBridge` 只更新本次发现的路由；过期结果映射为 `UNKNOWN`。取消或未处理异常会撤销刚完成的注册。直接调用 `ModelRegistry.register()` 仍是无 I/O 的纯注册操作。`wagent probe` 与 TUI 提供无凭据 L1 检查；`wagent provider-probe` 与 TUI Models 页从严格配置装配 Provider，提供安全目录检查和需单次明确授权的 L4/L5 主动检查。L6/L7 厂商专用主动验证器仍为 `Planned`。
+
+内置适配器每次进入 `list_models()` 先重置证据为 `unknown`，仅在成功返回时按实际执行路径记录 `local` / `remote`，读取属性不会重新调用请求映射。记录使用每个实例的任务上下文隔离，避免并发本地读取与远端请求互相覆盖；预算/用量包装器在同一任务直接委托。自定义跨任务或缓存包装器须自行维持这一证据契约，否则应返回 `unknown`，不得转发其他请求留下的旧 `remote`。
 
 ## 错误与安全边界
 
@@ -200,6 +219,6 @@ final_response = execution.response
 
 ## Phase 2B 后续计划
 
-- 扩展现有模板的 Reasoning 内容增量、OpenAI 托管工具事件和更多厂商特性。
-- Provider 原生游标续传、跨进程恢复，以及与限流器的可插拔反馈桥接。
+- 扩展 Reasoning 内容增量、图片生成之外的 OpenAI 托管工具和更多厂商特性。
+- Responses 线上验收、CLI/TUI 装配、完整 Agent 跨进程恢复、其他厂商原生续流，以及与限流器的可插拔反馈桥接。
 - L6/L7 可插拔主动验证器；所有可能产生费用的验证继续要求显式授权。

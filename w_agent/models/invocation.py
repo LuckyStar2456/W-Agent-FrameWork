@@ -8,15 +8,22 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, cast
 
 from w_agent.kernel import ScopePath
 
 from .errors import ModelError, ModelFailure, ModelFailureKind
-from .provider import CancellationToken, ModelProvider, ModelRegistry
+from .provider import (
+    CancellationToken,
+    CursorResumableModelProvider,
+    CursorStreamItem,
+    ModelProvider,
+    ModelRegistry,
+)
 from .routing import ModelRouter, RouteDecision
-from .stream_recovery import StreamRecoveryStrategy
+from .stream_recovery import NativeCursorRecovery, StreamRecoveryStrategy
 from .types import (
+    FinishEvent,
     ModelRequest,
     ModelResponse,
     ModelStreamProtocolError,
@@ -171,7 +178,7 @@ class ModelStreamExecution:
         scope: ScopePath | None,
         cancellation: CancellationToken | None,
         replay_safe: bool,
-        stream_recovery: StreamRecoveryStrategy | None,
+        stream_recovery: StreamRecoveryStrategy | NativeCursorRecovery | None,
     ) -> None:
         self._executor = executor
         self._request = request
@@ -339,13 +346,14 @@ class ModelExecutor:
         scope: ScopePath | None = None,
         cancellation: CancellationToken | None = None,
         replay_safe: bool = True,
-        stream_recovery: StreamRecoveryStrategy | None = None,
+        stream_recovery: StreamRecoveryStrategy | NativeCursorRecovery | None = None,
     ) -> ModelStreamExecution:
         """Create a single-use pass-through execution handle.
 
-        Retry and failover are allowed only before the first event is yielded to
-        the caller. Visible-stream replay requires both an explicit recovery
-        strategy and a positive ``policy.max_stream_replays`` value.
+        Fresh-request retry and route failover require no visible event.
+        Visible text replay requires an explicit strategy and positive
+        ``policy.max_stream_replays``. Native continuation instead requires
+        ``NativeCursorRecovery`` and an exact-cursor provider extension.
         """
 
         return ModelStreamExecution(
@@ -373,6 +381,12 @@ class ModelExecutor:
         execution.decision = decision
         policy = execution._policy
         stream_replay_limit = _stream_replay_limit(policy)
+        native_recovery = (
+            execution._stream_recovery
+            if execution._replay_safe
+            and isinstance(execution._stream_recovery, NativeCursorRecovery)
+            else None
+        )
         routes = ((decision.provider, decision.model), *decision.fallbacks)
         route_limit = policy.max_routes if execution._replay_safe else 1
         attempt_limit = policy.max_attempts_per_route if execution._replay_safe else 1
@@ -389,23 +403,38 @@ class ModelExecutor:
                 emitted = 0
                 validator = ModelStreamValidator()
                 visible_events: list[StreamEvent] = []
+                last_cursor: str | None = None
+                seen_cursors: set[str] = set()
                 try:
                     provider = self.models.provider(
                         provider_name,
                         scope=execution._scope,
                     )
                     routed_request = replace(execution._request, model=model)
-                    provider_stream = provider.stream(
-                        routed_request,
-                        cancellation=cancellation,
-                    )
+                    if native_recovery is not None:
+                        cursor_provider = _require_cursor_provider(provider)
+                        provider_stream = cursor_provider.stream_with_cursor(
+                            routed_request,
+                            cancellation=cancellation,
+                        )
+                    else:
+                        provider_stream = provider.stream(
+                            routed_request,
+                            cancellation=cancellation,
+                        )
                     try:
                         while True:
                             try:
                                 async with asyncio.timeout(policy.timeout):
-                                    event = await provider_stream.__anext__()
+                                    item = await provider_stream.__anext__()
                             except StopAsyncIteration:
                                 break
+                            if native_recovery is not None:
+                                event, last_cursor = _unwrap_cursor_item(
+                                    item, seen_cursors
+                                )
+                            else:
+                                event = cast(StreamEvent, item)
                             validator.feed(event)
                             emitted += 1
                             visible_events.append(event)
@@ -422,10 +451,41 @@ class ModelExecutor:
                     last_failure = failure
                     before_visibility = emitted == 0
                     strategy = execution._stream_recovery
+                    can_resume_native = (
+                        native_recovery is not None
+                        and not before_visibility
+                        and last_cursor is not None
+                        and not isinstance(visible_events[-1], FinishEvent)
+                        and policy.permits_retry(failure)
+                    )
+                    if can_resume_native:
+                        assert native_recovery is not None and last_cursor is not None
+                        async for resumed_event in self._resume_visible_cursor_stream(
+                            execution,
+                            decision=decision,
+                            provider=provider,
+                            routed_request=routed_request,
+                            provider_name=provider_name,
+                            model=model,
+                            route_index=route_index,
+                            route_attempt=route_attempt,
+                            validator=validator,
+                            seen_cursors=seen_cursors,
+                            cursor=last_cursor,
+                            initial_ordinal=ordinal,
+                            initial_started_at=started_at,
+                            initial_started=started,
+                            initial_emitted=emitted,
+                            initial_failure=failure,
+                            resume_limit=native_recovery.max_resumes,
+                        ):
+                            yield resumed_event
+                        return
                     can_recover_visible = (
                         execution._replay_safe
                         and not before_visibility
                         and strategy is not None
+                        and not isinstance(strategy, NativeCursorRecovery)
                         and stream_replay_limit > 0
                         and policy.permits_retry(failure)
                         and strategy.can_recover(routed_request, tuple(visible_events))
@@ -514,6 +574,136 @@ class ModelExecutor:
         )
         raise ModelInvocationError(failure, decision, execution.attempts)
 
+    async def _resume_visible_cursor_stream(
+        self,
+        execution: ModelStreamExecution,
+        *,
+        decision: RouteDecision,
+        provider: ModelProvider,
+        routed_request: ModelRequest,
+        provider_name: str,
+        model: str,
+        route_index: int,
+        route_attempt: int,
+        validator: ModelStreamValidator,
+        seen_cursors: set[str],
+        cursor: str,
+        initial_ordinal: int,
+        initial_started_at: datetime,
+        initial_started: float,
+        initial_emitted: int,
+        initial_failure: ModelFailure,
+        resume_limit: int,
+    ) -> AsyncIterator[StreamEvent]:
+        """Continue a single generation from exact provider-owned event cursors."""
+
+        policy = execution._policy
+        cancellation = execution._cancellation
+        cursor_provider = _require_cursor_provider(provider)
+        first_delay = policy.retry_delay(1)
+        execution._attempts.append(
+            _attempt_record(
+                ordinal=initial_ordinal,
+                route_index=route_index,
+                route_attempt=route_attempt,
+                provider=provider_name,
+                model=model,
+                outcome=AttemptOutcome.FAILED,
+                started_at=initial_started_at,
+                started=initial_started,
+                events_emitted=initial_emitted,
+                failure=initial_failure,
+                next_delay=first_delay,
+            )
+        )
+
+        for resume_index in range(1, resume_limit + 1):
+            await self._wait_for_retry(policy.retry_delay(resume_index), cancellation)
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            ordinal = len(execution._attempts) + 1
+            resumed_route_attempt = route_attempt + resume_index
+            started_at = datetime.now(UTC)
+            started = time.perf_counter()
+            emitted = 0
+            try:
+                provider_stream = cursor_provider.resume_stream(
+                    routed_request,
+                    cursor,
+                    cancellation=cancellation,
+                )
+                try:
+                    while True:
+                        try:
+                            async with asyncio.timeout(policy.timeout):
+                                item = await provider_stream.__anext__()
+                        except StopAsyncIteration:
+                            break
+                        event, next_cursor = _unwrap_cursor_item(
+                            item, seen_cursors
+                        )
+                        validator.feed(event)
+                        cursor = next_cursor
+                        emitted += 1
+                        yield event
+                finally:
+                    closer = getattr(provider_stream, "aclose", None)
+                    if closer is not None:
+                        await closer()
+                response = validator.finish()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                failure = _normalize_failure(error, provider_name, model)
+                can_retry = (
+                    resume_index < resume_limit and policy.permits_retry(failure)
+                )
+                next_delay = policy.retry_delay(resume_index + 1) if can_retry else None
+                execution._attempts.append(
+                    _attempt_record(
+                        ordinal=ordinal,
+                        route_index=route_index,
+                        route_attempt=resumed_route_attempt,
+                        provider=provider_name,
+                        model=model,
+                        outcome=AttemptOutcome.FAILED,
+                        started_at=started_at,
+                        started=started,
+                        events_emitted=emitted,
+                        failure=failure,
+                        next_delay=next_delay,
+                    )
+                )
+                if can_retry:
+                    continue
+                raise ModelInvocationError(
+                    failure,
+                    decision,
+                    execution.attempts,
+                ) from error
+
+            execution._attempts.append(
+                _attempt_record(
+                    ordinal=ordinal,
+                    route_index=route_index,
+                    route_attempt=resumed_route_attempt,
+                    provider=provider_name,
+                    model=model,
+                    outcome=AttemptOutcome.SUCCEEDED,
+                    started_at=started_at,
+                    started=started,
+                    events_emitted=emitted,
+                    usage=(response.usage if response.usage_reported else None),
+                    usage_reported=response.usage_reported,
+                )
+            )
+            execution.provider = provider_name
+            execution.model = model
+            execution.response = response
+            return
+
+        raise RuntimeError("native cursor resume loop exhausted without a result")
+
     async def _recover_visible_stream(
         self,
         execution: ModelStreamExecution,
@@ -539,7 +729,7 @@ class ModelExecutor:
         policy = execution._policy
         cancellation = execution._cancellation
         strategy = execution._stream_recovery
-        if strategy is None:
+        if strategy is None or isinstance(strategy, NativeCursorRecovery):
             raise RuntimeError("stream recovery strategy disappeared")
         first_delay = policy.retry_delay(1)
         execution._attempts.append(
@@ -716,6 +906,28 @@ def _stream_replay_limit(policy: InvocationPolicyProtocol) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("policy.max_stream_replays must be a non-negative integer")
     return value
+
+
+def _require_cursor_provider(provider: ModelProvider) -> CursorResumableModelProvider:
+    if not callable(getattr(provider, "stream_with_cursor", None)) or not callable(
+        getattr(provider, "resume_stream", None)
+    ):
+        raise ModelStreamProtocolError(
+            "provider does not implement exact native-cursor continuation"
+        )
+    return cast(CursorResumableModelProvider, provider)
+
+
+def _unwrap_cursor_item(
+    item: object,
+    seen_cursors: set[str],
+) -> tuple[StreamEvent, str]:
+    if not isinstance(item, CursorStreamItem):
+        raise ModelStreamProtocolError("provider returned an invalid cursor stream item")
+    if item.cursor in seen_cursors:
+        raise ModelStreamProtocolError("provider repeated a visible stream cursor")
+    seen_cursors.add(item.cursor)
+    return item.event, item.cursor
 
 
 def _normalize_failure(

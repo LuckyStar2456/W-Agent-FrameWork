@@ -8,8 +8,8 @@ with open(os.path.join(here, "README.md"), "r", encoding="utf-8") as f:
 
 setup(
     name="wagent-framework",
-    version="2.0.0a3",
-    description="Open, composable Python framework for building agents",
+    version="2.1.0",
+    description="Spring-inspired Python framework for building composable agent harnesses",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/LuckyStar2456/W-Agent-FrameWork",
@@ -37,6 +37,11 @@ setup(
         "models": ["httpx>=0.27,<1"],
         "mcp": ["httpx>=0.27,<1"],
         "tui": ["textual>=0.70,<9"],
+        "media-preview": ["Pillow>=12,<13"],
+        "knowledge-documents": [
+            "pypdf>=6,<7", "python-docx>=1.2,<2",
+            "openpyxl>=3.1,<4", "python-pptx>=1,<2",
+        ],
         "wasm": ["wasmer-sdk>=0.1.2,<0.2; platform_system != 'Windows'"],
         "opentelemetry": [
             "opentelemetry-api",
@@ -52,7 +57,7 @@ setup(
         ]
     },
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.11",

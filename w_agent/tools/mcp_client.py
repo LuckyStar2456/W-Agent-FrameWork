@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from w_agent.models import CancellationToken
 
 from .mcp_adapter import McpRemoteTool
+from .mcp_handlers import McpClientHandlers, McpNotificationHandler
 
 
 MCP_PROTOCOL_VERSION = "2026-07-28"
@@ -53,7 +54,7 @@ class McpToolExecutionError(McpError):
 
 
 class McpInputRequiredError(McpError):
-    """The call needs an MRTR input exchange that this client does not automate."""
+    """An MRTR exchange needs a missing handler or exceeded its round bound."""
 
     def __init__(self, result: Mapping[str, Any]) -> None:
         super().__init__("MCP tool call requires additional input")
@@ -101,6 +102,10 @@ class McpClient:
         protocol_version: str = MCP_PROTOCOL_VERSION,
         max_pages: int = 100,
         max_tools: int = 10_000,
+        handlers: McpClientHandlers | None = None,
+        notification_handler: McpNotificationHandler | None = None,
+        max_input_rounds: int = 10,
+        max_input_requests: int = 32,
     ) -> None:
         if not protocol_version.strip():
             raise ValueError("MCP protocol version must not be empty")
@@ -108,7 +113,16 @@ class McpClient:
             raise ValueError("MCP discovery bounds must be positive")
         self.transport = transport
         self.client_info = client_info or McpClientInfo()
-        self.client_capabilities = MappingProxyType(dict(client_capabilities or {}))
+        if max_input_rounds < 0 or max_input_requests <= 0:
+            raise ValueError("MCP input exchange bounds are invalid")
+        self.handlers = handlers or McpClientHandlers()
+        self.client_capabilities = MappingProxyType(self.handlers.capabilities(client_capabilities))
+        self.max_input_rounds = max_input_rounds
+        self.max_input_requests = max_input_requests
+        self.notification_handler = notification_handler
+        setter = getattr(transport, "set_notification_handler", None)
+        if setter is not None:
+            setter(self._handle_notification)
         self.protocol_version = protocol_version
         self.max_pages = max_pages
         self.max_tools = max_tools
@@ -155,12 +169,58 @@ class McpClient:
             "method": method,
             "params": request_params,
         }
-        response = await self.transport.send(
-            message,
-            cancellation=cancellation,
-            tool_schema=tool_schema,
-        )
-        return _parse_rpc_response(response, request_id)
+        original_params = dict(request_params)
+        for round_index in range(self.max_input_rounds + 1):
+            response = await self.transport.send(
+                message, cancellation=cancellation, tool_schema=tool_schema,
+            )
+            result = _parse_rpc_response(response, message["id"])
+            if result.get("resultType") != "input_required":
+                return result
+            if method not in {"tools/call", "prompts/get", "resources/read"}:
+                raise McpProtocolError("MRTR is not supported for this method")
+            requests = result.get("inputRequests", {})
+            state = result.get("requestState")
+            if (not isinstance(requests, Mapping) or len(requests) > self.max_input_requests
+                    or ("requestState" in result and not isinstance(state, str))
+                    or ("inputRequests" not in result and "requestState" not in result)):
+                raise McpProtocolError("Invalid MCP input-required result")
+            if round_index == self.max_input_rounds:
+                raise McpInputRequiredError(result)
+            for key, embedded in requests.items():
+                if (not isinstance(key, str) or not isinstance(embedded, Mapping)
+                        or not isinstance(embedded.get("method"), str)
+                        or not isinstance(embedded.get("params", {}), Mapping)):
+                    raise McpProtocolError("Invalid embedded MCP input request")
+                if not self.handlers.supports(embedded["method"]):
+                    raise McpInputRequiredError(result)
+            answers = {}
+            for key, embedded in requests.items():
+                if cancellation is not None:
+                    cancellation.raise_if_cancelled()
+                answers[key] = dict(await _await_with_cancellation(
+                    self.handlers.invoke(embedded["method"], embedded.get("params", {}),
+                                         capabilities=self.client_capabilities),
+                    cancellation,
+                ))
+            retry_params = {**original_params, "inputResponses": answers}
+            if "requestState" in result:
+                retry_params["requestState"] = state
+            message = {**message, "id": self._next_id, "params": retry_params}
+            self._next_id += 1
+        raise AssertionError("unreachable")
+
+    async def _handle_notification(self, message: Mapping[str, Any]) -> None:
+        if message.get("method") == "notifications/tools/list_changed":
+            self._tool_schemas.clear()
+        if self.notification_handler is not None:
+            await self.notification_handler(message)
+
+    def listen(self, notifications: Mapping[str, Any], *, cancellation=None):
+        """Iterate a requested modern subscription, including its acknowledgment."""
+        from .mcp_subscriptions import listen
+
+        return listen(self, notifications, cancellation=cancellation)
 
     async def list_tools(
         self,
@@ -357,6 +417,7 @@ class McpStreamableHttpTransport:
                 "accept",
                 "content-type",
                 "mcp-protocol-version",
+                "mcp-session-id",
                 "mcp-method",
                 "mcp-name",
             } or lowered.startswith("mcp-param-"):
@@ -518,6 +579,36 @@ class McpStdioTransport:
             except asyncio.CancelledError:
                 await self._send_cancel(process, message.get("id"), "request cancelled")
                 raise
+
+    async def send_notification(
+        self,
+        message: Mapping[str, Any],
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> None:
+        if (
+            message.get("jsonrpc") != "2.0"
+            or "id" in message
+            or not isinstance(message.get("method"), str)
+            or not message["method"]
+        ):
+            raise McpProtocolError("MCP notification needs JSON-RPC without an ID")
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        encoded = json.dumps(
+            message, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        if b"\n" in encoded or len(encoded) > self.max_message_bytes:
+            raise McpTransportError("MCP stdio notification exceeded framing bounds")
+        async with self._lock:
+            process = await self._ensure_started()
+            if process.stdin is None or process.stdin.is_closing():
+                raise McpTransportError("MCP stdio process input is unavailable")
+            try:
+                process.stdin.write(encoded + b"\n")
+                await asyncio.wait_for(process.stdin.drain(), self.request_timeout)
+            except (BrokenPipeError, ConnectionResetError, TimeoutError) as exc:
+                raise McpTransportError("MCP stdio notification could not be sent") from exc
 
     async def aclose(self) -> None:
         process = self._process

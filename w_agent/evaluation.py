@@ -485,8 +485,15 @@ class LocalEvaluationRunner:
 class JsonEvaluationReporter:
     """Write an atomic report that excludes outputs unless explicitly enabled."""
 
-    def __init__(self, *, include_outputs: bool = False) -> None:
+    def __init__(self, *, include_outputs: bool = False, accounting_scope: str | None = None) -> None:
         self.include_outputs = include_outputs
+        if accounting_scope is not None and (
+            not isinstance(accounting_scope, str) or not accounting_scope
+            or len(accounting_scope) > 128 or not accounting_scope.isascii()
+            or not accounting_scope.isprintable()
+        ):
+            raise ValueError("accounting scope must be bounded printable ASCII")
+        self.accounting_scope = accounting_scope
 
     async def write(self, report: EvaluationReport, path: str | Path) -> None:
         await asyncio.to_thread(
@@ -498,11 +505,11 @@ class JsonEvaluationReporter:
     def _write_sync(self, report: EvaluationReport, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(path.suffix + ".tmp")
+        document = evaluation_report_to_dict(report, include_outputs=self.include_outputs)
+        if self.accounting_scope is not None:
+            document["accounting_scope"] = self.accounting_scope
         payload = json.dumps(
-            evaluation_report_to_dict(
-                report,
-                include_outputs=self.include_outputs,
-            ),
+            document,
             ensure_ascii=False,
             separators=(",", ":"),
             allow_nan=False,

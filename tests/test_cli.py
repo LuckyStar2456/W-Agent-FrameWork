@@ -8,8 +8,10 @@ from typer.testing import CliRunner
 
 import w_agent.cli as cli_module
 from w_agent import (
+    __version__,
     CompositionManifest,
     JsonSessionStore,
+    JsonlRunStore,
     LocalProviderAssembly,
     JsonlWorkflowStore,
     LocalWorkflowEngine,
@@ -43,7 +45,7 @@ def test_cli_version_and_profile_json_are_machine_readable():
     profiles = runner.invoke(app, ["profile", "list", "--json"])
 
     assert version.exit_code == 0
-    assert "2.0.0a3" in version.stdout
+    assert __version__ in version.stdout
     assert profiles.exit_code == 0
     assert [item["key"] for item in json.loads(profiles.stdout)] == [
         "customer-support",
@@ -86,6 +88,45 @@ def test_cli_init_is_idempotent_and_never_overwrites_config(tmp_path):
     assert json.loads(second.stdout)["created"] == []
     assert config.read_text(encoding="utf-8") == '{"keep":true}\n'
     assert (tmp_path / ".wagent" / "sessions").is_dir()
+
+
+def test_cli_run_events_consumes_safe_projected_page(tmp_path):
+    store = JsonlRunStore(tmp_path)
+    asyncio.run(
+        store.append(
+            RunEvent(
+                1,
+                RunEventType.MODEL_TOOL_CALL_DELTA,
+                "run-1",
+                {
+                    "step": 1,
+                    "block_index": 0,
+                    "call_id": "secret-call",
+                    "name": "secret-tool",
+                    "arguments_delta": '{"password":"hidden"}',
+                },
+            )
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "run-events",
+            "run-1",
+            "--state-root",
+            str(tmp_path),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["events"][0]["data"] == {"step": 1, "block_index": 0}
+    assert payload["next_sequence"] == 1
+    assert "secret-call" not in result.stdout
+    assert "secret-tool" not in result.stdout
+    assert "password" not in result.stdout
 
 
 def test_cli_composition_export_inspect_save_and_list(tmp_path):
@@ -183,6 +224,183 @@ def test_cli_composition_plan_is_offline_explicit_and_machine_readable(tmp_path)
     assert payload["plugins"][0]["selected"]["version"] == "1.4.0"
     assert module_name not in sys.modules
     assert "SECRET_ENV_NAME" not in result.stdout
+
+
+def test_cli_composition_install_plan_is_locked_and_install_requires_confirmation(
+    tmp_path,
+):
+    code = encode_composition(
+        CompositionManifest(
+            "installable-stack",
+            "1.0.0",
+            requires_wagent=">=2.0.0a1,<3",
+            plugins=(PluginRequirement("router", ">=1,<2", "pypi"),),
+        )
+    )
+    catalog = tmp_path / "install-lock.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "sources": [
+                    {
+                        "source": "pypi",
+                        "url": "https://packages.example/SECRET_INDEX_PATH/simple",
+                    }
+                ],
+                "plugins": [
+                    {
+                        "name": "router",
+                        "version": "1.4.0",
+                        "source": "pypi",
+                        "entry": "router_plugin:setup",
+                        "packages": [
+                            {
+                                "name": "router-distribution",
+                                "version": "1.4.0",
+                                "sha256": ["a" * 64],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    planned = runner.invoke(
+        app,
+        [
+            "composition",
+            "install-plan",
+            code,
+            "--catalog",
+            str(catalog),
+            "--json",
+        ],
+    )
+
+    assert planned.exit_code == 0
+    payload = json.loads(planned.stdout)
+    assert payload["installable"] is True
+    assert payload["requests"][0]["plugin_load_authorized"] is False
+    assert payload["requests"][0]["index_origin"] == "https://packages.example"
+    assert "SECRET_INDEX_PATH" not in planned.stdout
+    request_digest = payload["requests"][0]["request_digest"]
+
+    refused = runner.invoke(
+        app,
+        [
+            "composition",
+            "install",
+            code,
+            request_digest,
+            "--catalog",
+            str(catalog),
+            "--state-root",
+            str(tmp_path / "state"),
+        ],
+    )
+    assert refused.exit_code == 2
+    assert "network and package-code acknowledgement" in refused.stderr
+
+
+def test_cli_composition_install_returns_safe_result_without_loading(
+    tmp_path,
+    monkeypatch,
+):
+    from w_agent import PluginInstallResult
+
+    code = encode_composition(
+        CompositionManifest(
+            "install-stack",
+            "1.0.0",
+            requires_wagent=">=2.0.0a1,<3",
+            plugins=(PluginRequirement("router", "==1.4.0", "pypi"),),
+        )
+    )
+    catalog = tmp_path / "install-lock.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "sources": [
+                    {"source": "pypi", "url": "https://packages.example/simple"}
+                ],
+                "plugins": [
+                    {
+                        "name": "router",
+                        "version": "1.4.0",
+                        "source": "pypi",
+                        "entry": "router_plugin:setup",
+                        "packages": [
+                            {
+                                "name": "router-distribution",
+                                "version": "1.4.0",
+                                "sha256": ["a" * 64],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    planned = runner.invoke(
+        app,
+        [
+            "composition",
+            "install-plan",
+            code,
+            "--catalog",
+            str(catalog),
+            "--json",
+        ],
+    )
+    request_digest = json.loads(planned.stdout)["requests"][0]["request_digest"]
+    installed_target = tmp_path / "installed"
+    installed_target.mkdir()
+
+    class FakeInstaller:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def install(self, request, authorization):
+            assert authorization.request_digest == request.digest
+            return PluginInstallResult(
+                request.digest,
+                request.composition_digest,
+                request.lock.name,
+                request.lock.version,
+                request.lock.source,
+                request.lock.entry,
+                installed_target,
+                "b" * 64,
+                request.lock.packages,
+            )
+
+    monkeypatch.setattr(cli_module, "SandboxPipPackageInstaller", FakeInstaller)
+    result = runner.invoke(
+        app,
+        [
+            "composition",
+            "install",
+            code,
+            request_digest,
+            "--catalog",
+            str(catalog),
+            "--state-root",
+            str(tmp_path / "state"),
+            "--confirm-network",
+            "--confirm-package-code",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["request_digest"] == request_digest
+    assert payload["plugin_load_authorized"] is False
 
 
 def test_cli_keeps_basic_legacy_command_names():
@@ -706,7 +924,7 @@ def test_cli_evaluate_runs_dataset_and_writes_private_report(tmp_path, monkeypat
     runtime = Runtime()
     monkeypatch.setattr(
         cli_module,
-        "assemble_local_runtime",
+        "open_local_runtime",
         lambda config, state_root, tool_bindings: runtime,
     )
     report = tmp_path / "report.json"
@@ -795,7 +1013,7 @@ def test_cli_evaluate_uses_builtin_suite_recommended_contract_scorer(
     monkeypatch.setattr(cli_module, "load_local_runtime_config", lambda path: object())
     monkeypatch.setattr(
         cli_module,
-        "assemble_local_runtime",
+        "open_local_runtime",
         lambda config, state_root, tool_bindings: Runtime(),
     )
 

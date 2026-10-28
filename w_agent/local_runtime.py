@@ -6,21 +6,24 @@ import json
 import os
 import re
 import inspect
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
+from uuid import uuid4
 
 from w_agent.agents import (
     AgentDefinition,
+    AgentLoop,
     CharacterTokenEstimator,
     CostBudget,
     JsonlRunStore,
     ReactAgentLoop,
     RunResult,
     TokenBudget,
+    ToolResultEventEncoder,
 )
 from w_agent.models import (
     CancellationToken,
@@ -32,19 +35,31 @@ from w_agent.models import (
     ModelPrice,
     ModelRegistry,
     ModelRouter,
+    NativeCursorRecovery,
     ProviderTemplateRegistry,
     PriceTable,
     PricingCatalog,
     PricingError,
+    StreamRecoveryStrategy,
     TokenUsage,
     WeightedRoutingPolicy,
     builtin_provider_template_registry,
 )
+from w_agent.session_inputs import SessionInputRecorder
+from w_agent.shared_budget import SharedBudgetController, SharedBudgetError, SharedBudgetSnapshot
+from w_agent.shared_budget_provider import SharedBudgetMeter, SharedBudgetModelProvider
+from w_agent.knowledge_runtime import LocalKnowledgeBinding, LocalKnowledgeConfig
+from w_agent.service_usage_runtime import LocalServiceUsageBinding, LocalServiceUsageConfig, ObservedModelProvider
+from w_agent.service_usage_adapters import ObservedKnowledgeRetriever, ObservedSharedBudgetController
+from w_agent.service_usage import ServiceUsageError
+from w_agent.service_usage_links import ServiceUsageRunLink
 from w_agent.sessions import (
     JsonSessionStore,
     RunEventCallback,
     SessionManager,
     SessionRecord,
+    SessionHistoryPolicy,
+    AsyncSessionHistoryPolicy,
 )
 from w_agent.tools import ToolBinding, ToolExecutionContext, ToolExecutor, ToolRegistry
 
@@ -113,6 +128,10 @@ class LocalAgentConfig:
     soft_limit_ratio: Decimal | str | int | float | None = None
     extensions: Mapping[str, Any] = field(default_factory=dict)
     emit_text_deltas: bool = False
+    emit_tool_call_deltas: bool = False
+    emit_output_blocks: bool = False
+    emit_tool_results: bool = False
+    max_tool_result_event_bytes: int = 64 * 1024
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -123,6 +142,14 @@ class LocalAgentConfig:
             raise LocalRuntimeConfigError("agent temperature must not be negative")
         if not isinstance(self.emit_text_deltas, bool):
             raise LocalRuntimeConfigError("emit_text_deltas must be a boolean")
+        if not isinstance(self.emit_tool_call_deltas, bool):
+            raise LocalRuntimeConfigError("emit_tool_call_deltas must be a boolean")
+        if not isinstance(self.emit_output_blocks, bool):
+            raise LocalRuntimeConfigError("emit_output_blocks must be a boolean")
+        if type(self.emit_tool_results) is not bool:
+            raise LocalRuntimeConfigError("emit_tool_results must be a boolean")
+        if type(self.max_tool_result_event_bytes) is not int or self.max_tool_result_event_bytes <= 0:
+            raise LocalRuntimeConfigError("max_tool_result_event_bytes must be a positive integer")
         limits = (
             self.max_output_tokens,
             self.max_input_tokens,
@@ -224,6 +251,52 @@ class LocalPricingConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LocalSharedBudgetConfig:
+    """Select a host-supplied binding; no paths, imports, credentials or grants."""
+
+    binding: str
+
+    def __post_init__(self) -> None:
+        if (not isinstance(self.binding, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", self.binding)):
+            raise LocalRuntimeConfigError("shared_budget.binding must be a bounded opaque name")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalSharedBudgetBinding:
+    """Host-owned shared controller and reliable per-Provider meter.
+
+    Construction/assembly never initializes, snapshots, closes or reconciles
+    these objects. Independent bindings may use one controller with different
+    Provider-specific meters. Their methods are trusted host code.
+    """
+
+    controller: SharedBudgetController
+    meter: SharedBudgetMeter
+
+    def __post_init__(self) -> None:
+        if any(not callable(getattr(self.controller, name, None)) for name in ("reserve", "settle", "release")):
+            raise LocalRuntimeConfigError("shared budget controller needs reserve, settle and release")
+        if any(not callable(getattr(self.meter, name, None)) for name in ("bound", "actual")):
+            raise LocalRuntimeConfigError("shared budget meter needs bound and actual")
+
+    async def snapshot(self) -> SharedBudgetSnapshot:
+        """Optional controller capability, not a per-Run or per-Session total."""
+        reader = getattr(self.controller, "snapshot", None)
+        if not callable(reader):
+            raise SharedBudgetError("shared-budget-snapshot-unavailable")
+        try:
+            result = await reader()
+            if not isinstance(result, SharedBudgetSnapshot):
+                raise ValueError("typed shared snapshot required")
+            return result
+        except SharedBudgetError:
+            raise
+        except Exception:
+            raise SharedBudgetError("shared-budget-snapshot-failed") from None
+
+
+@dataclass(frozen=True, slots=True)
 class LocalRuntimeConfig:
     provider: LocalProviderConfig
     agent: LocalAgentConfig = field(default_factory=LocalAgentConfig)
@@ -231,10 +304,22 @@ class LocalRuntimeConfig:
     tools: LocalToolConfig = field(default_factory=LocalToolConfig)
     pricing: LocalPricingConfig | None = None
     schema_version: int = 1
+    shared_budget: LocalSharedBudgetConfig | None = None
+    knowledge: LocalKnowledgeConfig | None = None
+    service_usage: LocalServiceUsageConfig | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise LocalRuntimeConfigError("unsupported local runtime schema version")
+        if self.knowledge is not None and not isinstance(self.knowledge, LocalKnowledgeConfig):
+            raise LocalRuntimeConfigError("knowledge needs a typed binding selection")
+        if self.service_usage is not None and not isinstance(self.service_usage, LocalServiceUsageConfig):
+            raise LocalRuntimeConfigError("service_usage needs a typed binding selection")
+        if self.shared_budget is not None:
+            if not isinstance(self.shared_budget, LocalSharedBudgetConfig):
+                raise LocalRuntimeConfigError("shared_budget needs a typed binding selection")
+            if type(self.agent.max_output_tokens) is not int or self.agent.max_output_tokens <= 0:
+                raise LocalRuntimeConfigError("shared_budget requires explicit positive agent.max_output_tokens")
         if self.tools.enabled and self.agent.max_tool_calls == 0:
             raise LocalRuntimeConfigError(
                 "enabled tools require agent.max_tool_calls to be positive"
@@ -261,6 +346,7 @@ class LocalRuntimeConfig:
 class LocalRuntimeRun:
     session: SessionRecord
     result: RunResult
+    service_usage_operation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,15 +355,25 @@ class LocalProviderAssembly:
 
     name: str
     provider: ModelProvider
+    shared_budget: LocalSharedBudgetBinding | None = field(default=None, repr=False)
+    _owned_provider: ModelProvider | None = field(default=None, repr=False, compare=False)
+    service_usage: LocalServiceUsageBinding | None = field(default=None, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False, compare=False)
 
     async def __aenter__(self) -> "LocalProviderAssembly":
+        if self._closed:
+            raise RuntimeError("local provider assembly is closed")
         return self
 
     async def __aexit__(self, *exc_info: Any) -> None:
         await self.aclose()
 
     async def aclose(self) -> None:
-        close = getattr(self.provider, "aclose", None)
+        if self._closed:
+            return
+        object.__setattr__(self, "_closed", True)
+        owned = self.provider if self._owned_provider is None else self._owned_provider
+        close = getattr(owned, "aclose", None)
         if close is None:
             return
         result = close()
@@ -291,11 +387,16 @@ class LocalAgentRuntime:
 
     config: LocalRuntimeConfig
     definition: AgentDefinition
-    loop: ReactAgentLoop
+    loop: AgentLoop
     sessions: SessionManager
     models: ModelRegistry
     tools: ToolRegistry
+    shared_budget: LocalSharedBudgetBinding | None = field(default=None, repr=False)
+    _owned_providers: tuple[ModelProvider, ...] = field(default=(), repr=False)
+    knowledge: LocalKnowledgeBinding | None = field(default=None, repr=False)
+    service_usage: LocalServiceUsageBinding | None = field(default=None, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _manage_providers: bool = field(default=True, repr=False)
 
     async def __aenter__(self) -> "LocalAgentRuntime":
         self._ensure_open()
@@ -310,8 +411,13 @@ class LocalAgentRuntime:
         if self._closed:
             return
         self._closed = True
+        if not self._manage_providers:
+            # In an ApplicationContext, provider resources belong to their own
+            # component. The runtime is only a consumer, never a second owner.
+            return
         seen: set[int] = set()
-        for _, provider in self.models.providers():
+        providers = (*self._owned_providers, *(provider for _, provider in self.models.providers()))
+        for provider in providers:
             identity = id(provider)
             if identity in seen:
                 continue
@@ -327,6 +433,19 @@ class LocalAgentRuntime:
         if self._closed:
             raise RuntimeError("local agent runtime is closed")
 
+    async def shared_budget_snapshot(self) -> SharedBudgetSnapshot | None:
+        """Explicit shared-pool read, without merging it into historical Run usage."""
+        self._ensure_open()
+        if self.shared_budget is None:
+            return None
+        return await self.shared_budget.snapshot()
+
+    async def service_usage_summary(self) -> dict | None:
+        """Explicit host-operation view; does not merge retrieval into Run usage."""
+        self._ensure_open()
+        from w_agent._service_usage_ui import service_usage_summary
+        return await service_usage_summary(self.service_usage)
+
     async def run(
         self,
         prompt: str,
@@ -337,19 +456,91 @@ class LocalAgentRuntime:
         approved_call_ids: frozenset[str] = frozenset(),
         cancellation: CancellationToken | None = None,
         event_callback: RunEventCallback | None = None,
+        record_inputs: bool = False,
+        include_history: bool = True,
+        history_policy: SessionHistoryPolicy | AsyncSessionHistoryPolicy | None = None,
+        input_recorder: SessionInputRecorder | None = None,
+        knowledge_query: str | None = None,
+        confirm_knowledge_query: bool = False,
     ) -> LocalRuntimeRun:
         self._ensure_open()
-        if not prompt:
+        if not isinstance(prompt, str) or not prompt:
             raise ValueError("agent prompt must not be empty")
+        return await self.run_messages(
+            (ModelMessage.text(MessageRole.USER, prompt),),
+            session_id=session_id, session_title=session_title or prompt[:80],
+            permissions=permissions, approved_call_ids=approved_call_ids,
+            cancellation=cancellation, event_callback=event_callback,
+            record_inputs=record_inputs, include_history=include_history, history_policy=history_policy,
+            input_recorder=input_recorder,
+            knowledge_query=knowledge_query, confirm_knowledge_query=confirm_knowledge_query,
+        )
+
+    async def run_messages(
+        self, messages: Iterable[ModelMessage], *,
+        session_id: str | None = None,
+        session_title: str | None = None,
+        permissions: frozenset[str] = frozenset(),
+        approved_call_ids: frozenset[str] = frozenset(),
+        cancellation: CancellationToken | None = None,
+        event_callback: RunEventCallback | None = None,
+        record_inputs: bool = False,
+        include_history: bool = True,
+        history_policy: SessionHistoryPolicy | AsyncSessionHistoryPolicy | None = None,
+        input_recorder: SessionInputRecorder | None = None,
+        knowledge_query: str | None = None,
+        confirm_knowledge_query: bool = False,
+    ) -> LocalRuntimeRun:
+        """Run typed content with explicit, per-call recording and history policy."""
+        self._ensure_open()
+        current = tuple(messages)
+        if not current or not all(isinstance(message, ModelMessage) for message in current):
+            raise ValueError("run_messages needs a nonempty sequence of ModelMessages")
+        if type(record_inputs) is not bool or type(include_history) is not bool:
+            raise ValueError("recording/history switches must be booleans")
+        if history_policy is not None and not callable(getattr(history_policy, "project", None)):
+            raise ValueError("history policy needs a project method")
+        if input_recorder is not None and (
+            not record_inputs or not callable(getattr(input_recorder, "record", None))
+        ):
+            raise ValueError("per-call recorder requires record_inputs=True and a record method")
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        if type(confirm_knowledge_query) is not bool:
+            raise ValueError("knowledge confirmation must be boolean")
+        if knowledge_query is not None:
+            if confirm_knowledge_query is not True:
+                raise ValueError("knowledge context requires explicit query confirmation")
+            if self.config.knowledge is None or self.knowledge is None:
+                raise ValueError("knowledge query requires a selected authorized binding")
+            history_policy = self.knowledge.context_policy(knowledge_query, history_policy=history_policy,
+                                                           include_history=include_history)
+            # The wrapper may retrieve knowledge while projecting zero history.
+            include_history = True
+        elif confirm_knowledge_query:
+            raise ValueError("knowledge confirmation requires an explicit query")
         if session_id is None:
-            session = await self.sessions.create(session_title or prompt[:80])
+            session = await self.sessions.create(session_title or "Agent run")
         else:
             session = await self.sessions.get(session_id)
+        link_options = {}
+        if self.service_usage is not None and self.service_usage.links is not None:
+            # Commit correlation before SessionManager prepares async history or
+            # retrieval. A failed preparation may leave only this preassociation.
+            run_id = f"run-{uuid4().hex}"
+            link = ServiceUsageRunLink(session.session_id, run_id, self.service_usage.operation_id)
+            await self.service_usage.links.bind(link, confirm_write=True)
+            link_options["run_id"] = run_id
         result = await self.sessions.run_agent(
             self.loop,
             self.definition,
             session.session_id,
-            (ModelMessage.text(MessageRole.USER, prompt),),
+            current,
+            **link_options,
+            record_inputs=record_inputs,
+            **({"input_recorder": input_recorder} if input_recorder is not None else {}),
+            include_history=include_history,
+            history_policy=history_policy,
             cancellation=cancellation,
             tool_context=ToolExecutionContext(
                 permissions=permissions,
@@ -358,7 +549,8 @@ class LocalAgentRuntime:
             ),
             event_callback=event_callback,
         )
-        return LocalRuntimeRun(await self.sessions.get(session.session_id), result)
+        return LocalRuntimeRun(await self.sessions.get(session.session_id), result,
+                               self.service_usage.operation_id if self.service_usage is not None else None)
 
     async def resume(
         self,
@@ -375,6 +567,11 @@ class LocalAgentRuntime:
         self._ensure_open()
         if not approved_call_ids:
             raise ValueError("resume requires at least one approved tool call ID")
+        if self.service_usage is not None and self.service_usage.links is not None:
+            expected = ServiceUsageRunLink(session_id, run_id, self.service_usage.operation_id)
+            stored = await self.service_usage.links.get(run_id)
+            if not isinstance(stored, ServiceUsageRunLink) or stored != expected:
+                raise ServiceUsageError("service-usage-resume-link-missing-or-conflicting")
         result = await self.sessions.resume_agent(
             self.loop,
             session_id,
@@ -387,7 +584,8 @@ class LocalAgentRuntime:
             cancellation=cancellation,
             event_callback=event_callback,
         )
-        return LocalRuntimeRun(await self.sessions.get(session_id), result)
+        return LocalRuntimeRun(await self.sessions.get(session_id), result,
+                               self.service_usage.operation_id if self.service_usage is not None else None)
 
 
 def load_local_runtime_config(path: str | Path) -> LocalRuntimeConfig:
@@ -412,7 +610,7 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
 
     _known_keys(
         value,
-        {"schema_version", "provider", "agent", "invocation", "tools", "pricing"},
+        {"schema_version", "provider", "agent", "invocation", "tools", "pricing", "shared_budget", "knowledge", "service_usage"},
         "config",
     )
     provider_value = _mapping(value.get("provider"), "provider")
@@ -432,6 +630,10 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
             "temperature",
             "max_output_tokens",
             "emit_text_deltas",
+            "emit_tool_call_deltas",
+            "emit_output_blocks",
+            "emit_tool_results",
+            "max_tool_result_event_bytes",
             "max_input_tokens",
             "max_cumulative_output_tokens",
             "max_total_tokens",
@@ -452,7 +654,31 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
     )
     tools_value = _mapping(value.get("tools", {}), "tools")
     _known_keys(tools_value, {"enabled"}, "tools")
+    shared_budget_raw = value.get("shared_budget")
+    shared_budget = None
+    if shared_budget_raw is not None:
+        shared_budget_value = _mapping(shared_budget_raw, "shared_budget")
+        _known_keys(shared_budget_value, {"binding"}, "shared_budget")
+        if "binding" not in shared_budget_value:
+            raise LocalRuntimeConfigError("shared_budget.binding is required")
+        shared_budget = LocalSharedBudgetConfig(shared_budget_value["binding"])
     pricing_raw = value.get("pricing")
+    service_usage = None
+    if value.get("service_usage") is not None:
+        usage_value = _mapping(value["service_usage"], "service_usage")
+        _known_keys(usage_value, {"binding"}, "service_usage")
+        try:
+            service_usage = LocalServiceUsageConfig(**usage_value)
+        except (TypeError, ValueError):
+            raise LocalRuntimeConfigError("service_usage requires a bounded binding name") from None
+    knowledge = None
+    if value.get("knowledge") is not None:
+        knowledge_value = _mapping(value["knowledge"], "knowledge")
+        _known_keys(knowledge_value, {"binding"}, "knowledge")
+        try:
+            knowledge = LocalKnowledgeConfig(**knowledge_value)
+        except (TypeError, ValueError):
+            raise LocalRuntimeConfigError("knowledge requires a bounded binding name") from None
     pricing = None
     if pricing_raw is not None:
         pricing_value = _mapping(pricing_raw, "pricing")
@@ -521,6 +747,9 @@ def local_runtime_config_from_mapping(value: Mapping[str, Any]) -> LocalRuntimeC
             tools=tools,
             pricing=pricing,
             schema_version=int(value.get("schema_version", 1)),
+            shared_budget=shared_budget,
+            knowledge=knowledge,
+            service_usage=service_usage,
         )
     except (TypeError, ValueError) as error:
         if isinstance(error, LocalRuntimeConfigError):
@@ -538,18 +767,28 @@ def assemble_local_runtime(
     environ: Mapping[str, str] | None = None,
     provider_options: Mapping[str, Any] | None = None,
     tool_bindings: Mapping[str, ToolBinding] | None = None,
+    stream_recovery: StreamRecoveryStrategy | NativeCursorRecovery | None = None,
+    tool_result_event_encoder: ToolResultEventEncoder | None = None,
+    shared_budget_bindings: Mapping[str, LocalSharedBudgetBinding] | None = None,
+    knowledge_bindings: Mapping[str, LocalKnowledgeBinding] | None = None,
+    service_usage_bindings: Mapping[str, LocalServiceUsageBinding] | None = None,
 ) -> LocalAgentRuntime:
-    """Assemble public model, routing, tool, agent, run, and session components."""
+    """Compatibility assembly; use compile_local_runtime for managed composition."""
 
+    knowledge = _select_knowledge_binding(config, knowledge_bindings)
+    _validate_runtime_bindings(config, knowledge, stream_recovery, service_usage_bindings)
     provider_assembly = assemble_local_provider(
         config,
         templates=templates,
         environ=environ,
         provider_options=provider_options,
+        shared_budget_bindings=shared_budget_bindings,
+        service_usage_bindings=service_usage_bindings,
     )
-    provider_config = config.provider
     provider_name = provider_assembly.name
     provider = provider_assembly.provider
+    usage_binding = provider_assembly.service_usage
+    knowledge = _observe_knowledge_binding(knowledge, usage_binding)
 
     models = ModelRegistry()
     models.register(provider_name, provider)
@@ -567,6 +806,89 @@ def assemble_local_runtime(
             timeout=invocation.timeout,
         ),
     )
+    tools = _build_local_tools(config, tool_bindings)
+    tool_executor = ToolExecutor(tools)
+    state = Path(state_root)
+    pricing_catalog, cost_budget = _build_local_pricing(config)
+    agent = config.agent
+    loop = ReactAgentLoop(
+        executor,
+        tools,
+        tool_executor,
+        store=JsonlRunStore(state),
+        pricing=pricing_catalog,
+        token_estimator=(
+            CharacterTokenEstimator(agent.estimator_characters_per_token)
+            if agent.token_estimator == "character"
+            else None
+        ),
+        stream_recovery=stream_recovery,
+        tool_result_event_encoder=tool_result_event_encoder,
+    )
+    definition = _build_local_definition(config, cost_budget)
+    sessions = SessionManager(JsonSessionStore(state / "sessions"))
+    owned = provider if provider_assembly._owned_provider is None else provider_assembly._owned_provider
+    return LocalAgentRuntime(
+        config, definition, loop, sessions, models, tools,
+        shared_budget=provider_assembly.shared_budget, _owned_providers=(owned,), knowledge=knowledge,
+        service_usage=usage_binding,
+    )
+
+
+def _select_knowledge_binding(
+    config: LocalRuntimeConfig,
+    knowledge_bindings: Mapping[str, LocalKnowledgeBinding] | None,
+) -> LocalKnowledgeBinding | None:
+    knowledge = None
+    if knowledge_bindings is not None:
+        if not isinstance(knowledge_bindings, Mapping) or len(knowledge_bindings) > 64:
+            raise LocalRuntimeConfigError("knowledge catalog must be a bounded mapping")
+        for name, binding in knowledge_bindings.items():
+            try:
+                LocalKnowledgeConfig(name)
+            except ValueError:
+                raise LocalRuntimeConfigError("knowledge catalog name is invalid") from None
+            if not isinstance(binding, LocalKnowledgeBinding):
+                raise LocalRuntimeConfigError("knowledge catalog entries must be typed bindings")
+        if config.knowledge is not None:
+            knowledge = knowledge_bindings.get(config.knowledge.binding)
+            if knowledge is None:
+                raise LocalRuntimeConfigError("selected knowledge binding is absent from the authorized catalog")
+    return knowledge
+
+
+def _validate_runtime_bindings(
+    config: LocalRuntimeConfig,
+    knowledge: LocalKnowledgeBinding | None,
+    stream_recovery: StreamRecoveryStrategy | NativeCursorRecovery | None,
+    service_usage_bindings: Mapping[str, LocalServiceUsageBinding] | None,
+) -> None:
+    if (config.shared_budget is not None or config.service_usage is not None) and isinstance(stream_recovery, NativeCursorRecovery):
+        raise LocalRuntimeConfigError("shared_budget/service_usage does not support native cursor recovery")
+    if knowledge is not None and config.service_usage is not None and isinstance(service_usage_bindings, Mapping):
+        selected_usage = service_usage_bindings.get(config.service_usage.binding)
+        if (isinstance(selected_usage, LocalServiceUsageBinding) and selected_usage.retrieval_source_ref is not None
+                and isinstance(knowledge.retriever, ObservedKnowledgeRetriever)):
+            raise LocalRuntimeConfigError("retrieval is already observed; do not instrument the same call twice")
+
+
+def _observe_knowledge_binding(
+    knowledge: LocalKnowledgeBinding | None,
+    usage_binding: LocalServiceUsageBinding | None,
+) -> LocalKnowledgeBinding | None:
+    if knowledge is not None and usage_binding is not None and usage_binding.retrieval_source_ref is not None:
+        knowledge = replace(knowledge, retriever=ObservedKnowledgeRetriever(
+            knowledge.retriever, usage_binding.ledger, usage_binding.operation_id,
+            usage_binding.retrieval_source_ref, usage_binding.meter_version,
+            usage_binding.retrieval_measurement, usage_binding.retrieval_token_scope,
+        ))
+
+    return knowledge
+
+
+def _build_local_tools(
+    config: LocalRuntimeConfig, tool_bindings: Mapping[str, ToolBinding] | None,
+) -> ToolRegistry:
     tools = ToolRegistry()
     catalog = dict(tool_bindings or {})
     for name in config.tools.enabled:
@@ -580,14 +902,19 @@ def assemble_local_runtime(
                 f"tool catalog entry {name!r} does not match its binding"
             )
         tools.register_binding(binding)
-    tool_executor = ToolExecutor(tools)
-    state = Path(state_root)
+    return tools
+
+
+def _build_local_pricing(
+    config: LocalRuntimeConfig,
+) -> tuple[PricingCatalog | None, CostBudget | None]:
+    provider_name = config.provider.name or config.provider.template
     pricing_catalog = None
     cost_budget = None
     if config.pricing is not None:
         table = config.pricing.price_table()
         try:
-            table.quote(provider_name, provider_config.model, TokenUsage())
+            table.quote(provider_name, config.provider.model, TokenUsage())
         except PricingError as error:
             raise LocalRuntimeConfigError(
                 "pricing needs a rate for the configured provider and model"
@@ -601,28 +928,26 @@ def assemble_local_runtime(
             require_estimate=config.pricing.require_estimate,
             soft_limit_ratio=config.pricing.soft_limit_ratio,
         )
+    return pricing_catalog, cost_budget
+
+
+def _build_local_definition(
+    config: LocalRuntimeConfig, cost_budget: CostBudget | None,
+) -> AgentDefinition:
     agent = config.agent
-    loop = ReactAgentLoop(
-        executor,
-        tools,
-        tool_executor,
-        store=JsonlRunStore(state),
-        pricing=pricing_catalog,
-        token_estimator=(
-            CharacterTokenEstimator(agent.estimator_characters_per_token)
-            if agent.token_estimator == "character"
-            else None
-        ),
-    )
-    definition = AgentDefinition(
+    return AgentDefinition(
         agent.name,
         system_prompt=agent.system_prompt,
-        model=provider_config.model,
+        model=config.provider.model,
         max_steps=agent.max_steps,
         max_tool_calls=agent.max_tool_calls,
         temperature=agent.temperature,
         max_output_tokens=agent.max_output_tokens,
         emit_text_deltas=agent.emit_text_deltas,
+        emit_tool_call_deltas=agent.emit_tool_call_deltas,
+        emit_output_blocks=agent.emit_output_blocks,
+        emit_tool_results=agent.emit_tool_results,
+        max_tool_result_event_bytes=agent.max_tool_result_event_bytes,
         extensions=agent.extensions,
         token_budget=TokenBudget(
             max_input_tokens=agent.max_input_tokens,
@@ -634,8 +959,6 @@ def assemble_local_runtime(
         ),
         cost_budget=cost_budget,
     )
-    sessions = SessionManager(JsonSessionStore(state / "sessions"))
-    return LocalAgentRuntime(config, definition, loop, sessions, models, tools)
 
 
 def assemble_local_provider(
@@ -644,9 +967,34 @@ def assemble_local_provider(
     templates: ProviderTemplateRegistry | None = None,
     environ: Mapping[str, str] | None = None,
     provider_options: Mapping[str, Any] | None = None,
+    shared_budget_bindings: Mapping[str, LocalSharedBudgetBinding] | None = None,
+    service_usage_bindings: Mapping[str, LocalServiceUsageBinding] | None = None,
 ) -> LocalProviderAssembly:
     """Build only the configured provider without registration or network access."""
 
+    usage_binding = None
+    if service_usage_bindings is not None:
+        if not isinstance(service_usage_bindings, Mapping) or len(service_usage_bindings) > 64:
+            raise LocalRuntimeConfigError("service usage catalog must be a bounded mapping")
+        for name, candidate in service_usage_bindings.items():
+            try:
+                LocalServiceUsageConfig(name)
+            except (TypeError, ValueError):
+                raise LocalRuntimeConfigError("service usage binding name is invalid") from None
+            if not isinstance(candidate, LocalServiceUsageBinding):
+                raise LocalRuntimeConfigError("service usage catalog requires typed bindings")
+    if config.service_usage is not None:
+        usage_binding = None if service_usage_bindings is None else service_usage_bindings.get(config.service_usage.binding)
+        if not isinstance(usage_binding, LocalServiceUsageBinding):
+            raise LocalRuntimeConfigError("selected service usage binding is unavailable in the authorized catalog")
+    binding = None
+    if config.shared_budget is not None:
+        selected = config.shared_budget.binding
+        binding = None if shared_budget_bindings is None else shared_budget_bindings.get(selected)
+        if not isinstance(binding, LocalSharedBudgetBinding):
+            raise LocalRuntimeConfigError("selected shared budget binding is unavailable in the host catalog")
+        if usage_binding is not None and isinstance(binding.controller, ObservedSharedBudgetController):
+            raise LocalRuntimeConfigError("shared budget is already observed; do not instrument the same attempt twice")
     provider_config = config.provider
     environment = os.environ if environ is None else environ
     api_key = None
@@ -687,7 +1035,21 @@ def assemble_local_provider(
         provider = registry.build(provider_config.template, **options)
     except (KeyError, TypeError, ValueError) as error:
         raise LocalRuntimeConfigError("provider template assembly failed") from error
-    return LocalProviderAssembly(provider_name, provider)
+    if usage_binding is not None and isinstance(provider, (ObservedModelProvider, SharedBudgetModelProvider)):
+        raise LocalRuntimeConfigError("provider already has observation/budget wrapping; use raw provider with named bindings")
+    wrapped = provider
+    if binding is not None:
+        controller = binding.controller
+        if usage_binding is not None:
+            controller = ObservedSharedBudgetController(
+                controller, usage_binding.ledger, operation_id=usage_binding.operation_id,
+                service="model", source_ref=usage_binding.model_source_ref, meter_version=usage_binding.meter_version,
+            )
+        wrapped = SharedBudgetModelProvider(provider, controller, binding.meter)
+    elif usage_binding is not None:
+        wrapped = ObservedModelProvider(provider, usage_binding)
+    return LocalProviderAssembly(provider_name, wrapped, shared_budget=binding,
+                                 service_usage=usage_binding, _owned_provider=provider)
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:

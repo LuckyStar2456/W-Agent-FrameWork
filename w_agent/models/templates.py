@@ -15,6 +15,7 @@ from .http_provider import (
 from .native_mappings import (
     AnthropicMessagesMapping,
     GeminiGenerateContentMapping,
+    GeminiOutputPartMapper,
     OllamaChatMapping,
     QwenDashScopeMapping,
 )
@@ -139,6 +140,7 @@ def gemini_provider(
     timeout: float = 60.0,
     headers: Mapping[str, str] | None = None,
     transport: HttpProviderTransport | None = None,
+    output_part_mapper: GeminiOutputPartMapper | None = None,
 ) -> HttpModelProvider:
     request_headers = {
         **({"x-goog-api-key": api_key} if api_key else {}),
@@ -147,7 +149,9 @@ def gemini_provider(
     return HttpModelProvider(
         name=name,
         base_url=base_url,
-        mapping=GeminiGenerateContentMapping(),
+        mapping=GeminiGenerateContentMapping(
+            output_part_mapper=output_part_mapper,
+        ),
         default_model=default_model,
         profiles=profiles,
         default_capabilities=_TEXT_TOOLS_JSON

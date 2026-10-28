@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from dataclasses import replace
 from typing import Any, Mapping
 
 from w_agent.models import CancellationToken
 
+from .control import WorkflowPauseSource
+from .invocation import InlineWorkflowNodeInvoker, WorkflowNodeInvoker
 from .persistence import (
     InMemoryWorkflowStore,
     WorkflowStore,
@@ -40,8 +41,32 @@ class LocalWorkflowEngine:
     engine refuses to replay it automatically.
     """
 
-    def __init__(self, store: WorkflowStore | None = None) -> None:
+    def __init__(
+        self,
+        store: WorkflowStore | None = None,
+        *,
+        max_parallel_nodes: int = 1,
+        node_invoker: WorkflowNodeInvoker | None = None,
+        pause_source: WorkflowPauseSource | None = None,
+    ) -> None:
+        if (
+            isinstance(max_parallel_nodes, bool)
+            or not isinstance(max_parallel_nodes, int)
+            or max_parallel_nodes < 1
+        ):
+            raise ValueError("workflow max_parallel_nodes must be positive")
         self.store = store or InMemoryWorkflowStore()
+        self.max_parallel_nodes = max_parallel_nodes
+        self.node_invoker = (
+            InlineWorkflowNodeInvoker() if node_invoker is None else node_invoker
+        )
+        if not callable(getattr(self.node_invoker, "invoke", None)):
+            raise ValueError("workflow node invoker needs an invoke method")
+        self.pause_source = pause_source
+        if pause_source is not None and not callable(
+            getattr(pause_source, "is_pause_requested", None)
+        ):
+            raise ValueError("workflow pause source needs an is_pause_requested method")
 
     async def start(
         self,
@@ -98,6 +123,10 @@ class LocalWorkflowEngine:
         cancellation: CancellationToken | None,
     ) -> WorkflowResult:
         while True:
+            if self.pause_source is not None:
+                # Inline nodes and in-memory stores may otherwise never yield
+                # to the application's coroutine that requests a pause.
+                await asyncio.sleep(0)
             if cancellation is not None and cancellation.cancelled:
                 return await self._finish(
                     definition,
@@ -131,6 +160,27 @@ class LocalWorkflowEngine:
                     WorkflowStopReason.MAX_STEPS,
                 )
 
+            if self.pause_source is not None and self.pause_source.is_pause_requested(
+                checkpoint.run_id
+            ):
+                return await self._pause_at_boundary(definition, checkpoint)
+
+            if (
+                isinstance(definition, DagWorkflowDefinition)
+                and self.max_parallel_nodes > 1
+            ):
+                ready = _ready_dag_nodes(definition, checkpoint)
+                if len(ready) > 1:
+                    checkpoint, stopped = await self._run_dag_batch(
+                        definition,
+                        checkpoint,
+                        ready[: self.max_parallel_nodes],
+                        cancellation,
+                    )
+                    if stopped is not None:
+                        return stopped
+                    continue
+
             checkpoint = await self.store.claim_checkpoint(checkpoint.run_id)
             await self._emit(
                 checkpoint,
@@ -138,22 +188,9 @@ class LocalWorkflowEngine:
                 {"node": next_node.name},
             )
             try:
-                raw_result = next_node.handler(
-                    WorkflowNodeContext(
-                        run_id=checkpoint.run_id,
-                        node=next_node.name,
-                        input=checkpoint.input,
-                        state=checkpoint.state,
-                        outputs=checkpoint.outputs,
-                        scope=checkpoint.scope,
-                        cancellation=cancellation,
-                        resume_count=checkpoint.resume_count,
-                        metadata=checkpoint.metadata,
-                    )
+                node_result = await _invoke_node(
+                    next_node, checkpoint, cancellation, self.node_invoker
                 )
-                if inspect.isawaitable(raw_result):
-                    raw_result = await raw_result
-                node_result = _normalize_result(raw_result)
                 checkpoint = _advance(
                     definition,
                     checkpoint,
@@ -184,7 +221,8 @@ class LocalWorkflowEngine:
 
             await self._emit(
                 checkpoint,
-                WorkflowEventType.NODE_COMPLETED,
+                WorkflowEventType.NODE_SUSPENDED
+                if node_result.suspend else WorkflowEventType.NODE_COMPLETED,
                 {"node": next_node.name, "paused": node_result.pause},
             )
             await self.store.save_checkpoint(checkpoint)
@@ -200,6 +238,174 @@ class LocalWorkflowEngine:
                     WorkflowStopReason.PAUSED,
                     checkpoint_id=checkpoint.run_id,
                 )
+
+    async def _pause_at_boundary(
+        self,
+        definition: WorkflowDefinition,
+        checkpoint: WorkflowCheckpoint,
+    ) -> WorkflowResult:
+        claimed = await self.store.claim_checkpoint(checkpoint.run_id)
+        paused = replace(claimed, status=WorkflowCheckpointStatus.PAUSED)
+        await self.store.save_checkpoint(paused)
+        await self._emit(
+            paused,
+            WorkflowEventType.WORKFLOW_PAUSED,
+            {"source": "external-request"},
+        )
+        return await self._result(
+            definition,
+            paused,
+            WorkflowStopReason.PAUSED,
+            checkpoint_id=paused.run_id,
+        )
+
+    async def _run_dag_batch(
+        self,
+        definition: DagWorkflowDefinition,
+        checkpoint: WorkflowCheckpoint,
+        nodes: tuple[WorkflowNode, ...],
+        cancellation: CancellationToken | None,
+    ) -> tuple[WorkflowCheckpoint, WorkflowResult | None]:
+        """Run one independent DAG frontier against the same committed snapshot.
+
+        The checkpoint remains RESUMING until the entire batch is merged. A
+        failed, cancelled, or conflicting batch is never automatically replayed.
+        """
+        checkpoint = await self.store.claim_checkpoint(checkpoint.run_id)
+        batch_names = tuple(node.name for node in nodes)
+        for node in nodes:
+            await self._emit(
+                checkpoint,
+                WorkflowEventType.NODE_STARTED,
+                {"node": node.name, "batch": batch_names},
+            )
+        tasks = [
+            asyncio.create_task(
+                _invoke_node(node, checkpoint, cancellation, self.node_invoker)
+            )
+            for node in nodes
+        ]
+        collection = asyncio.gather(*tasks, return_exceptions=True)
+        cancel_waiter = (
+            asyncio.create_task(cancellation.wait())
+            if cancellation is not None
+            else None
+        )
+        cancelled_batch = False
+        try:
+            if cancel_waiter is not None:
+                done, _pending = await asyncio.wait(
+                    {collection, cancel_waiter},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if cancel_waiter in done and collection not in done:
+                    for task in tasks:
+                        task.cancel()
+                    await collection
+                    cancelled_batch = True
+            outcomes = () if cancelled_batch else await collection
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            cancelled_batch = True
+            outcomes = ()
+        finally:
+            if cancel_waiter is not None:
+                cancel_waiter.cancel()
+                await asyncio.gather(cancel_waiter, return_exceptions=True)
+
+        if cancelled_batch:
+            stopped = await self._finish(
+                definition,
+                checkpoint,
+                WorkflowStopReason.CANCELLED,
+                keep_checkpoint=True,
+                failure="parallel-node-execution-cancelled",
+            )
+            return checkpoint, stopped
+
+        failures = [
+            (node, outcome)
+            for node, outcome in zip(nodes, outcomes, strict=True)
+            if isinstance(outcome, BaseException)
+        ]
+        if failures:
+            for node, _error in failures:
+                await self._emit(
+                    checkpoint,
+                    WorkflowEventType.NODE_FAILED,
+                    {"node": node.name, "code": "parallel-node-execution-failed"},
+                )
+            cancelled = any(
+                isinstance(error, asyncio.CancelledError)
+                for _node, error in failures
+            )
+            stopped = await self._finish(
+                definition,
+                checkpoint,
+                WorkflowStopReason.CANCELLED if cancelled else WorkflowStopReason.FAILED,
+                keep_checkpoint=True,
+                failure=(
+                    "parallel-node-execution-cancelled"
+                    if cancelled
+                    else "parallel-node-execution-failed"
+                ),
+            )
+            return checkpoint, stopped
+
+        results = tuple(outcomes)
+        update_owners: dict[str, str] = {}
+        for node, result in zip(nodes, results, strict=True):
+            for key in result.state_updates:
+                if key in update_owners:
+                    await self._emit(
+                        checkpoint,
+                        WorkflowEventType.NODE_FAILED,
+                        {
+                            "node": node.name,
+                            "code": "parallel-state-conflict",
+                            "conflicts_with": update_owners[key],
+                        },
+                    )
+                    stopped = await self._finish(
+                        definition,
+                        checkpoint,
+                        WorkflowStopReason.FAILED,
+                        keep_checkpoint=True,
+                        failure="parallel-state-conflict",
+                    )
+                    return checkpoint, stopped
+                update_owners[key] = node.name
+
+        checkpoint = _advance_dag_batch(checkpoint, nodes, results)
+        for node, result in zip(nodes, results, strict=True):
+            await self._emit(
+                checkpoint,
+                WorkflowEventType.NODE_SUSPENDED
+                if result.suspend else WorkflowEventType.NODE_COMPLETED,
+                {"node": node.name, "paused": result.pause, "batch": batch_names},
+            )
+        await self.store.save_checkpoint(checkpoint)
+        paused = tuple(
+            node.name
+            for node, result in zip(nodes, results, strict=True)
+            if result.pause
+        )
+        if paused:
+            await self._emit(
+                checkpoint,
+                WorkflowEventType.WORKFLOW_PAUSED,
+                {"node": paused[0], "nodes": paused},
+            )
+            stopped = await self._result(
+                definition,
+                checkpoint,
+                WorkflowStopReason.PAUSED,
+                checkpoint_id=checkpoint.run_id,
+            )
+            return checkpoint, stopped
+        return checkpoint, None
 
     async def _emit(
         self,
@@ -314,11 +520,9 @@ def _next_node(
     checkpoint: WorkflowCheckpoint,
 ) -> WorkflowNode | None:
     if isinstance(definition, DagWorkflowDefinition):
-        completed = set(checkpoint.completed_nodes)
-        nodes = {node.name: node for node in definition.nodes}
-        for name in checkpoint.remaining_nodes:
-            if set(definition.dependencies[name]) <= completed:
-                return nodes[name]
+        ready = _ready_dag_nodes(definition, checkpoint)
+        if ready:
+            return ready[0]
         if checkpoint.remaining_nodes:
             raise WorkflowStoreError("DAG checkpoint has no executable node")
         return None
@@ -336,6 +540,73 @@ def _next_node(
     )
 
 
+def _ready_dag_nodes(
+    definition: DagWorkflowDefinition,
+    checkpoint: WorkflowCheckpoint,
+) -> tuple[WorkflowNode, ...]:
+    completed = set(checkpoint.completed_nodes)
+    nodes = {node.name: node for node in definition.nodes}
+    return tuple(
+        nodes[name]
+        for name in checkpoint.remaining_nodes
+        if set(definition.dependencies[name]) <= completed
+    )
+
+
+async def _invoke_node(
+    node: WorkflowNode,
+    checkpoint: WorkflowCheckpoint,
+    cancellation: CancellationToken | None,
+    invoker: WorkflowNodeInvoker,
+) -> WorkflowNodeResult:
+    raw_result = await invoker.invoke(
+        node,
+        WorkflowNodeContext(
+            run_id=checkpoint.run_id,
+            node=node.name,
+            input=checkpoint.input,
+            state=checkpoint.state,
+            outputs=checkpoint.outputs,
+            scope=checkpoint.scope,
+            cancellation=cancellation,
+            resume_count=checkpoint.resume_count,
+            metadata=checkpoint.metadata,
+        )
+    )
+    return _normalize_result(raw_result)
+
+
+def _advance_dag_batch(
+    checkpoint: WorkflowCheckpoint,
+    nodes: tuple[WorkflowNode, ...],
+    results: tuple[WorkflowNodeResult, ...],
+) -> WorkflowCheckpoint:
+    state = dict(checkpoint.state)
+    outputs = dict(checkpoint.outputs)
+    completed = tuple(
+        node.name for node, result in zip(nodes, results, strict=True)
+        if not result.suspend
+    )
+    for node, result in zip(nodes, results, strict=True):
+        state.update(result.state_updates)
+        if not result.suspend:
+            outputs[node.name] = result.output
+    return replace(
+        checkpoint,
+        state=state,
+        outputs=outputs,
+        completed_nodes=(*checkpoint.completed_nodes, *completed),
+        remaining_nodes=tuple(
+            name for name in checkpoint.remaining_nodes if name not in completed
+        ),
+        status=(
+            WorkflowCheckpointStatus.PAUSED
+            if any(result.pause for result in results)
+            else WorkflowCheckpointStatus.READY
+        ),
+    )
+
+
 def _advance(
     definition: WorkflowDefinition,
     checkpoint: WorkflowCheckpoint,
@@ -344,6 +615,17 @@ def _advance(
 ) -> WorkflowCheckpoint:
     state = dict(checkpoint.state)
     state.update(result.state_updates)
+    if result.suspend:
+        return replace(
+            checkpoint,
+            state=state,
+            resume_count=(
+                checkpoint.resume_count + 1
+                if isinstance(definition, PythonWorkflowDefinition)
+                else checkpoint.resume_count
+            ),
+            status=WorkflowCheckpointStatus.PAUSED,
+        )
     outputs = dict(checkpoint.outputs)
     outputs[node.name] = result.output
 

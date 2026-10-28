@@ -29,7 +29,7 @@ from w_agent.models import (
     ToolCallContent,
     ToolResultContent,
 )
-from w_agent.tools import ToolCall
+from w_agent.tools import ToolCall, ToolContinuation
 
 from .types import (
     AgentDefinition,
@@ -67,6 +67,17 @@ class RunStore(Protocol):
     async def delete_checkpoint(self, run_id: str) -> None: ...
 
 
+def _validate_event_page_request(after_sequence: int, limit: int) -> None:
+    if (
+        isinstance(after_sequence, bool)
+        or not isinstance(after_sequence, int)
+        or after_sequence < 0
+    ):
+        raise ValueError("run event cursor sequence must be a nonnegative integer")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError("run event page limit must be a positive integer")
+
+
 class InMemoryRunStore:
     """Deterministic store for local development and tests."""
 
@@ -87,6 +98,22 @@ class InMemoryRunStore:
     async def events(self, run_id: str) -> tuple[RunEvent, ...]:
         async with self._lock:
             return tuple(self._events.get(run_id, ()))
+
+    async def events_page(
+        self,
+        run_id: str,
+        after_sequence: int,
+        limit: int,
+    ) -> tuple[tuple[RunEvent, ...], bool]:
+        """Return a bounded snapshot without copying the whole in-memory log."""
+
+        _validate_event_page_request(after_sequence, limit)
+        async with self._lock:
+            events = self._events.get(run_id, ())
+            if after_sequence > len(events):
+                raise RunStoreError("run event cursor is ahead of the log")
+            selected = tuple(events[after_sequence : after_sequence + limit])
+            return selected, after_sequence + len(selected) < len(events)
 
     async def save_checkpoint(self, checkpoint: RunCheckpoint) -> None:
         async with self._lock:
@@ -142,6 +169,22 @@ class JsonlRunStore:
     async def events(self, run_id: str) -> tuple[RunEvent, ...]:
         return await asyncio.to_thread(self._events_sync, run_id)
 
+    async def events_page(
+        self,
+        run_id: str,
+        after_sequence: int,
+        limit: int,
+    ) -> tuple[tuple[RunEvent, ...], bool]:
+        """Scan a JSONL prefix but materialize at most ``limit`` events."""
+
+        _validate_event_page_request(after_sequence, limit)
+        return await asyncio.to_thread(
+            self._events_page_sync,
+            run_id,
+            after_sequence,
+            limit,
+        )
+
     async def save_checkpoint(self, checkpoint: RunCheckpoint) -> None:
         await asyncio.to_thread(self._save_checkpoint_sync, checkpoint)
 
@@ -170,10 +213,14 @@ class JsonlRunStore:
             run_dir = self._run_dir(event.run_id)
             run_dir.mkdir(parents=True, exist_ok=True)
             path = run_dir / "events.jsonl"
-            current = self._events_sync(event.run_id)
-            if event.sequence != len(current) + 1:
+            existing, _ = self._events_page_sync(
+                event.run_id,
+                event.sequence - 1,
+                1,
+            )
+            if existing:
                 raise RunStoreError(
-                    f"run event sequence {event.sequence} does not follow {len(current)}"
+                    f"run event sequence {event.sequence} already exists"
                 )
             payload = json.dumps(
                 _event_to_data(event),
@@ -191,15 +238,72 @@ class JsonlRunStore:
             path = self._run_dir(run_id) / "events.jsonl"
             if not path.exists():
                 return ()
-            events = [
-                _event_from_data(json.loads(line))
-                for line in path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+            try:
+                events = [
+                    _event_from_data(json.loads(line))
+                    for line in path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
+            except (
+                OSError,
+                UnicodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise RunStoreError(
+                    f"run {run_id!r} has a corrupt event log"
+                ) from error
             for expected, event in enumerate(events, 1):
                 if event.sequence != expected or event.run_id != run_id:
                     raise RunStoreError(f"run {run_id!r} has a corrupt event log")
             return tuple(events)
+
+    def _events_page_sync(
+        self,
+        run_id: str,
+        after_sequence: int,
+        limit: int,
+    ) -> tuple[tuple[RunEvent, ...], bool]:
+        with self._lock:
+            path = self._run_dir(run_id) / "events.jsonl"
+            if not path.exists():
+                if after_sequence:
+                    raise RunStoreError("run event cursor is ahead of the log")
+                return (), False
+            selected: list[RunEvent] = []
+            sequence = 0
+            try:
+                with path.open("r", encoding="utf-8") as stream:
+                    for line in stream:
+                        if not line.strip():
+                            continue
+                        sequence += 1
+                        event = _event_from_data(json.loads(line))
+                        if event.sequence != sequence or event.run_id != run_id:
+                            raise RunStoreError(
+                                f"run {run_id!r} has a corrupt event log"
+                            )
+                        if sequence <= after_sequence:
+                            continue
+                        if len(selected) == limit:
+                            return tuple(selected), True
+                        selected.append(event)
+            except (
+                OSError,
+                UnicodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise RunStoreError(
+                    f"run {run_id!r} has a corrupt event log"
+                ) from error
+            if after_sequence > sequence:
+                raise RunStoreError("run event cursor is ahead of the log")
+            return tuple(selected), False
 
     def _save_checkpoint_sync(self, checkpoint: RunCheckpoint) -> None:
         with self._lock:
@@ -316,6 +420,8 @@ def _event_to_data(event: RunEvent) -> dict[str, Any]:
 
 
 def _event_from_data(data: Mapping[str, Any]) -> RunEvent:
+    if not isinstance(data, Mapping):
+        raise RunStoreError("run event record must be an object")
     if data.get("schema_version") != 1:
         raise RunStoreError("unsupported run event schema version")
     return RunEvent(
@@ -344,6 +450,10 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
             "temperature": definition.temperature,
             "max_output_tokens": definition.max_output_tokens,
             "emit_text_deltas": definition.emit_text_deltas,
+            "emit_tool_call_deltas": definition.emit_tool_call_deltas,
+            "emit_output_blocks": definition.emit_output_blocks,
+            "emit_tool_results": definition.emit_tool_results,
+            "max_tool_result_event_bytes": definition.max_tool_result_event_bytes,
             "extensions": _json_value(definition.extensions),
             "token_budget": (
                 {
@@ -389,6 +499,8 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
             if checkpoint.pending_tool_call is not None
             else None
         ),
+        **({"tool_continuation": checkpoint.tool_continuation.to_dict()}
+           if checkpoint.tool_continuation is not None else {}),
         "remaining_tool_calls": [
             _content_to_data(item) for item in checkpoint.remaining_tool_calls
         ],
@@ -409,6 +521,8 @@ def _checkpoint_to_data(checkpoint: RunCheckpoint) -> dict[str, Any]:
 
 
 def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
+    if type(data.get("schema_version")) is not int or data["schema_version"] not in (1, 2):
+        raise RunStoreError("unsupported run checkpoint schema version")
     definition = data["definition"]
     token_budget = definition.get("token_budget")
     cost_budget = definition.get("cost_budget")
@@ -427,7 +541,11 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
             max_tool_calls=int(definition["max_tool_calls"]),
             temperature=definition.get("temperature"),
             max_output_tokens=definition.get("max_output_tokens"),
-            emit_text_deltas=bool(definition.get("emit_text_deltas", False)),
+            emit_text_deltas=definition.get("emit_text_deltas", False),
+            emit_tool_call_deltas=definition.get("emit_tool_call_deltas", False),
+            emit_output_blocks=definition.get("emit_output_blocks", False),
+            emit_tool_results=definition.get("emit_tool_results", False),
+            max_tool_result_event_bytes=definition.get("max_tool_result_event_bytes", 64 * 1024),
             extensions=definition.get("extensions", {}),
             token_budget=(
                 TokenBudget(
@@ -480,7 +598,11 @@ def _checkpoint_from_data(data: Mapping[str, Any]) -> RunCheckpoint:
         cost=_cost_from_data(data.get("cost")),
         priced_usage_calls=int(data.get("priced_usage_calls", 0)),
         status=CheckpointStatus(str(data["status"])),
-        schema_version=int(data["schema_version"]),
+        schema_version=data["schema_version"],
+        tool_continuation=(
+            ToolContinuation.from_dict(data["tool_continuation"])
+            if data.get("tool_continuation") is not None else None
+        ),
     )
 
 

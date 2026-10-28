@@ -289,13 +289,28 @@ class ModelProviderProbe:
             if cancellation is not None:
                 cancellation.raise_if_cancelled()
             latency = _elapsed_ms(catalog_started)
+            # Optional provider evidence contract, not part of ModelProvider.
+            # Unknown/legacy/cached catalogs remain usable without inventing I/O.
+            try:
+                remote_catalog = getattr(provider, "catalog_probe_scope", "unknown") == "remote"
+            except Exception:
+                remote_catalog = False
+            checks.append(
+                ProbeCheck(
+                    ProbeLevel.L1_REACHABILITY,
+                    "catalog-connectivity",
+                    ProbeStatus.PASS if remote_catalog else ProbeStatus.SKIPPED,
+                    "remote catalog request completed" if remote_catalog else
+                    "catalog is local or its transport provenance is unknown",
+                    latency if remote_catalog else None,
+                )
+            )
             checks.append(
                 ProbeCheck(
                     ProbeLevel.L2_AUTHENTICATION,
                     "provider-access",
-                    ProbeStatus.PASS,
-                    "provider accepted the catalog request",
-                    latency,
+                    ProbeStatus.SKIPPED,
+                    "catalog success does not verify authentication or generation access",
                 )
             )
             checks.append(
@@ -501,7 +516,12 @@ class ProbeHealthBridge:
             return HealthStatus.UNKNOWN
         if any(check.status == ProbeStatus.FAIL for check in result.checks):
             return HealthStatus.UNHEALTHY
-        if any(check.status == ProbeStatus.PASS for check in result.checks):
+        evidence_levels = {
+            ProbeLevel.L1_REACHABILITY, ProbeLevel.L2_AUTHENTICATION,
+            ProbeLevel.L4_GENERATION, ProbeLevel.L5_STREAMING,
+        }
+        if any(check.status == ProbeStatus.PASS and check.level in evidence_levels
+               for check in result.checks):
             return HealthStatus.HEALTHY
         return HealthStatus.UNKNOWN
 

@@ -1,193 +1,238 @@
 # W-Agent
 
-[English](./README_EN.md) | 简体中文
+**借鉴 Spring 的依赖注入、切面和生命周期，为 Python 开发者装配自己的 Agent 执行系统。**
 
-W-Agent 是一个面向本地开发者的 Python 开源 Agent 开发框架。它的目标不是提供托管平台或固定 Harness，而是提供稳定、可扩展的协议与可自由装配的模块，让开发者能够替换模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面实现。
+[English](./README_EN.md) · [文档](./docs/README.md) · [快速入门](#快速入门) · [扩展开发](./docs/developer.md) · [路线图](./docs/roadmap.md)
 
-当前稳定发布版本是 `1.5.2`，最新 Alpha 为 `2.0.0a3`；仓库 main 已继续开发未发布的 post-`2.0.0a3` 能力。1.x 工程底座继续保留，微内核、模型、工具、单 Agent 与本地 Workflow 基础已经实现，其余下一代能力按路线图分阶段交付。文档使用明确状态标记，避免把规划能力或未发布源码描述为已发布能力。
+[![PyPI](https://img.shields.io/pypi/v/wagent-framework)](https://pypi.org/project/wagent-framework/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](./setup.py)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
-## 状态标记
+W-Agent 是面向 Python 开发者的开源 **Harness 开发框架**。这里的 Harness 指组织模型调用、工具、状态与执行流程的代码。你可以用注解、配置或显式 Python 装配自己的实现，也可以按需采用内置 ReAct、Workflow 和 CLI/TUI。
 
-| 标记 | 含义 |
+当一个小应用开始需要替换模型、统一记录调用结果、管理共享客户端的初始化与释放时，这些代码很容易散落在业务函数里。W-Agent 将装配、日志切面和生命周期交给容器，让业务方法专注于执行流程。下面用一个客服回复应用展示这些变化。
+
+**首次试用请安装 `wagent-framework==2.1.0`，Python 导入名为 `w_agent`。本页完整示例对应这个正式版。**
+
+## 安装
+
+需要 **Python 3.11+**。建议在项目自己的虚拟环境中安装。以下命令固定到正式版 2.1.0：
+
+```bash
+python -m pip install "wagent-framework==2.1.0"
+```
+
+| 你要使用的内容 | 版本与来源 |
 |---|---|
-| `Implemented` | 源码已经存在，并有相应测试或可执行入口 |
-| `Planned` | 已决定实现，已进入明确路线图 |
-| `Reserved` | 协议或扩展点会保留，但尚未承诺实现版本 |
-| `Experimental` | 可以试用，但接口与行为可能变化 |
-| `Deprecated` | 仅为迁移保留，不再扩展 |
+| 本页示例与 Harness 开发核心 | [PyPI 2.1.0](https://pypi.org/project/wagent-framework/2.1.0/) · [版本说明](./docs/releases/2.1.0.md) |
+| 已有 1.x / 2.0.0 项目 | 先看 [1.x 迁移](./docs/migration-1x.md)或 [2.0.0 基础组件教程](./docs/basic-development.md)，再核对 API 差异 |
+| GitHub 源码开发 | `main` 可能包含未发布改动；需要复现发行版时，使用 PyPI 对应版本的源码包（sdist） |
 
-## 项目定位
+安装版本和下载制品以 PyPI 为准，变更范围见仓库内的版本说明；GitHub Releases 是否有条目不作为 Python 包是否已发布的判断依据。从源码执行 `python -m pip install -e .` 会使用当前检出的代码，不会自动切换到 PyPI 2.1.0。
 
-W-Agent 遵循以下原则：
-
-- 核心协议稳定且可扩展，具体策略全部可替换。
-- 内置实现只使用公开扩展接口，不享有私有能力。
-- 显式 Python 装配、装饰器、配置文件和 Python entry point 最终进入同一个注册表。
-- Agent Loop 与 Workflow 互通但不强行合并。
-- 本地开发优先，不内置租户、计费或托管控制面。
-- 默认执行不可信代码时使用沙箱；宿主机执行必须由用户明确授权。
-- 已实现、计划实现和仅保留设计的能力必须在文档中区分。
-
-## 当前能力
-
-以下能力在 1.5.2 源码中为 `Implemented`：
-
-- `BaseAgent.arun()` 基础抽象。
-- IOC 容器、组件扫描、生命周期与依赖注入。
-- AOP、重试、断路器、超时和舱壁隔离。
-- 动态配置、事件总线、健康检查、日志、指标和链路追踪。
-- Wasm 与 nsjail 技能沙箱，后端不可用时失败关闭。
-- Skill 加载、签名校验、MCP JWT 认证、Redis 分布式锁。
-- LangChain 工具适配、FastAPI 示例集成和测试辅助设施。
-
-以下 Phase 1 能力在当前 main 源码中为 `Implemented`：
-
-- `PluginSpec`、装饰器、YAML 引用与 Python entry point 发现。
-- 统一、版本感知、分作用域的能力注册表与不可变快照。
-- 插件依赖解析、生命周期、失败回滚、级联卸载和可撤销注册。
-- `Application → Workspace → Session → Agent → Run → Step` 作用域。
-- `publish`、`first`、`serial` 和 `pipeline` 事件模式。
-
-以下 Phase 2A 能力在当前源码中也为 `Implemented`：
-
-- Provider 中立的消息、能力、请求、响应和严格流事件协议。
-- 统一 `ModelRegistry`、可替换 `ModelProvider` 和协作式取消令牌。
-- 可解释的 Python 加权路由与安全 YAML 路由规则。
-- L1 端点可达性嗅探、L2/L3 Provider 检查、显式授权的 L4/L5 主动探测、缓存和周期调度器。
-- 严格配置化 Provider 的独立无副作用装配，以及 CLI/TUI 安全目录检查与显式授权主动生成探测。
-- 可替换传输的 OpenAI-compatible Chat Completions Provider，适用于声明兼容接口的本地或远程服务。
-- 可插拔的通用 HTTP 请求映射层与 JSON/SSE/NDJSON 传输。
-- Anthropic、Gemini、Ollama、Qwen 原生模板，以及 DeepSeek、GLM、Qwen-compatible、Turbo AI/SIAM.AI 模板注册表。
-- 同时支持完整收集和逐事件透传的 `ModelExecutor`；默认单次调用，可显式启用有界重试/故障转移，并记录不含 Prompt 的逐尝试 Token/失败审计。
-- 注册即安全探测的 `ModelRegistrationProbeService` 与外部路由健康桥接；直接调用 `ModelRegistry.register()` 仍保持无副作用。
-- 工具 Definition/Binding/Registry 分层、Python/HTTP/无 Shell 命令模板、MCP 绑定与 2026-07-28 stdio/Streamable HTTP 客户端、参数校验、权限/逐调用审批、超时/取消和 Prompt-free 审计。
-- 可替换 `AgentLoop` 协议与有界单 Agent `ReactAgentLoop`，覆盖模型→工具→结果→模型闭环、显式可选文本增量 RunEvent、调用前可插拔 Token/费用估算与重放包络、实报 Token/费用预算、软阈值事件、JSONL RunEvent/尝试账本记录和审批断点恢复。
-- 应用提供的版本化价格表、普通/缓存输入与输出费用计量、失败关闭的 Run 费用预算，以及 Session/Checkpoint/评测和按 Agent 跨 Session 的费用可见性。
-- 统一 `WorkflowRegistry`、可替换 `WorkflowEngineProtocol` 与 `LocalWorkflowEngine`，支持静态 DAG、状态图、Python 入口、节点事件、取消，以及内存/JSONL 节点边界暂停恢复。
-- 统一 `SandboxProvider`/`SandboxRegistry`、Docker/OCI 生命周期后端、显式运行时授权的 `UnsafeLocalSandboxProvider`，以及受工具策略保护的 `sandbox_command_tool()`。
-- Agent/Workflow 双向适配器，以及可完全覆盖的客服/RAG 与编码 Agent 模板。
-- `CompositionManifest` 的确定性编码、安全预览，以及冲突安全的本地版本和别名管理。
-- 本地 Session 创建/列表/归档、JSON 持久化、跨 Run 文本上下文、审批恢复协调，以及不含 Prompt/输出的按 Agent 跨 Session 用量/费用汇总。
-- 严格本地 JSON 装配的文本 Agent CLI/TUI 运行入口，使用环境变量凭据引用、逐次调用确认、可见 Token/费用预算与计量。
-- 确定性脚本化 Model Provider、显式授权的 JSONL 录制/顺序回放、本地评测运行器、版本化客服/编码套件与脱敏 JSON 报告。
-
-当前 `BaseAgent` 仍是简单的 1.x 抽象；`LegacyAgentAdapter` 已能把它严格桥接为文本 Workflow 节点，新的 ReAct Runtime 独立提供。当前 main 已有可替换的离线装配依赖计划、独立 YAML 插件引用的安全预览/确认加载/TUI 卸载、专用 OpenAI Responses/vLLM 差异适配、显式有界的可替换文本流前缀恢复，以及显式调用前费用估算/重放包络；在线来源目录/包安装、Provider 原生游标续传、多模态/工具事件通用回放、并行或嵌套 Workflow 仍为 `Planned`，不能当作现成功能使用。Docker 后端已有模拟 CLI 生命周期测试，但不代表当前机器已安装或启动 Docker；厂商模板经过模拟传输测试，也不代表所有远程型号已经在线验证。
-
-## 下一代模块图
-
-```text
-应用与模板       客服模板 / 编码模板 / 用户自定义装配
-运行时           Agent Loop / Workflow / Session / Checkpoint
-能力             Models / Router / Tools / RAG / Memory / Sandbox
-微内核           Plugin / Registry / Lifecycle / Scope / Events
-基础设施         Storage / Telemetry / CLI / TUI / Evaluation
-```
-
-下一代 API 直接从 `w_agent` 导出，不引入 `w_agent.v2` 命名空间。已实现的最小兼容层保留必要的 1.x Agent 复用路径。
-
-## 安装现有版本
+按需添加依赖，不必安装所有模块：
 
 ```bash
-pip install wagent-framework
+# HTTP 模型接入与终端界面
+python -m pip install "wagent-framework[models,tui]==2.1.0"
+
+# PDF / DOCX / XLSX / PPTX 解析
+python -m pip install "wagent-framework[knowledge-documents]==2.1.0"
 ```
 
-安装最新 Alpha：
+其他 extras 包括 `mcp`、`media-preview`、`testing`、`fastapi`、`langchain`、`opentelemetry` 和平台受限的 `wasm`。参见[安装指南](./docs/guide.md)。
 
-```bash
-pip install --pre wagent-framework==2.0.0a3
+## 快速入门
+
+### 从手动管理到容器装配
+
+假设你已有一个提供 `open()`、`answer()` 和 `close()` 的模型适配器。手动编排时，调用处需要同时处理业务、日志和资源释放：
+
+```python
+# 对照片段：model 是调用方已创建的适配器实例。
+async def reply_manually(model, question):
+    model.open()
+    try:
+        print("call:run")
+        answer = await model.answer(question)
+        print("result:success")
+        return answer
+    finally:
+        model.close()
 ```
 
-可选依赖：
-
-```bash
-pip install "wagent-framework[fastapi,langchain,opentelemetry]"
-pip install "wagent-framework[models]"
-pip install "wagent-framework[wasm]"
-pip install "wagent-framework[tui]"
-```
-
-PyPI 1.x 支持 Python 3.9+；`2.0.0a3`、当前 main 源码与后续 2.x 版本要求 Python 3.11+。
-
-## 1.x 最小示例
+使用 W-Agent 后，这三项职责分别放到业务组件、日志切面和生命周期方法中。保存下面的完整示例为 `support_app.py`，执行 `python support_app.py`。只需上方的基础安装，**不需要 API Key、网络服务或 TUI**：
 
 ```python
 import asyncio
 
-from w_agent import AgentComponent, BaseAgent, BeanFactory
+from w_agent import (
+    AgentComponent, ApplicationOperation, ApplicationProject, Aspect,
+    Before, Finally, PostConstruct, PreDestroy, ServiceComponent,
+    compile_decorated,
+)
 
 
-@AgentComponent(name="hello_agent")
-class HelloAgent(BaseAgent):
-    async def arun(self, prompt: str) -> str:
-        return f"Hello, {prompt}!"
+class ReplyModel:
+    async def answer(self, question: str) -> str:
+        raise NotImplementedError
 
 
-async def main() -> None:
-    factory = BeanFactory()
-    factory.register_bean("hello_agent", HelloAgent())
-    agent = await factory.get_bean("hello_agent")
-    print(await agent.arun("W-Agent"))
+@ServiceComponent("model")
+class OfflineModel(ReplyModel):
+    """Deterministic stand-in; no real LLM request."""
+
+    @PostConstruct
+    def open(self):
+        print("model:open")
+
+    async def answer(self, question: str) -> str:
+        if "shipping" in question.casefold():
+            return "Demo orders ship within two working days."
+        return "Please contact a human teammate."
+
+    @PreDestroy
+    def close(self):
+        print("model:close")
+
+
+@AgentComponent("support", scope="run")
+class SupportHarness:
+    def __init__(self, model: ReplyModel):
+        self.model = model
+
+    async def run(self, question: str) -> str:
+        return await self.model.answer(question)
+
+
+@Aspect("trace", component="support", methods=("run",))
+class CallLog:
+    @Before
+    def started(self, invocation):
+        print(f"call:{invocation.method}")
+
+    @Finally
+    def finished(self, invocation, outcome):
+        print(f"result:{outcome.status}")
+
+
+async def main():
+    plan = compile_decorated([OfflineModel, SupportHarness, CallLog])
+    project = ApplicationProject(plan, {"reply": ApplicationOperation("support")})
+    async with project.open() as host:
+        print(await host.invoke("reply", "What is your shipping time?"))
 
 
 asyncio.run(main())
 ```
 
-这段代码只展示 1.x 兼容用法，不会自动接入新的 ReAct、模型或工具运行时。
-
-## 本地开发体验
-
-当前源码已提供：
+预期输出：
 
 ```text
-wagent init
-wagent profile list
-wagent probe <endpoint>
-wagent provider-probe --mode safe|active|capability [--confirm-active-probe]
-wagent doctor
-wagent tui
-wagent composition export
-wagent composition inspect|save|list
-wagent session create|list|show|usage|archive|unarchive
-wagent run "hello" --confirm-model-call --json
-wagent evaluate cases.json --confirm-model-call --report report.json
+model:open
+call:run
+result:success
+Demo orders ship within two working days.
+model:close
 ```
 
-CLI 和 TUI 只调用公开 Python API。当前 CLI/TUI 基础标记为 `Experimental`：已覆盖初始化、模板列表、安全/主动端点探测、装配管理/离线预览与依赖计划、本地 Session 生命周期、按 Agent 跨 Session 的安全用量/费用汇总、需逐次确认的配置化 Agent 运行与 Token 汇总、Agent/Workflow Checkpoint 脱敏列表、Catalog 工具选择、独立代码加载确认、权限授予、精确 Call ID 审批恢复、精确版本 Workflow 恢复、通用插件无导入预览/确认加载/TUI 卸载、脱敏实时 RunEvent，以及支持版本化内置套件与独立评测工具加载确认的本地评测。Workflow 恢复、离线依赖计划、内置评测套件、跨 Session 汇总与通用插件操作属于 main 的未发布能力；插件包安装/升级仍为 `Planned`。
+`SupportHarness.run()` 只保留回复流程。容器按类型注入模型；日志切面记录调用结果；模型是应用级共享组件，在 Host 打开时初始化、关闭时清理。`scope="run"` 则让客服组件每次调用使用独立实例。实际适配器可在生命周期方法里创建和关闭客户端；这里的打印只演示调用顺序。
 
-## 工程装配分享
+### 替换模型，不改业务方法
 
-`Implemented`：开发者可以给框架装配命名和版本化，导出为可复制编码，并在无网络、无导入、无执行的阶段完成校验和风险预览。本地 Store 支持多版本与别名且拒绝静默覆盖冲突内容。当前 main 还能通过可替换 Resolver 和显式候选清单生成环境/插件离线计划；计划不会自动安装包、生成加载引用或替用户确认代码执行。
+在同一文件的 `main()` 之前添加另一个适配器，它遵守应用自己定义的 `ReplyModel` 接口：
 
-装配编码只携带可移植清单，不携带密钥，不默认打包任意源码，也不会在导入时自动执行不可信插件。详细设计见[工程装配分享](./docs/project-sharing.md)。
+```python
+@ServiceComponent("model")
+class AlternateModel(ReplyModel):
+    async def answer(self, question: str) -> str:
+        return "Alternative model: a human teammate will follow up."
+```
 
-## 文档
+然后只替换 `main()` 中的装配行，再次运行文件：
 
-- [文档索引](./docs/README.md)
-- [架构设计](./docs/architecture.md)
-- [路线图与能力状态](./docs/roadmap.md)
-- [使用指南](./docs/guide.md)
-- [开发者指南](./docs/developer.md)
-- [API 状态与规划](./docs/api.md)
-- [插件系统](./docs/plugin-system.md)
-- [模型、路由与接口探测](./docs/model-routing.md)
-- [HTTP Provider 与厂商模板](./docs/provider-templates.md)
-- [工具注册、策略与执行](./docs/tools.md)
-- [Agent Runtime 与 ReAct Loop](./docs/agents.md)
-- [Session 生命周期与跨 Run 上下文](./docs/sessions.md)
-- [本地配置化 Agent Runtime](./docs/local-runtime.md)
-- [Workflow 与节点恢复](./docs/workflows.md)
-- [沙箱与本地执行](./docs/sandbox.md)
-- [CLI 与 TUI](./docs/tui.md)
-- [本地测试、模型回放与评测](./docs/testing-evaluation.md)
-- [1.x 迁移](./docs/migration-1x.md)
+```python
+plan = compile_decorated([AlternateModel, SupportHarness, CallLog])
+```
 
-## 明确不做
+回复会变为 `Alternative model: a human teammate will follow up.`，`call:run` 与 `result:success` 日志仍然存在。两个模型都是离线替身，用于验证装配方式，不代表真实 LLM 的理解或生成质量。接入真实模型时，在适配器中调用 [Provider](./docs/provider-templates.md)，并按需安装 `models` extra、配置凭据及客户端生命周期。
 
-- 不提供 W-Agent 托管平台或云控制面。
-- 首版不内置租户、组织、计费和 SaaS 管理系统。
-- 不把某一种 ReAct、Workflow 或模型协议写死为唯一实现。
-- 不在未经确认的情况下自动安装、升级或执行第三方插件。
+要去掉日志，只需从装配列表移除 `CallLog`，业务方法无需修改。要添加耗时统计等切面，参见 [AOP 开发](./docs/application-aspects.md)。失败调用会记录 `result:error` 并将异常交给调用方；此例不自动重试。
+
+### 继续尝试完整应用
+
+三条完整开发链路见[开发自己的 Harness](./docs/harness-development.md)：
+
+| 示例 | 主要方式 | 演示边界 |
+|---|---|---|
+| [自定义 Harness](./examples/custom_harness.py) | 显式 Python 装配 | 自定义模型参数、工具和存储，无默认 Loop |
+| [客服](./examples/support_harness.py) | 注解扫描、依赖注入、AOP | 本地 FAQ、未知问题转人工、生命周期记录 |
+| [编码](./examples/coding_harness.py) | 配置目录、Bean 工厂、AOP | 预览与摘要批准，只修改内存，不执行代码 |
+
+示例使用确定性离线模型替身，不代表真实 LLM 质量。默认 ReAct、Workflow、Provider、工具和预算仍可按需加入，见[默认装配](./docs/default-assembly.md)。`examples` 不包含在 wheel 中；安装用户需从匹配源码或 sdist 复制示例及伴随 JSON，不能把教程文件当成库运行时依赖。
+
+## 按你的方式装配
+
+以下是职责关系，不是必须经过的固定管线：
+
+```text
+注解 / 显式 Python / 允许目录中的配置
+                 ↓
+        AssemblyPlan（依赖与作用域校验）
+                 ↓
+ ApplicationContext（实例、DI、AOP、生命周期）
+                 ↓
+  你的 Harness 或可选 ReAct / Workflow 装配
+                 ↑
+ ApplicationProject / Host ← Python / CLI / TUI
+```
+
+| 你要做什么 | 从哪里开始 |
+|---|---|
+| 接入特殊模型、参数或响应格式 | [Provider 模板](./docs/provider-templates.md) · [模型路由与探测](./docs/model-routing.md) |
+| 改写 Agent 推理链路 | [Agent 协议与 Loop](./docs/agents.md) |
+| 添加 Python、HTTP、命令或 MCP 工具 | [工具体系](./docs/tools.md) · [MCP 交互](./docs/mcp-interactions.md) |
+| 组合流程、状态和审批 | [Workflow](./docs/workflows.md) |
+| 接入本地知识、文件或向量检索 | [知识检索](./docs/knowledge-context.md) · [导入与同步](./docs/knowledge-sync-entries.md) |
+| 管理用量和上下文 | [Session](./docs/sessions.md) · [共享预算](./docs/shared-budget.md) |
+| 编写插件、分享命名版本的装配 | [插件系统](./docs/plugin-system.md) · [工程分享](./docs/project-sharing.md) |
+
+## CLI 与 TUI
+
+安装 `tui` extra 后：
+
+```bash
+wagent --help
+wagent init
+wagent tui
+```
+
+`w-agent` 是同一 CLI 的别名。TUI 提供大字符标识与颜文字、运行和审批、会话/用量查看等入口。
+
+2.1.0 还提供 `wagent application run --entry module:create_project --input-file call.json --confirm-code` 与 TUI 的 Application 页，共用公开项目执行入口。项目是受信 Python 代码，确认加载不等于工具副作用批准；完整操作见[三条教程](./docs/harness-development.md)。
+
+`wagent init` 只创建本地 `.wagent` 目录和空的 `config.json`，已有配置不覆盖；**不会配置模型或发起请求**。实际运行前按[Runtime 配置示例](./docs/local-runtime.md#配置)填写配置，再明确授权模型调用。TUI 不替代这些授权边界。
+
+## 能力状态与安全
+
+2.1.0 提供 Harness 开发框架核心；可选高级能力仍可能标记为 `Experimental`。见[版本范围](./docs/releases/2.1.0.md)与[路线图](./docs/roadmap.md)。
+
+发布前的 M0–M5 验收记录包含 259 项相关测试、隔离安装与三示例的仓库外 Python/CLI/无显示 TUI 验证，见[验收记录](./docs/harness-acceptance.md)和[发布证据](./docs/acceptance-2026-10-02-release-2.1.0.md)。这些是指定范围的历史验证，不代表全量回归、真实模型质量/计费或全平台验证。
+
+升级前请核对[版本说明](./docs/releases/2.1.0.md)与[迁移指南](./docs/migration-1x.md)，不要假设旧容器或同步 Runtime 自动具有新容器语义。依赖缺失、注入歧义或作用域不合法会在装配校验时报错；初始化与清理的失败行为见 [Harness 核心](./docs/harness-core.md)。
+
+- 普通 Python 工具和插件是受信宿主代码，**不是安全沙箱**；不可信代码需要隔离执行。
+- 工具权限不等于逐调用审批；导入分享码不自动安装、执行代码或授予权限。
+- 模型目录声明不证明连接、鉴权或生成质量；未知用量和价格不表示为零。
+- 恢复只保证文档明确支持的边界，不恢复任意 Python 调用栈，也不自动重放结果未知的副作用。
+- 多 Agent、分布式 Workflow、在线插件市场等保留或计划项，不是当前开箱即用能力；框架不提供多租户托管服务。
+
+## 文档与贡献
+
+从[使用指南](./docs/guide.md)开始，或查阅[文档目录](./docs/README.md)、[架构](./docs/architecture.md)、[公共 API](./docs/api.md)与[1.x 迁移](./docs/migration-1x.md)。
+
+欢迎通过 [Issues](https://github.com/LuckyStar2456/W-Agent-FrameWork/issues) 提交问题与提案。报告问题时请附 Python/W-Agent 版本、最小复现和脱敏日志；新增能力请先说明扩展点、授权边界，并同步中英文文档。贡献约定见[开发者指南](./docs/developer.md)。
 
 ## 许可证
 
-本项目采用 [MIT 许可证](./LICENSE)。
+[MIT](./LICENSE)

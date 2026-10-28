@@ -1,8 +1,16 @@
 # Local testing, model replay, and evaluation
 
+> Applies to 2.0.0. `Experimental` APIs remain experimental; `Planned` / `Reserved` does not mean implemented. See [release verification](./acceptance-2026-10-01-stable-release.en.md).
+
 English | [简体中文](./testing-evaluation.md)
 
-Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, versioned cost metrics, and CLI/TUI evaluation entry points are `Experimental` in `2.0.0a2`. Current main additionally includes versioned customer-support/coding suites, a replaceable suite registry, and declarative case-contract scoring.
+Status: scripted model providers, explicit recording/sequential replay, the sequential evaluation runner, JSON reports, versioned cost metrics, and CLI/TUI evaluation entry points are `Experimental` in `2.0.0a2`. `2.0.0a4` additionally includes versioned customer-support/coding suites, a replaceable suite registry, and declarative case-contract scoring.
+
+## Shared evaluation/probe budgets (a9 Experimental)
+
+`evaluate` and `provider-probe` accept `--budget-entry module:factory --confirm-budget-code`, with configuration selecting `shared_budget.binding`; see [budget factories](./local-runtime.en.md). One factory spans the entire evaluation batch, sharing allowance across cases. Generation fails closed for cases that cannot reserve sufficient allowance. Safe probes only list models; active probes reserve a minimal request capped at 8 output tokens. Model-call consent remains independent.
+
+CLI/TUI show the pool separately, without changing saved evaluation-report schemas or double-counting pool totals. Snapshot failures neither replay models nor alter original results. TUI factory loading requires per-attempt `LOAD BUDGET`, alongside `EVALUATE` / `ACTIVE`. Unwrapped external calls inside factories, tools or scorers are not automatically metered.
 
 ## Deterministic model tests
 
@@ -68,7 +76,7 @@ wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --r
 
 ## Built-in support and coding suites
 
-`EvaluationSuite` is ordinary immutable data; applications may create, extend, or replace `EvaluationSuiteRegistry`. Current main supplies `customer-support@1.0.0` and `coding@1.0.0`. They reference the starter agents' recommended tool names and check missing-identifier handling, evidence lookup, write approval, inspect-first behavior, approval-gated patches, and sandboxed verification. Approval cases explicitly set `accepted_stop_reasons=["needs-approval"]`, making a safe pause an expected result. They are not vendor-model leaderboards and bundle no tool implementation, authority, approval, or test data.
+`EvaluationSuite` is ordinary immutable data; applications may create, extend, or replace `EvaluationSuiteRegistry`. `2.0.0a4` supplies `customer-support@1.0.0` and `coding@1.0.0`. They reference the starter agents' recommended tool names and check missing-identifier handling, evidence lookup, write approval, inspect-first behavior, approval-gated patches, and sandboxed verification. Approval cases explicitly set `accepted_stop_reasons=["needs-approval"]`, making a safe pause an expected result. They are not vendor-model leaderboards and bundle no tool implementation, authority, approval, or test data.
 
 ```text
 wagent benchmark list --json

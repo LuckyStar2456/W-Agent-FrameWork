@@ -1,8 +1,12 @@
 # Tool registration, policy, and execution
 
+> Applies to 2.0.0. `Experimental` APIs remain experimental; `Planned` / `Reserved` does not mean implemented. See [release verification](./acceptance-2026-10-01-stable-release.en.md).
+
 English | [简体中文](./tools.md)
 
-Status: Python, HTTP, shell-free command, sandbox-command templates, MCP binding, MCP 2026-07-28 stdio/Streamable HTTP clients, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented` in Phase 3/5 / `2.0.0a1`. Legacy MCP negotiation, automated MRTR exchange, and subscription streams remain `Planned`.
+Tool-result event recording (2.0.0a7; focused regressions passed): ReAct can explicitly record model-visible result text through an Agent-loop-injected encoder without changing tool implementations. Recording off does not affect execution; encoding failure never replays a tool, and approval tickets are not result bodies. Hosts can redact/omit and separately authorize replay disclosure. See [tool-result bodies](./event-replay.en.md).
+
+Status: Python, HTTP, shell-free command, sandbox-command templates, MCP binding, MCP 2026-07-28 stdio/Streamable HTTP clients, scoped registration, argument validation, permission/approval policy, timeout, cancellation, and audit are `Implemented`. The workspace also implements legacy initialization, explicit handlers, bounded MRTR, and duplex stdio subscriptions. Persistent HTTP subscriptions and legacy HTTP server requests remain pending. See [MCP interactions](mcp-interactions.en.md).
 
 ## Layers
 
@@ -132,6 +136,19 @@ for binding in bindings:
     registry.register_binding(binding, version="1.0.0")
 ```
 
+The `2.0.0a4` release also offers opt-in `McpLegacyClient` for the 2025-03-26, 2025-06-18, and 2025-11-25 `initialize` / `notifications/initialized` lifecycle. It reuses `McpStdioTransport` or pairs with `McpLegacyStreamableHttpTransport`; the latter retains the server-provided `Mcp-Session-Id` and sends the negotiated version header on later requests. Legacy requests do not add 2026 per-request `_meta`. Unsupported negotiated versions or failed initialization make that client instance unusable; missing tool capability rejects tool requests. No protocol fallback, side-effecting tool-call replay, or automatic approval of discovered tools occurs. For example:
+
+```python
+from w_agent import McpLegacyClient, McpLegacyStreamableHttpTransport
+
+client = McpLegacyClient(
+    McpLegacyStreamableHttpTransport("https://mcp.example/mcp")
+)
+bindings = await discover_mcp_bindings(client)
+```
+
+By default no server-request capabilities are advertised. Applications may explicitly supply `McpClientHandlers` with `McpDuplexStdioTransport` for legacy server requests and notifications. Legacy HTTP server requests, the 2024 HTTP+SSE endpoint pair, automatic reconnection, and broad interoperability acceptance remain unsupported. Unified tool permission and per-call approval still apply.
+
 `McpStdioTransport` starts explicit argv through `create_subprocess_exec()` with no shell. Stdin/stdout carry one-line UTF-8 JSON-RPC; the reader skips notifications until the matching response, cancellation sends `notifications/cancelled`, and shutdown closes stdin before bounded termination. Environment inheritance defaults on for local development. Use an absolute executable, `inherit_environment=False`, and a minimal environment—or a sandbox—for untrusted servers.
 
 `McpStreamableHttpTransport` uses a fixed HTTP(S) endpoint, `POST`, JSON/SSE responses, and a replaceable `McpHttpExchange`. The default `HttpxMcpExchange` disables redirects and bounds response bytes. The transport owns `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and valid `x-mcp-header` parameter headers, using UTF-8 Base64 when required. Static configuration cannot override these headers. Credentials may be fixed headers but never enter the request body, tool definition, or audit.
@@ -148,7 +165,7 @@ client = McpClient(
 tools = await client.list_tools()
 ```
 
-The client preserves JSON-RPC error codes and routes remote `isError: true` results through local failure handling. `input_required` raises `McpInputRequiredError` with the structured result so an unfinished MRTR call cannot be reported as success. Legacy `initialize`/`notifications/initialized` negotiation, automated MRTR responses, `subscriptions/listen`, and legacy HTTP+SSE are not implemented. Protocol references: [MCP 2026-07-28 transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) and [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
+The client preserves JSON-RPC error codes and routes remote `isError: true` results through local failure handling. Modern `input_required` replies are fulfilled only through explicit handlers within round/request bounds. Missing handlers or exhausted rounds raise `McpInputRequiredError` with the structured result. Duplex stdio supports `subscriptions/listen`, validates acknowledgment order, filter scope and correlation, and distinguishes graceful completion from disconnect. Protocol references: [MCP 2026-07-28 transports](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) and [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
 
 ## Default safety semantics
 
@@ -162,9 +179,42 @@ The client preserves JSON-RPC error codes and routes remote `isError: true` resu
 
 Applications can replace the complete `ToolPolicy` or audit sink. Custom policies and adapters remain enforced in the real execution path and cannot rely only on hiding tools in prompts.
 
+## Typed tool continuation (a6, focused regressions passed)
+
+These optional protocols support reverse Agent-to-Workflow suspension. The a6 release also has a dedicated `resumable_workflow_tool()` bridge (see [Workflows](./workflows.en.md)); two-layer approval coordination services are now in the a6 release (focused regressions passed), while UI guidance is also present in the a6 release (focused regressions passed):
+
+- `ToolContinuation(kind, payload, version=1)` carries finite JSON reference data, not authority, callbacks, or executable objects. Each adapter validates its kind, version, and ownership.
+- Optional `ToolBinding.resume_handler(arguments, continuation, context)` continues work. An explicit `ToolContinuation` return produces `NEEDS_APPROVAL`, not a model-visible successful serialization of the ticket. Ordinary dictionary outputs remain ordinary tool results.
+- `ToolExecutor.resume()` / replaceable `ResumableToolExecutorProtocol` invokes only the resume handler, never the start handler as a fallback. Every resume revalidates arguments, permissions, and policy and requires host-supplied exact-call approval. Missing permission/approval retains the ticket while waiting.
+- The built-in executor binds `ToolExecutionContext.invocation` to the actual `ToolCall`, overriding a caller-supplied value. `ToolRegistry.register_binding()` retains the original binding, resume handler, and metadata.
+- ReAct persists `RunCheckpoint.tool_continuation` using schema 2. Ordinary checkpoints retain schema 1. Older readers must reject schema 2 rather than ignore the ticket and restart the tool. Upgrade readers first; never manually downgrade or remove a ticket.
+- While suspended, no tool result is appended to the model conversation, no queued sibling call runs, and the tool-call counter is not incremented again. Completion appends one result before returning to the model loop. Default events/checkpoint summaries do not expose tickets.
+
+```python
+from w_agent import ToolBinding, ToolContinuation, ToolDefinition
+
+async def prepare(arguments, context):
+    # Prepare a reference only; put actual side effects in resume after persistence.
+    return ToolContinuation("my-workflow", {"phase": "prepared", "child": "host-owned-id"})
+
+async def resume(arguments, ticket, context):
+    # Validate kind/version, child checkpoint, and ownership before one authorized step.
+    # Return another ToolContinuation to wait again, or a normal result on completion.
+    return await continue_owned_child(ticket, context)
+
+binding = ToolBinding(
+    ToolDefinition("workflow", "Prepare a workflow", {"type": "object"}),
+    prepare, resume_handler=resume,
+)
+```
+
+`continue_owned_child` is application-provided; this is not a bundled Workflow bridge. Start handlers should prepare references only and avoid unreplayable effects before ticket persistence. Tickets cannot protect arbitrary handlers crashing before their first return; no cross-store atomic commit is promised. Failed, timed-out, cancelled, or unsupported continuation leaves ReAct's ticket-bearing checkpoint `RESUMING` and raises a safe error instead of discarding pending work or reporting completion to the model. Direct executor calls provide no durable claim; hosts manage ownership, stale references, and replay protection. Approval authorizes only this layer's call, never internal writes by a child Agent/Workflow implicitly.
+
+Optional `ToolExecutionContext.agent_run_id` is host identity; ReAct overwrites it with the actual Run ID for every call. The Workflow bridge validates it alongside `invocation`, scope, and child references. Custom loops must supply trusted identity themselves. This field is neither authorization nor a sandbox security boundary.
+
 ## Not implemented yet
 
-- Legacy MCP initialization negotiation, automated MRTR input exchange, subscription streams, and legacy HTTP+SSE compatibility.
+- Persistent HTTP subscriptions, legacy HTTP server requests, and legacy HTTP+SSE compatibility. MCP 2025 initialization, explicit MRTR fulfillment, and duplex stdio subscriptions are implemented.
 - Durable sandbox sessions across tool calls and coding-agent workspace writeback review.
 - Durable audit, tool caching, record/replay, and result streaming.
-- TUI approval surfaces and cross-process approval recovery.
+- Agent-to-Workflow arbitrary-depth recursive approval coordination. Ordinary Agent TUI approval is available; the a6 release also has explicit factory-based CLI/TUI recovery for an Agent inside Workflow (focused regressions passed).

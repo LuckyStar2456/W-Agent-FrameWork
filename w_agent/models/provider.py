@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from typing import AsyncIterator, Protocol
 
 from w_agent.kernel import Contribution, Registration, Registry, ScopePath
 
-from .types import ModelDescriptor, ModelRequest, StreamEvent
+from .types import (
+    BlockEnd,
+    BlockStart,
+    ErrorEvent,
+    FinishEvent,
+    ModelDescriptor,
+    ModelRequest,
+    StreamEvent,
+    TextDelta,
+    ToolCallDelta,
+    UsageEvent,
+)
 
 
 MODEL_PROVIDER_CAPABILITY = "model.provider"
@@ -47,6 +59,66 @@ class ModelProvider(Protocol):
         *,
         cancellation: CancellationToken | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CursorStreamItem:
+    """One event with a provider-owned, exact after-event continuation cursor.
+
+    The cursor must identify the same generation and the position immediately
+    after this event. Providers must never assign one cursor to multiple events.
+    """
+
+    event: StreamEvent
+    cursor: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.event,
+            (
+                BlockStart,
+                TextDelta,
+                ToolCallDelta,
+                BlockEnd,
+                UsageEvent,
+                ErrorEvent,
+                FinishEvent,
+            ),
+        ):
+            raise ValueError("cursor stream item needs a model stream event")
+        if (
+            not isinstance(self.cursor, str)
+            or not self.cursor
+            or len(self.cursor) > 4096
+            or any(
+                ord(character) < 0x20 or ord(character) == 0x7F
+                for character in self.cursor
+            )
+        ):
+            raise ValueError("cursor stream item needs a bounded opaque cursor")
+
+
+class CursorResumableModelProvider(ModelProvider, Protocol):
+    """Optional provider extension for exact, same-generation continuation.
+
+    ``resume_stream`` must emit only events strictly after ``cursor``. It must
+    not restart the model request or silently return a new generation.
+    """
+
+    def stream_with_cursor(
+        self,
+        request: ModelRequest,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> AsyncIterator[CursorStreamItem]: ...
+
+    def resume_stream(
+        self,
+        request: ModelRequest,
+        cursor: str,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> AsyncIterator[CursorStreamItem]: ...
 
 
 class ModelRegistry:

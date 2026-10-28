@@ -11,6 +11,38 @@ from .adapters import (
     workflow_start_tool,
 )
 from .engine import LocalWorkflowEngine
+from .tool_continuation import WorkflowToolReference, resumable_workflow_tool
+from .tool_approval import (
+    WorkflowToolApprovalAssemblyContext, WorkflowToolApprovalError,
+    WorkflowToolApprovalFactory, WorkflowToolApprovalReview,
+    open_workflow_tool_approval_entry, resume_workflow_tool_approval,
+    review_workflow_tool_approvals,
+)
+from .approval_resume import (
+    WorkflowApprovalAssemblyContext,
+    WorkflowApprovalFactory,
+    WorkflowApprovalResumeError,
+    open_workflow_approval_entry,
+    resume_workflow_approval,
+)
+from .approval_review import (
+    WorkflowApprovalGrants,
+    WorkflowApprovalLinkStatus,
+    WorkflowApprovalReview,
+    review_workflow_approvals,
+)
+from .approval import (
+    AgentApprovalContextFactory,
+    AgentWorkflowApproval,
+    approval_agent_workflow_node,
+)
+from .control import AnyWorkflowPauseSource, WorkflowPauseController, WorkflowPauseSource
+from .sqlite_control import SQLiteWorkflowPauseController, WorkflowPauseControlError
+from .invocation import (
+    InlineWorkflowNodeInvoker,
+    ThreadedWorkflowNodeInvoker,
+    WorkflowNodeInvoker,
+)
 from .loading import (
     WorkflowEntryLoadError,
     load_workflow_entries,
@@ -47,15 +79,44 @@ from .types import (
 )
 
 __all__ = [
+    "WorkflowToolApprovalAssemblyContext",
+    "WorkflowToolApprovalError",
+    "WorkflowToolApprovalFactory",
+    "WorkflowToolApprovalReview",
+    "open_workflow_tool_approval_entry",
+    "resume_workflow_tool_approval",
+    "review_workflow_tool_approvals",
+    "WorkflowToolReference",
+    "resumable_workflow_tool",
     "AgentMessageFactory",
     "AgentResultMapper",
     "AgentToolContextFactory",
     "AgentWorkflowAdapterError",
+    "AgentApprovalContextFactory",
+    "AgentWorkflowApproval",
+    "WorkflowApprovalGrants",
+    "WorkflowApprovalAssemblyContext",
+    "WorkflowApprovalFactory",
+    "WorkflowApprovalResumeError",
+    "open_workflow_approval_entry",
+    "resume_workflow_approval",
+    "WorkflowApprovalLinkStatus",
+    "WorkflowApprovalReview",
+    "review_workflow_approvals",
+    "approval_agent_workflow_node",
     "WorkflowResultMapper",
     "DagWorkflowDefinition",
     "InMemoryWorkflowStore",
     "JsonlWorkflowStore",
     "LocalWorkflowEngine",
+    "WorkflowPauseController",
+    "WorkflowPauseSource",
+    "AnyWorkflowPauseSource",
+    "SQLiteWorkflowPauseController",
+    "WorkflowPauseControlError",
+    "InlineWorkflowNodeInvoker",
+    "ThreadedWorkflowNodeInvoker",
+    "WorkflowNodeInvoker",
     "PythonWorkflowDefinition",
     "StateGraphDefinition",
     "WorkflowCheckpoint",

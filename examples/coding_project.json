@@ -1,0 +1,4 @@
+{
+  "components": ["models", "workspace", "tool", "harness", "trace"],
+  "values": {"coding": {"language": "python"}}
+}

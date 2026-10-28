@@ -1,8 +1,10 @@
 # HTTP Provider 与厂商模板
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./provider-templates.en.md) | 简体中文
 
-状态：`Implemented`（当前 main，尚未另行发布）。本页描述通用 HTTP 请求映射层、原生协议模板和 OpenAI-compatible 厂商模板。模板是可修改的本地装配起点，不是托管服务，也不是锁定厂商行为的隐藏配置。
+状态：`Implemented`（`2.0.0a4`，已纳入 2.0.0 候选，已随 2.0.0 发布）。本页描述通用 HTTP 请求映射层、原生协议模板和 OpenAI-compatible 厂商模板。模板是可修改的本地装配起点，不是托管服务，也不是锁定厂商行为的隐藏配置。
 
 ## 分层
 
@@ -27,7 +29,7 @@ HttpProviderTransport                         可替换传输
 |---|---|---|---|
 | `openai-responses` | OpenAI Responses 原生协议 | `https://api.openai.com/v1` | `/models`、`/responses`、SSE、文本/图像、函数工具、结构化输出、Reasoning 请求与 Token 用量 |
 | `anthropic` | Anthropic Messages 原生协议 | `https://api.anthropic.com` | 模型目录、SSE、文本/图像、工具、结构化输出 |
-| `gemini` | Gemini `streamGenerateContent` 原生协议 | `https://generativelanguage.googleapis.com` | 模型目录、SSE、文本/图像/音频、工具、结构化输出 |
+| `gemini` | Gemini `streamGenerateContent` 原生协议 | `https://generativelanguage.googleapis.com` | 模型目录、SSE、文本/图像/音频输入、工具、结构化输出；`2.0.0a4`新增图像/音频输出 Part 映射 |
 | `ollama` | Ollama `/api/chat` 原生协议 | `http://127.0.0.1:11434` | `/api/tags`、NDJSON、文本/内联图像、工具、结构化输出 |
 | `qwen-native` | DashScope Generation 原生协议 | `https://dashscope-intl.aliyuncs.com` | SSE、文本、工具、结构化输出；模型必须显式配置 |
 | `deepseek` | OpenAI-compatible Chat Completions | `https://api.deepseek.com` | 厂商默认地址与保守能力模板 |
@@ -91,9 +93,11 @@ class MyMapping:
 
 映射器可以改变路径、Header、请求体、扩展字段和响应事件；传输可以改变认证、代理、连接池、录制回放或完全绕过 HTTPX。Provider 核心不导入任何厂商 SDK。
 
+`2.0.0a4`为 Gemini 原生模板增加 `GeminiOutputPartMapper` 扩展点：`gemini_provider(output_part_mapper=...)` 可替换单个响应 Part 到中立媒体块的映射。默认 `GeminiMediaOutputMapper` 只处理官方 `inlineData`/`fileData` 的 `image/*` 与 `audio/*`，保留文本、函数调用和媒体的顺序；Base64 解码和 URI 长度均有上限，URI 不会被主动访问。不支持的媒体 MIME 会明确失败，而不是悄悄丢弃。不同型号的 `IMAGE_OUTPUT`/`AUDIO_OUTPUT` 能力仍需通过模型 Profile 显式声明；这不是所有 Gemini 型号的在线兼容承诺。Responses 最终图片映射见下文；其余厂商的多模态输出映射仍待实现。
+
 厂商专用附加请求放入命名空间：`anthropic.body`、`gemini.body`、`ollama.body` 或 `qwen.body`。附加字段不能覆盖模板已经生成的核心字段；要改变核心行为，应复制或替换映射器，避免产生表面配置与实际协议不一致的请求。
 
-`openai-responses` 使用 `openai_responses.reasoning` 和 `openai_responses.body`；后者只能补充 `store`、`previous_response_id` 等非核心字段。它把系统文本映射到 `instructions`，把消息、函数调用/结果映射到类型化 `input`，并把文本/函数增量、终态与 `input_tokens`/`output_tokens`/缓存 Token 统一为稳定事件。当前不映射音频输入、内置托管工具或 Reasoning 内容增量；`ModelRequest.stop` 会明确报错而不是被静默忽略。
+`openai-responses` 使用 `openai_responses.reasoning` 和 `openai_responses.body`；后者只能补充 `store`、`previous_response_id` 等非核心字段。它把系统文本映射到 `instructions`，把消息、函数调用/结果映射到类型化 `input`，并把文本/函数增量、终态与 `input_tokens`/`output_tokens`/缓存 Token 统一为稳定事件。`openai_responses.image_generation` 显式启用图片生成工具，完成的 PNG/JPEG/WebP 结果映射为有大小上限、去重的 `ImageContent`。当前不映射音频输入、其他内置托管工具或 Reasoning 内容增量；`ModelRequest.stop` 会明确报错而不是被静默忽略。另有 Python API `OpenAIResponsesResumableProvider` 提供显式后台保存和 SQLite 跨进程游标；普通模板不自动启用，详见[原生续流与媒体输出](responses-continuation.md)。
 
 `vllm` 使用已有 Chat Completions 事件转换，并增加 `vllm.structured_outputs`、`vllm.priority`、`vllm.request_id`、`vllm.session_id` 和 `vllm.body`。`vllm.body` 可放 `top_k`、`min_p` 等非核心服务参数，不能覆盖框架生成的模型、消息、流、工具或结构化输出字段。vLLM 默认会读取模型仓库的 `generation_config.json`；这是服务端行为，框架不会假定采样默认值。模型是否真的支持 Chat 模板、工具、并行调用、视觉或 Reasoning 仍取决于服务启动参数和具体模型，应使用 Profile 收窄能力。
 
@@ -102,7 +106,7 @@ class MyMapping:
 - API Key 只进入请求 Header，不进入模型描述、路由决定或模板目录。
 - Base URL 拒绝用户信息、查询串、片段和无效端口；私有部署地址仍由用户自行信任。
 - 当前测试使用模拟传输，不消耗远程额度；真实凭据和在线兼容性未在仓库测试中验证。
-- OpenAI Responses 与 vLLM 差异适配已实现并可由严格本地配置、CLI/TUI 运行及探测链路装配；模型执行层另有显式文本前缀重放恢复。Reasoning 内容增量、OpenAI 托管工具事件、多模态输出和 Provider 原生游标续传仍为 `Planned`。
+- OpenAI Responses 与 vLLM 差异适配已实现并可由严格本地配置、CLI/TUI 运行及探测链路装配；模型执行层另有显式文本前缀重放恢复。独立 Responses 原生游标 Provider 与最终图片映射已有离线覆盖，游标日志也通过新 Python 进程恢复测试；CLI/TUI 装配与完整 Agent 恢复尚未接入。Gemini 图像/音频已有模拟传输覆盖，所有真实型号在线兼容性仍待验证；Reasoning 增量、其他托管工具和更多厂商媒体/游标适配仍待实现。
 - 厂商协议会变化。模板版本随 W-Agent 发布；应用可固定、复制或注册自己的版本。
 
 协议依据： [OpenAI Responses](https://developers.openai.com/api/reference/typescript/resources/beta/subresources/responses/methods/create)、[vLLM OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/)、[Anthropic Messages](https://platform.claude.com/docs/en/api/overview)、[Gemini API](https://ai.google.dev/api/generate-content)、[Ollama Chat](https://docs.ollama.com/api/chat)、[Qwen DashScope](https://docs.qwencloud.com/api-reference/chat/dashscope)、[DeepSeek API](https://api-docs.deepseek.com/zh-cn/)、[GLM 快速开始](https://zhipu-ef7018ed.mintlify.app/cn/guide/start/quick-start)、[Turbo AI Endpoint](https://docs.turbo-ai.com/features/endpoint/)。

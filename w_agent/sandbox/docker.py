@@ -47,13 +47,17 @@ class DockerSandboxProvider(SandboxProvider):
         runner: OciCliRunner | None = None,
         allow_mutable_images: bool = False,
         name_prefix: str = "wagent",
+        pull_policy: str = "never",
     ) -> None:
         if not executable.strip() or not name_prefix.strip():
             raise ValueError("Docker executable and name prefix must not be empty")
+        if pull_policy not in {"never", "missing", "always"}:
+            raise ValueError("Docker pull policy must be never, missing, or always")
         self.executable = executable
         self.runner = runner or _DockerCliRunner()
         self.allow_mutable_images = allow_mutable_images
         self.name_prefix = name_prefix
+        self.pull_policy = pull_policy
 
     async def available(self) -> bool:
         try:
@@ -72,10 +76,18 @@ class DockerSandboxProvider(SandboxProvider):
         *,
         cancellation: CancellationToken | None = None,
     ) -> SandboxHandle:
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         if not spec.workspace.is_dir():
             raise SandboxError("sandbox workspace must be an existing directory")
+        if any(char in str(spec.workspace) for char in ",\r\n"):
+            raise SandboxError("Docker workspace contains unsupported mount delimiters")
+        if spec.inherit_host_environment:
+            raise SandboxError("Docker requires explicit environment entries")
         if spec.image is None or not spec.image.strip():
             raise SandboxError("Docker sandbox requires an image")
+        if spec.image.startswith("-") or any(char.isspace() for char in spec.image):
+            raise SandboxError("Docker image reference is invalid")
         if not self.allow_mutable_images and not _is_fixed_image(spec.image):
             raise SandboxError(
                 "Docker image needs a non-latest tag or digest; mutable images "
@@ -87,24 +99,39 @@ class DockerSandboxProvider(SandboxProvider):
         name = f"{self.name_prefix}-{secrets.token_hex(8)}"
         arguments = self._run_arguments(name, spec)
         environment_path = None
+        creation_attempted = False
         try:
             if spec.environment:
                 environment_path = _write_environment_file(spec.environment)
                 arguments.extend(("--env-file", str(environment_path)))
             arguments.extend((spec.image, *spec.keepalive_command))
+            creation_attempted = True
             result = await self.runner.run(
                 (self.executable, *arguments),
                 timeout=30,
                 max_output_bytes=65_536,
                 cancellation=cancellation,
             )
+            if result.exit_code != 0:
+                raise SandboxUnavailableError(
+                    f"Docker container creation failed with status {result.exit_code}"
+                )
+        except BaseException:
+            if creation_attempted:
+                # A timed-out CLI may already have created the named container.
+                # Cleanup intentionally does not reuse the cancelled token.
+                try:
+                    await self.runner.run(
+                        (self.executable, "rm", "--force", name),
+                        timeout=10,
+                        max_output_bytes=65_536,
+                    )
+                except Exception:
+                    pass
+            raise
         finally:
             if environment_path is not None:
                 environment_path.unlink(missing_ok=True)
-        if result.exit_code != 0:
-            raise SandboxUnavailableError(
-                f"Docker container creation failed with status {result.exit_code}"
-            )
         return DockerSandboxHandle(self.executable, name, self.runner)
 
     def _run_arguments(self, name: str, spec: SandboxSpec) -> list[str]:
@@ -117,6 +144,8 @@ class DockerSandboxProvider(SandboxProvider):
             "--rm",
             "--name",
             name,
+            "--pull",
+            self.pull_policy,
             "--network",
             spec.network.value,
             "--cpus",
@@ -153,6 +182,7 @@ class DockerSandboxHandle(SandboxHandle):
         self.container_name = container_name
         self.runner = runner
         self._closed = False
+        self._removed = False
         self._lock = asyncio.Lock()
 
     async def execute(
@@ -188,7 +218,7 @@ class DockerSandboxHandle(SandboxHandle):
             await self._close_locked()
 
     async def _close_locked(self) -> None:
-        if self._closed:
+        if self._removed:
             return
         self._closed = True
         try:
@@ -199,6 +229,7 @@ class DockerSandboxHandle(SandboxHandle):
             )
             if result.exit_code != 0:
                 raise SandboxError("Docker remove returned a failure status")
+            self._removed = True
         except Exception as exc:
             raise SandboxError("failed to remove Docker sandbox") from exc
 

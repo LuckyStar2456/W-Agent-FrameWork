@@ -1,12 +1,27 @@
 # W-Agent 架构设计
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./architecture.en.md) | 简体中文
+
+> 版本说明：本页新框架核心纳入 2.1.0。下方“未发布”与候选 2.0.0 元数据属于发布前阶段记录，不代表 2.1.0 包状态。参见[2.1.0 发布说明](./releases/2.1.0.md)；上传状态以 [PyPI](https://pypi.org/project/wagent-framework/2.1.0/) 为准。
 
 ## 1. 定位
 
-W-Agent 是面向本地开发者的开放式 Agent 框架，不是托管平台，也不是固定 Harness。框架提供模块组合所需的稳定协议、生命周期和默认模板，开发者拥有模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面的最终控制权。
+W-Agent 是借鉴 Spring IoC、DI、AOP 与生命周期思想的开放 Harness 开发框架，不是托管平台或固定 Harness。开发者通过注解、显式 Python 或配置定义自己的执行体系，拥有模型、路由、Agent Loop、Workflow、工具、状态、沙箱和界面的最终控制权。
 
-稳定版 1.5.2 已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性底座；最新 Alpha 为 `2.0.0a3`，当前 main 已包含后续未发布改动。本文同时描述已实现能力和 `Planned` 的后续架构，未标记 `Implemented` 的能力不得宣称已经提供。
+当前架构以 [Harness 核心基线](./harness-core.md)为准：M0–M4 已完成阶段验收，IoC/DI/AOP 是新核心而非仅 1.x 兼容层。M5 的[三条教程](./harness-development.md)与[最终验收](./harness-acceptance.md)记录开发者交付；新核心尚未发布。下文的 2.0.0 模块说明保留历史发布边界。
+
+| 新核心 | 责任 | 不负责 |
+|---|---|---|
+| `AssemblyPlan` 与三个编译入口 | 统一依赖、参数、作用域及切面定义 | 不导入配置指定代码、不创建对象 |
+| `ApplicationContext` | 工厂所有权、DI、作用域、AOP、启动回滚与清理 | 不选择固定 Agent 算法 |
+| `ApplicationPlugin` / Registry | 插件生命周期桥接、能力可见性；保留自定义 `scope_order` | 注册表不成为第二个对象容器 |
+| `ApplicationProject` / `ApplicationHost` | 公开操作、运行/流任务及调用作用域 | 不监管未登记后台任务、不提供安全隔离 |
+| `local_application.py` | 可替换的默认 Runtime/Workflow 装配 | 不限制用户模型与 Harness 协议 |
+| CLI / TUI | 显式加载同一项目与 JSON/显示适配 | 不绕过授权、不维持私有装配分支 |
+
+1.5.2 兼容底座已实现 IOC、AOP、配置、生命周期、弹性、安全与可观测性；2.0.0 已发布，制品与验证证据见[正式版记录](./acceptance-2026-10-01-stable-release.md)。本文同时描述已实现、实验性和 `Planned` 的后续架构；具体可用性与验收边界以[路线图](./roadmap.md)为准，不把 `Experimental` 称为稳定能力，也不把计划项称为已经提供。
 
 ## 2. 设计原则
 
@@ -94,7 +109,7 @@ W-Agent 不内置 Tenant。`ScopePath` 允许插件增加自定义作用域维�
 - `serial`：顺序执行，可提前结束。
 - `pipeline`：监听器显式调用下一层，可包裹或中止执行。
 
-当前 `EventDispatcher` 实现进程内扩展事件，事件处理器注册由插件生命周期管理。Phase 3 已增加独立的进程内 RunEvent；持久化事件存储及其与实时事件的分离仍为 `Planned`。
+当前 `EventDispatcher` 实现进程内扩展事件，事件处理器注册由插件生命周期管理。Phase 3 已增加独立的 RunEvent，并通过 `RunStore`/`JsonlRunStore` 在可见前持久化，与实时事件消费分离。`2.0.0a4`新增只读游标分页、可替换 JSON 脱敏投影、声明式顶层/嵌套字段策略、显式工具参数增量和显式图片/音频输出投影；通用新模态仍为 `Planned`。
 
 ## 5. 稳定且可扩展的协议
 
@@ -116,7 +131,7 @@ ModelRequest(
 
 ## 6. 模型、路由与探测
 
-状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/透传调用执行器和显式注册安全探测服务为 `Implemented`；显式文本前缀恢复为 `Experimental`，Provider 原生游标续传为 `Planned`。
+状态：Phase 2A 协议、注册表、路由和探测框架，以及 Phase 2B OpenAI-compatible Provider、通用 HTTP 映射层、OpenAI Responses/vLLM 专用适配、厂商模板、收集式/透传调用执行器和显式注册安全探测服务为 `Implemented`；显式文本前缀恢复为 `Experimental`，Provider 原生游标协议/执行器接线位于`2.0.0a4`，内置厂商游标适配仍为 `Planned`。
 
 模型协议能够表达 OpenAI、Anthropic、Gemini、OpenAI-compatible、Ollama、vLLM 和自定义 Provider 所需能力。当前已提供 OpenAI-compatible Chat Completions Provider、OpenAI Responses 映射、vLLM 专用扩展、可拆换请求映射/流解码/传输的通用 HTTP Provider，以及 Anthropic、Gemini、Ollama、Qwen、DeepSeek、GLM 和 Turbo 模板。多模态、工具调用、结构化输出、Reasoning、Prompt Cache 等通过能力声明暴露，不采用最低共同特性集；模板不会根据模型名称猜测能力。
 
@@ -128,7 +143,7 @@ ModelRequest(
 
 ## 7. Agent Runtime
 
-状态：公开 Run/Loop 协议、有界单 Agent ReAct、进程内/JSONL 事件存储、审批恢复和本地 Session 生命周期为 `Implemented`；通用事件回放为 `Planned`。
+状态：公开 Run/Loop 协议、有界单 Agent ReAct、进程内/JSONL 事件存储、审批恢复和本地 Session 生命周期为 `Implemented`；只读游标分页、可替换 JSON 脱敏投影、声明式顶层/嵌套字段策略和显式多模态输出投影在`2.0.0a4`。
 
 Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和结果，不规定唯一推理策略。首版提供一个可用 ReAct 模板，用户可以：
 
@@ -138,23 +153,31 @@ Agent Runtime 定义 Run 生命周期、上下文、事件、取消、预算和�
 - 动态选择下一步。
 - 从 Agent 调用 Workflow。
 
-当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用、Run 级 Token 预算和基于应用版本化价格表的费用预算，并在工具需要审批时安全停止。可替换 `TokenEstimator` 位于中立请求与网络调用之间，提供调用前估算、输出额度收紧和软阈值事件；内核不绑定厂商 tokenizer，估算失败是否停止由 `TokenBudget.require_estimate` 明确决定。显式启用时，可替换 `CostEstimator` 再消费无 Prompt 的路由、重放上限与 Token 估算；默认 `PricingCostEstimator` 产生首选尝试和完整重试/故障转移费用包络，在模型生成请求前提供警告或硬停止。两类估算都不替代调用后的 Provider 实报核算。`emit_text_deltas` 显式启用时，Loop 使用公开安全模型流，把文本增量投影为先持久化后可见的 `MODEL_TEXT_DELTA`，默认收集模式不变。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token、费用、预算估算策略与尝试账本也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。完整多模态/工具事件投影和通用跨进程恢复仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+当前 `ReactAgentLoop` 通过公开 `ModelExecutor`、`ToolRegistry` 和 `ToolExecutorProtocol` 完成模型→工具→结果→模型闭环，实施步骤、工具调用、Run 级 Token 预算和基于应用版本化价格表的费用预算，并在工具需要审批时安全停止。可替换 `TokenEstimator` 位于中立请求与网络调用之间，提供调用前估算、输出额度收紧和软阈值事件；内核不绑定厂商 tokenizer，估算失败是否停止由 `TokenBudget.require_estimate` 明确决定。显式启用时，可替换 `CostEstimator` 再消费无 Prompt 的路由、重放上限与 Token 估算；默认 `PricingCostEstimator` 产生首选尝试和完整重试/故障转移费用包络，在模型生成请求前提供警告或硬停止。两类估算都不替代调用后的 Provider 实报核算。`emit_text_deltas` 显式启用时，Loop 使用公开安全模型流，把文本增量投影为先持久化后可见的 `MODEL_TEXT_DELTA`，默认收集模式不变；`emit_output_blocks` 独立控制已完成媒体块的持久化。`RunStore` 在事件可见前追加记录；`JsonlRunStore` 支持重启后从审批边界恢复且不重复之前的模型请求，累计 Token、费用、预算估算策略与尝试账本也随 Checkpoint 保存。副作用执行前原子 claim，状态不确定时拒绝自动重放。通用跨进程模型续流仍为后续工作。详见[Agent Runtime 与 ReAct Loop](./agents.md)。
+
+`2.0.0a4`另把工具参数增量作为独立显式开关投影为原始 `MODEL_TOOL_CALL_DELTA`；默认界面只展示安全元数据，不展示工具名或参数。图片/音频输出通过独立显式开关、可替换编码器和三档披露投影进入 `MODEL_OUTPUT_BLOCK`。嵌套结构可通过声明式路径规则复制、重命名或固定掩码；任意业务转换继续使用自定义投影器。
+
+`2.0.0a4`同时把回放投影抽象为 `RunEventProjector`。原始游标页和投影页分离；安全默认投影在回放层移除内容并验证 JSON 兼容性，CLI/TUI 不再先接收原始页。应用可以替换投影器，但仍负责原始 Store 的读取授权和业务字段公开策略。
+
+声明式 `FieldPolicyRunEventProjector` 在此协议之上提供默认拒绝的事件类型/顶层字段允许与固定掩码；`NestedFieldRunEventProjector` 进一步提供对象/数组源路径到对象目标路径的复制、重命名和固定掩码。两者都不进入 Kernel 注册表，也不替代应用授权；任意计算保留给自定义实现。
+
+`ModelOutputEventEncoder` 是 Agent Runtime 与持久化格式之间的可替换边界。默认实现只编码中立图片/音频块并限制内联大小；`MultimodalRunEventProjector` 再把元数据、引用和正文披露分离。外部 Blob Store、新模态和业务授权无需修改 Loop 核心。
 
 `SessionManager` 在 Loop 外通过公开协议管理创建、列表、归档、跨 Run 文本投影和审批恢复，并提供内存/JSON Store。`agent_usage()` 按 Agent 名称从不可变 Run 摘要生成不含 Prompt/输出的跨 Session 用量、费用和完整性视图；归档纳入由调用者显式选择。它不读取 Loop 私有状态，也不把工具或多模态事件伪装成已回放内容。
 
 ## 8. Workflow
 
-状态：顺序本地执行、三种前端、节点事件、节点边界恢复和 Agent 双向适配为 `Implemented`；并行 DAG 与嵌套调度为 `Planned` 或 `Reserved`。
+状态：顺序本地执行、三种前端、节点事件、节点边界恢复和 Agent 双向适配为 `Implemented`；显式有界异步 DAG 并行位于`2.0.0a4`，嵌套调度为 `Reserved`。
 
 Agent Loop 与 Workflow 使用相似但独立的 Context、事件、取消和结果协议，避免把推理循环强行合并进编排器。`WorkflowRegistry` 通过共享微内核注册表按版本和 Scope 管理定义；`LocalWorkflowEngine` 接受静态 DAG、有状态图和 Python 处理器三种 `WorkflowDefinition`，通过同一个 `WorkflowEngineProtocol` 运行。`WorkflowStore` 可整体替换；内置 `InMemoryWorkflowStore` 与 `JsonlWorkflowStore`。
 
 `agent_workflow_node()` 把固定 Agent 定义适配为节点；`workflow_start_tool()` 与 `workflow_resume_tool()` 把固定 Workflow 定义适配为标准工具，并复用权限、逐调用审批、取消和审计管线。两边都只依赖公开协议，不形成内核特权。Agent 审批断点与 Workflow 暂停不会自动级联恢复，调用者必须显式接管非完成状态。
 
-Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`，节点完成后才写回 `READY` 或 `PAUSED`；进程若在节点执行中断，恢复会失败关闭，避免静默重复外部副作用。Python 入口在恢复时重新调用处理器，并携带持久化状态与 `resume_count`，不恢复任意 Python 指令位置或调用栈。当前 DAG 确定性顺序执行；并行 DAG、嵌套 Workflow、多 Agent 编排和分布式调度尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
+Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`，节点完成后才写回 `READY` 或 `PAUSED`；进程若在节点执行中断，恢复会失败关闭，避免静默重复外部副作用。Python 入口在恢复时重新调用处理器，并携带持久化状态与 `resume_count`，不恢复任意 Python 指令位置或调用栈。`2.0.0a4`为 DAG 增加默认关闭的有界异步前沿并行；整批使用同一已提交快照，失败/冲突不自动重放。嵌套 Workflow、多 Agent 编排和分布式调度尚未实现。详见[Workflow 与节点恢复](./workflows.md)。
 
 ## 9. Tools
 
-状态：Python、HTTP、无 Shell 命令、Sandbox 命令工具模板、MCP 绑定和 MCP 2026-07-28 stdio/Streamable HTTP 客户端，以及统一注册、策略与执行基础为 `Implemented`；MCP 旧版协商、MRTR 自动交换与订阅流为 `Planned`。
+状态：Python、HTTP、无 Shell 命令、Sandbox 命令工具模板、MCP 绑定和 MCP 2026-07-28 stdio/Streamable HTTP 客户端，以及统一注册、策略与执行基础为 `Implemented`；MCP 2025 初始化协商处于`2.0.0a4`，旧版服务器主动请求、MRTR 自动交换与订阅流为 `Planned`。
 
 工具定义、执行、权限和结果彼此分离：
 
@@ -162,7 +185,7 @@ Checkpoint 只保证节点边界恢复。执行节点前先 claim 为 `RESUMING`
 ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 ```
 
-当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令、Sandbox 命令模板、任意 MCP Client 绑定，以及首方 MCP stdio/Streamable HTTP JSON/SSE 客户端。`McpClient` 为每个请求写入当前稳定协议元数据，支持有界分页发现和工具调用；`discover_mcp_bindings()` 只返回 Binding，不自动注册或授予权限。HTTP 实现固定端点、不跟随重定向、限制响应大小，并安全生成标准头与 `x-mcp-header`；stdio 实现无 Shell argv、换行 JSON-RPC、取消通知和有界关闭。工具调用仍通过统一权限、逐调用审批、超时、取消和 Prompt-free 审计路径。旧版初始化协商、MRTR 自动输入交换和订阅流尚未实现。
+当前已提供 Python 函数、固定端点 HTTP、无 Shell 本地命令、Sandbox 命令模板、任意 MCP Client 绑定，以及首方 MCP stdio/Streamable HTTP JSON/SSE 客户端。`McpClient` 为每个请求写入当前稳定协议元数据，支持有界分页发现和工具调用；`discover_mcp_bindings()` 只返回 Binding，不自动注册或授予权限。HTTP 实现固定端点、不跟随重定向、限制响应大小，并安全生成标准头与 `x-mcp-header`；stdio 实现无 Shell argv、换行 JSON-RPC、取消通知和有界关闭。`2.0.0a4`额外提供显式选择的 `McpLegacyClient` 与旧版 HTTP Session 传输。工具调用仍通过统一权限、逐调用审批、超时、取消和 Prompt-free 审计路径。旧版服务器主动请求、MRTR 自动输入交换和订阅流尚未实现。
 
 详细设计见[工具注册、策略与执行](./tools.md)。
 
@@ -180,11 +203,11 @@ ToolDefinition → Policy Pipeline → ToolExecutor → ToolResult
 
 开发者可以将插件、版本约束、配置、路由、Workflow 引用和沙箱策略组成命名、版本化的 `CompositionManifest`，导出为带模式版本和校验值的可复制编码。
 
-当前已实现规范 Manifest、确定性编码/解码、大小与完整性校验、安全预览，以及冲突安全的本地版本/别名库。编码不包含密钥、绝对本地路径或任意源码，也不能授予本地执行权。预览不访问网络、不导入插件；确认后的依赖安装和加载仍为后续工作。详细设计见[工程装配分享](./project-sharing.md)。
+当前已实现规范 Manifest、确定性编码/解码、大小与完整性校验、安全预览，以及冲突安全的本地版本/别名库。编码不包含密钥、绝对本地路径或任意源码，也不能授予本地执行权。预览、依赖计划和安装计划不访问网络、不导入插件。`2.0.0a4`的独立安装层读取宿主提供的精确 wheel/SHA-256 闭包与来源映射，形成绑定 Composition、Index、入口、版本和哈希的请求摘要；只有显式授权后才通过可替换 `PackageInstaller` 在选定 Sandbox 中执行。安装树复验后仍需第二次插件代码加载授权，才进入普通 `PluginManager`。在线来源发现、自动锁定/更新和热迁移不属于当前实现。详细设计见[工程装配分享](./project-sharing.md)。
 
 ## 12. CLI、TUI 与评测
 
-CLI 和 Textual TUI 都通过公开 Python API 使用框架，不形成私有控制面。首版覆盖初始化、配置校验、插件检查、模型探测、Profile 解析、运行、Checkpoint 恢复、沙箱授权和事件查看。
+CLI 和 Textual TUI 都通过公开 Python API 使用框架，不形成私有控制面。首版覆盖初始化、配置校验、插件检查、模型探测、Profile 解析、运行、Checkpoint 恢复、沙箱授权和事件查看；`2.0.0a4`还公开同一套锁定安装计划、精确安装确认和独立插件加载确认，不把界面确认下沉成内核特权。
 
 当前 `Experimental` 本地评测层提供无网络脚本化模型、显式授权的 JSONL 模型录制/顺序回放、可替换 Scorer，以及 Token/版本化费用完整性、延迟、错误和工具成功率统计。录制层是可替换 Model Provider 装饰器，评测目标只依赖公开 `RunResult`，因此都不是内核特权。CLI/TUI 已能从严格 JSON 或进程内 `builtin:` 套件运行配置化 Agent，并使用一次性状态和隐私安全报告默认值。版本化客服/编码套件通过可替换注册表提供，只声明用例与工具契约，不携带工具、权限或在线服务；在线评测平台不属于项目目标。详见[本地测试、模型回放与评测](./testing-evaluation.md)。
 

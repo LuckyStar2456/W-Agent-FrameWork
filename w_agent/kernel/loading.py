@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.metadata
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import yaml
 
 from .exceptions import PluginLoadError
-from .plugins import Plugin, PluginHandle, PluginManager, coerce_plugin
+from .plugins import Plugin, PluginHandle, PluginManager, _drain_cleanup, coerce_plugin
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,12 +107,15 @@ def preview_plugin_references(
 async def load_plugin_references(
     manager: PluginManager,
     references: Iterable[PluginReference],
+    *,
+    pre_load_validator: Callable[[PluginReference, Plugin], None] | None = None,
 ) -> tuple[PluginHandle, ...]:
     """Import and transactionally load one explicitly authorized batch.
 
     Importing and loading executes developer-owned Python code. Callers must
     present a confirmation boundary before invoking this function. If any entry
     fails, plugins loaded earlier by this batch are unloaded in reverse order.
+    A validator may inspect the imported plugin before its setup executes.
     """
 
     values = tuple(references)
@@ -122,14 +126,24 @@ async def load_plugin_references(
             continue
         try:
             plugin = import_plugin(reference)
+            if pre_load_validator is not None:
+                pre_load_validator(reference, plugin)
             handles.append(await manager.load(plugin, config=reference.config))
-        except Exception as exc:
-            cleanup_failures: list[Exception] = []
-            for handle in reversed(handles):
-                try:
-                    await handle.unload()
-                except Exception as cleanup_error:
-                    cleanup_failures.append(cleanup_error)
+        except BaseException as exc:
+            async def rollback() -> list[BaseException]:
+                failures: list[BaseException] = []
+                for handle in reversed(handles):
+                    try:
+                        await handle.unload()
+                    except (Exception, asyncio.CancelledError) as error:
+                        failures.append(error)
+                return failures
+
+            cleanup_failures = await _drain_cleanup(rollback())
+            if not isinstance(exc, Exception):
+                if cleanup_failures:
+                    exc.add_note(f"{len(cleanup_failures)} plugin rollback operation(s) failed")
+                raise
             error = PluginLoadError(
                 f"plugin batch failed at reference {reference.entry!r}"
             )

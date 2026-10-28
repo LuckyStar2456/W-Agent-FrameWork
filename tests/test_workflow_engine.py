@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from w_agent import (
@@ -61,6 +63,165 @@ async def test_dag_runs_ready_nodes_in_definition_order_and_merges_state():
     assert [event.sequence for event in result.events] == list(
         range(1, len(result.events) + 1)
     )
+
+
+@pytest.mark.asyncio
+async def test_opt_in_parallel_dag_runs_ready_frontier_and_joins_deterministically():
+    started: set[str] = set()
+    both_started = asyncio.Event()
+
+    async def independent(context):
+        started.add(context.node)
+        if len(started) == 2:
+            both_started.set()
+        await both_started.wait()
+        assert context.state == {"seed": 1}
+        assert context.outputs == {}
+        return WorkflowNodeResult(
+            output=context.node,
+            state_updates={context.node: True},
+        )
+
+    def join(context):
+        assert context.state == {"seed": 1, "left": True, "right": True}
+        return "+".join((context.outputs["left"], context.outputs["right"]))
+
+    definition = DagWorkflowDefinition(
+        "parallel-join",
+        (
+            WorkflowNode("left", independent),
+            WorkflowNode("right", independent),
+            WorkflowNode("join", join),
+        ),
+        {"join": ("left", "right")},
+    )
+    result = await asyncio.wait_for(
+        LocalWorkflowEngine(max_parallel_nodes=2).start(
+            definition,
+            WorkflowContext("parallel-join-1", state={"seed": 1}),
+        ),
+        timeout=2,
+    )
+
+    assert result.stop_reason == WorkflowStopReason.COMPLETED
+    assert result.output == "left+right"
+    assert result.completed_nodes == ("left", "right", "join")
+    started_nodes = [
+        event.data["node"]
+        for event in result.events
+        if event.type == WorkflowEventType.NODE_STARTED
+    ]
+    assert started_nodes == ["left", "right", "join"]
+
+
+@pytest.mark.asyncio
+async def test_parallel_dag_conflicting_updates_keep_uncertain_checkpoint(tmp_path):
+    calls = []
+
+    def left(context):
+        calls.append("left")
+        return WorkflowNodeResult(state_updates={"shared": "left"})
+
+    def right(context):
+        calls.append("right")
+        return WorkflowNodeResult(state_updates={"shared": "right"})
+
+    definition = DagWorkflowDefinition(
+        "parallel-conflict",
+        (WorkflowNode("left", left), WorkflowNode("right", right)),
+    )
+    store = JsonlWorkflowStore(tmp_path)
+    result = await LocalWorkflowEngine(store, max_parallel_nodes=2).start(
+        definition,
+        WorkflowContext("parallel-conflict-1"),
+    )
+
+    assert result.stop_reason == WorkflowStopReason.FAILED
+    assert result.failure == "parallel-state-conflict"
+    assert set(calls) == {"left", "right"}
+    checkpoint = await store.load_checkpoint("parallel-conflict-1")
+    assert checkpoint is not None
+    assert checkpoint.status == WorkflowCheckpointStatus.RESUMING
+    assert checkpoint.completed_nodes == ()
+    with pytest.raises(WorkflowResumeConflictError):
+        await LocalWorkflowEngine(store, max_parallel_nodes=2).resume(
+            definition, "parallel-conflict-1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_parallel_dag_cancellation_does_not_replay_started_batch():
+    entered = asyncio.Event()
+    token = CancellationToken()
+    store = InMemoryWorkflowStore()
+
+    async def wait_for_cancel(context):
+        entered.set()
+        await asyncio.Future()
+
+    definition = DagWorkflowDefinition(
+        "parallel-cancel",
+        (
+            WorkflowNode("left", wait_for_cancel),
+            WorkflowNode("right", wait_for_cancel),
+        ),
+    )
+    task = asyncio.create_task(
+        LocalWorkflowEngine(store, max_parallel_nodes=2).start(
+            definition,
+            WorkflowContext("parallel-cancel-1", cancellation=token),
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    token.cancel()
+    result = await asyncio.wait_for(task, timeout=2)
+
+    assert result.stop_reason == WorkflowStopReason.CANCELLED
+    checkpoint = await store.load_checkpoint("parallel-cancel-1")
+    assert checkpoint is not None
+    assert checkpoint.status == WorkflowCheckpointStatus.RESUMING
+    with pytest.raises(WorkflowResumeConflictError):
+        await LocalWorkflowEngine(store, max_parallel_nodes=2).resume(
+            definition, "parallel-cancel-1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_parallel_dag_pause_commits_whole_frontier_before_resume():
+    calls = []
+
+    async def pause(context):
+        calls.append("pause")
+        return WorkflowNodeResult(output="paused", pause=True)
+
+    async def sibling(context):
+        calls.append("sibling")
+        return "ready"
+
+    def join(context):
+        calls.append("join")
+        return context.outputs["pause"] + "+" + context.outputs["sibling"]
+
+    definition = DagWorkflowDefinition(
+        "parallel-pause",
+        (
+            WorkflowNode("pause", pause),
+            WorkflowNode("sibling", sibling),
+            WorkflowNode("join", join),
+        ),
+        {"join": ("pause", "sibling")},
+    )
+    store = InMemoryWorkflowStore()
+    engine = LocalWorkflowEngine(store, max_parallel_nodes=2)
+    paused = await engine.start(definition, WorkflowContext("parallel-pause-1"))
+
+    assert paused.stop_reason == WorkflowStopReason.PAUSED
+    assert paused.completed_nodes == ("pause", "sibling")
+    assert calls == ["pause", "sibling"]
+    resumed = await engine.resume(definition, "parallel-pause-1")
+    assert resumed.stop_reason == WorkflowStopReason.COMPLETED
+    assert resumed.output == "paused+ready"
+    assert calls == ["pause", "sibling", "join"]
 
 
 def test_dag_rejects_cycles_and_unknown_dependencies():

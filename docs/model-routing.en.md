@@ -1,8 +1,10 @@
 # Models, routing, and endpoint probing
 
+> Applies to 2.0.0. `Experimental` APIs remain experimental; `Planned` / `Reserved` does not mean implemented. See [release verification](./acceptance-2026-10-01-stable-release.en.md).
+
 English | [简体中文](./model-routing.md)
 
-Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, verified-prefix text-stream recovery, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` on current main; provider-native cursor continuation remains `Planned`.
+Status: the Phase 2A foundation plus the Phase 2B generic HTTP mapping layer, OpenAI-compatible provider, dedicated OpenAI Responses/vLLM handling, vendor templates, collecting/event-pass-through executors, verified-prefix text-stream recovery, explicit register-and-safe-probe service, and CLI/TUI probe entry points are `Implemented`/`Experimental` on `2.0.0a4`. A standalone Responses provider now implements the native cursor contract with SQLite event recovery across processes; ordinary templates and full Agent session recovery are not wired. See [Responses continuation](responses-continuation.en.md).
 
 ## Implemented boundary
 
@@ -172,6 +174,17 @@ Collecting mode validates the complete provider stream through `collect_stream()
 
 To recover an already visible text-only stream, the caller must both configure a positive `InvocationPolicy.max_stream_replays` and pass `VerifiedTextPrefixRecovery()` (or another `StreamRecoveryStrategy`) to `stream()`. The built-in strategy accepts one text block only and rejects tools, multiple blocks, and failure after usage. It starts another request on the same provider/model, semantically verifies the visible text prefix, and exposes only the unseen suffix. Divergent or incomplete replay is a non-retryable protocol error. Every replay is represented in `AttemptRecord`, can incur another charge, never changes route, and is not provider-native cursor continuation or cross-process recovery. The default remains `max_stream_replays=0`.
 
+The `2.0.0a4` release also provides `CursorResumableModelProvider`, `CursorStreamItem`, and `NativeCursorRecovery(max_resumes=N)`. A developer must implement `stream_with_cursor()` with a unique exact after-event cursor and `resume_stream()` that emits only later events from the same generation, then explicitly pass `NativeCursorRecovery` to the executor. One stream validator spans the original connection and continuations, including text, tool, or multimodal events. The executor rejects reused cursors and records the initial call and every continuation separately. Cursors stay in process and are not placed into public events, attempt audits, or composition codes; `replay_safe=False` disables continuation.
+
+```python
+execution = executor.stream(
+    request,
+    stream_recovery=NativeCursorRecovery(max_resumes=2),
+)
+```
+
+This path does not replay the full request or guess at text-prefix deduplication. The provider owns generation identity and exact positioning; the core detects cursor reuse but cannot prove semantic uniqueness. Ordinary templates do not enable continuation automatically. Explicitly assembled `OpenAIResponsesResumableProvider` requires background retention and restores the original response from SQLite frames and within-frame offsets. A host may persist Provider API cursors for a new process; the executor does not persist its cursor or Agent state. Failed-attempt usage remains unknown unless reported. The ReAct loop accepts `stream_recovery` only with text/tool delta streaming, and pre-call estimates include conservative extra-connection bounds. The shared-budget wrapper still rejects native recovery. Everything remains opt-in; see [boundaries and examples](responses-continuation.en.md).
+
 Callers may set `replay_safe=False` to force one attempt on the selected route even when the assembled policy permits retries. `AttemptRecord` contains provider/model identity, indexes, duration, emitted-event count, normalized failure, next delay, and TokenUsage/`usage_reported` when explicitly supplied by the provider—never messages, prompts, bodies, or credentials. Missing usage for a failed attempt remains unknown rather than being inferred as zero. Ordinary model execution does not mutate `CandidateState`; health feedback must be attached through an explicit observation or registration-probe service.
 
 ## Endpoint probing
@@ -179,18 +192,24 @@ Callers may set `replay_safe=False` to force one attempt on the selected route e
 | Level | Current behavior | May incur model cost |
 |---|---|---|
 | L1 | `EndpointProbe` checks URL, DNS, TCP, TLS, and HTTP | No |
-| L2 | Checks whether a provider accepts the catalog request and normalizes access failures | No |
+| L2 | Normalizes access failures; catalog success leaves authentication/generation access `SKIPPED` | No |
 | L3 | Reads the model catalog and declared capabilities | No |
 | L4 | Minimal text generation | Yes; requires `allow_active=True` |
 | L5 | Validates complete stream termination | Yes; requires `allow_active=True` |
 | L6 | Reports tool/structured declarations as `SKIPPED` | Not executed today |
 | L7 | Reports multimodal declarations as `SKIPPED` | Not executed today |
 
-`EndpointProbe` sends no credentials or request body. Its result target strips URL user information, query data, and fragments. HTTP 4xx/5xx still proves reachability; provider probes handle authentication semantics.
+`EndpointProbe` sends no credentials or request body. Its result target strips URL user information, query data, and fragments. HTTP 4xx/5xx proves reachability, not authentication or generation access.
+
+Providers may expose a read-only `catalog_probe_scope` property (`remote` / `local` / `unknown`) without changing the required `ModelProvider` protocol. `remote` promises that this `list_models()` uses a transport request, not cached data; successful completion produces L1 `catalog-connectivity=PASS`. Custom cached providers must return `local` or `unknown`. Missing, failing or unrecognized declarations remain unknown. Built-in HTTP/OpenAI-compatible adapters declare their catalog behavior and budget/usage wrappers forward it. Qwen native configured catalogs, default Turbo profiles and compatible templates with discovery disabled do not imply connectivity. Transports are replaceable: a mock transport only establishes the mock call, not live-service acceptance.
+
+L3 `PASS` means only that a catalog was read. Even a remote catalog success leaves L2 `SKIPPED`: public catalogs may not validate credentials and do not establish generation permission. Only passing L1/L2/L4/L5 observations qualify for `HEALTHY`; catalog/capability declarations alone yield `UNKNOWN`. `ProbeResult.successful=True` means no performed check failed, not that every check ran or the remote service works. Existing providers need no new property, but catalog-only safe probing conservatively becomes `UNKNOWN` without provenance. No extra requests or billable generation are issued by default to resolve unknown status.
 
 `ProbeResult` contains the mode, individual statuses, timestamps, latency, failure category, probe version, expiry, and discovered provider/model routes. `ProbeCache` never returns expired results. `PeriodicProbeService` can run any probe callback periodically, but it only emits results and never edits user configuration.
 
 The manual Python API and generic periodic scheduler are implemented. Compositions that need register-and-safe-probe use `ModelRegistrationProbeService.register()`: it always runs `ProbeMode.SAFE`, never calls generation, caches the result, and uses `ProbeHealthBridge` to update only routes found by that probe; expired observations map to `UNKNOWN`. Cancellation or an unexpected exception rolls back the new registration. Direct `ModelRegistry.register()` remains pure and performs no I/O. `wagent probe` and the TUI expose credential-free L1 checks. `wagent provider-probe` and the TUI Models screen assemble a provider from strict configuration for safe catalog checks or per-run-authorized L4/L5 active checks. Vendor-specific active L6/L7 verifiers remain `Planned`.
+
+Built-in adapters reset evidence to `unknown` on each `list_models()` entry and record `local` / `remote` only after successful completion, using the actual executed path. Reading the property does not call the request mapping again. Per-instance task context isolates concurrent local reads from remote calls; budget/usage wrappers delegate in the same task. Custom cross-task or caching wrappers must preserve this evidence contract or return `unknown`, never forward stale `remote` evidence from another call.
 
 ## Errors and safety boundary
 
@@ -200,6 +219,6 @@ An active probe requires the caller to pass `allow_active=True`. That authorizat
 
 ## Remaining Phase 2B plan
 
-- Reasoning-content deltas, OpenAI hosted-tool events, and more vendor-specific features in existing templates.
-- Provider-native cursor continuation, cross-process recovery, and pluggable feedback bridges to rate limiters.
+- Reasoning deltas, hosted OpenAI tools beyond image generation, and more vendor features.
+- Live Responses acceptance, CLI/TUI assembly, full Agent recovery across processes, other vendor cursor adapters, and pluggable rate-limiter feedback.
 - Pluggable L6/L7 active verifiers; every potentially billable verification continues to require explicit authorization.

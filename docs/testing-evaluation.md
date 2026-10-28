@@ -1,8 +1,16 @@
 # 本地测试、模型回放与评测
 
+> 适用版本：2.0.0。`Experimental` 仍为实验性接口；`Planned` / `Reserved` 不表示已实现。验证范围见[正式版记录](./acceptance-2026-10-01-stable-release.md)。
+
 [English](./testing-evaluation.en.md) | 简体中文
 
-状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告、版本化费用指标和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a2`）；当前 main 另含版本化客服/编码内置基准集、可替换套件注册表与声明式用例契约评分。
+状态：脚本化 Model Provider、显式录制/顺序回放、顺序评测运行器、JSON 报告、版本化费用指标和 CLI/TUI 评测入口为 `Experimental`（`2.0.0a2`）；`2.0.0a4` 另含版本化客服/编码内置基准集、可替换套件注册表与声明式用例契约评分。
+
+## 共享评测/探测预算（a9 Experimental）
+
+`evaluate` 与 `provider-probe` 支持 `--budget-entry module:factory --confirm-budget-code`；配置选择 `shared_budget.binding`，详见[预算工厂](./local-runtime.md)。评测整批用例只打开一次工厂并共用预算池，额度不足时当前及后续无法入场的生成失败关闭。安全探测只列目录，主动探测对 8 输出 Token 上限的最小请求进行预留。模型调用授权仍独立。
+
+CLI/TUI 独立展示池快照，不修改保存的评测报告格式或把池用量重复加入评测统计；快照失败不重跑模型、不修改原结果。TUI 工厂加载逐次要求 `LOAD BUDGET`，评测和主动探测另需 `EVALUATE` / `ACTIVE`。工厂、工具、评分器的未包装外部调用不自动计量。
 
 ## 确定性模型测试
 
@@ -68,7 +76,7 @@ wagent evaluate cases.json --config .wagent/config.json --confirm-model-call --r
 
 ## 内置客服/编码套件
 
-`EvaluationSuite` 是普通不可变数据；`EvaluationSuiteRegistry` 可由应用新建、注册或完全替换。当前 main 提供 `customer-support@1.0.0` 与 `coding@1.0.0`，分别引用首批 Agent 模板推荐的工具名，验证缺失标识符处理、知识证据、写入审批，以及 inspect-first、受审批补丁和沙箱验证。审批用例通过显式 `accepted_stop_reasons=["needs-approval"]` 把安全暂停视为预期结果。它们不是厂商模型排行榜，也不内置工具实现、权限、审批或测试数据。
+`EvaluationSuite` 是普通不可变数据；`EvaluationSuiteRegistry` 可由应用新建、注册或完全替换。`2.0.0a4` 提供 `customer-support@1.0.0` 与 `coding@1.0.0`，分别引用首批 Agent 模板推荐的工具名，验证缺失标识符处理、知识证据、写入审批，以及 inspect-first、受审批补丁和沙箱验证。审批用例通过显式 `accepted_stop_reasons=["needs-approval"]` 把安全暂停视为预期结果。它们不是厂商模型排行榜，也不内置工具实现、权限、审批或测试数据。
 
 ```text
 wagent benchmark list --json

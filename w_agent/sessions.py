@@ -37,6 +37,10 @@ from w_agent.models import (
     PricingError,
 )
 from w_agent.tools import ToolExecutionContext
+from w_agent.session_inputs import (
+    SessionInputRecorder, SessionInputRecordingError, StandardSessionInputRecorder,
+    freeze_session_input, session_input_to_dict,
+)
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
@@ -56,9 +60,12 @@ class SessionMessage:
     text: str
     run_id: str
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    recorded_input: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _validate_id(self.run_id, "run")
+        if self.recorded_input is not None:
+            object.__setattr__(self, "recorded_input", freeze_session_input(self.recorded_input))
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,9 +118,11 @@ class SessionRecord:
         _validate_id(self.session_id, "session")
         if not self.title.strip():
             raise ValueError("session title must not be empty")
-        if self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version not in {1, 2}:
             raise ValueError("unsupported session schema version")
         object.__setattr__(self, "messages", tuple(self.messages))
+        if self.schema_version == 1 and any(message.recorded_input is not None for message in self.messages):
+            raise ValueError("recorded Session inputs require schema version 2")
         object.__setattr__(self, "runs", tuple(self.runs))
         _validate_json(self.metadata, "session metadata")
         object.__setattr__(self, "metadata", _freeze_json(self.metadata))
@@ -172,6 +181,42 @@ class SessionStore(Protocol):
     async def get(self, session_id: str) -> SessionRecord | None: ...
 
     async def list(self, *, include_archived: bool = False) -> tuple[SessionRecord, ...]: ...
+
+
+class SessionHistoryPolicy(Protocol):
+    """Trusted pure policy; choosing it does not persist authority for later runs."""
+
+    def project(self, session: SessionRecord) -> tuple[ModelMessage, ...]: ...
+
+
+class AsyncSessionHistoryPolicy(Protocol):
+    """Explicit host-injected async context preparation, never persisted authority.
+
+    Hosts own external consent, credentials, metering and callback cleanup.
+    The Agent's Run budget does not include these pre-Run operations.
+    """
+
+    async def project(self, session: SessionRecord) -> tuple[ModelMessage, ...]: ...
+
+
+async def _await_history(
+    pending: Awaitable[tuple[ModelMessage, ...]], cancellation: CancellationToken | None,
+) -> tuple[ModelMessage, ...]:
+    if cancellation is None:
+        return await pending
+    task = asyncio.ensure_future(pending)
+    cancelled = asyncio.create_task(cancellation.wait())
+    try:
+        cancellation.raise_if_cancelled()
+        await asyncio.wait((task, cancelled), return_when=asyncio.FIRST_COMPLETED)
+        cancellation.raise_if_cancelled()
+        return await task
+    finally:
+        for item in (task, cancelled):
+            if not item.done():
+                item.cancel()
+        # Drain cleanup; cancellation is cooperative, not a hard I/O deadline.
+        await asyncio.gather(task, cancelled, return_exceptions=True)
 
 
 class ResumableAgentLoop(Protocol):
@@ -273,8 +318,21 @@ class JsonSessionStore:
 class SessionManager:
     """Coordinate sessions and ordinary AgentLoop runs without private hooks."""
 
-    def __init__(self, store: SessionStore | None = None) -> None:
+    def __init__(
+        self, store: SessionStore | None = None, *,
+        input_recorder: SessionInputRecorder | None = None,
+        max_recorded_messages: int = 256,
+        max_recorded_batch_bytes: int = 32 * 1024 * 1024,
+    ) -> None:
+        if input_recorder is not None and not callable(getattr(input_recorder, "record", None)):
+            raise ValueError("Session input recorder needs a record method")
+        for value in (max_recorded_messages, max_recorded_batch_bytes):
+            if type(value) is not int or value <= 0:
+                raise ValueError("Session recording limits must be positive integers")
         self.store = store or InMemorySessionStore()
+        self.input_recorder = input_recorder if input_recorder is not None else StandardSessionInputRecorder()
+        self.max_recorded_messages = max_recorded_messages
+        self.max_recorded_batch_bytes = max_recorded_batch_bytes
         self._lock = asyncio.Lock()
 
     async def create(
@@ -358,12 +416,32 @@ class SessionManager:
             await self.store.save(updated)
         return updated
 
-    async def conversation(self, session_id: str) -> tuple[ModelMessage, ...]:
+    async def conversation(
+        self, session_id: str, *, history_policy: SessionHistoryPolicy | AsyncSessionHistoryPolicy | None = None,
+        cancellation: CancellationToken | None = None,
+    ) -> tuple[ModelMessage, ...]:
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         session = await self.get(session_id)
-        return tuple(
-            ModelMessage.text(message.role, message.text)
-            for message in session.messages
-        )
+        # Local import avoids a cycle: policies consume SessionRecord, not its store.
+        from w_agent.session_context import TextSessionHistoryPolicy
+
+        policy = history_policy if history_policy is not None else TextSessionHistoryPolicy()
+        try:
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            result = policy.project(session)
+            if inspect.isawaitable(result):
+                result = await _await_history(result, cancellation)
+                if await self.get(session_id) != session:
+                    raise ValueError("Session changed during async history preparation")
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            if not isinstance(result, tuple) or not all(isinstance(message, ModelMessage) for message in result):
+                raise ValueError("history policy must return ModelMessages as a tuple")
+            return result
+        except Exception:
+            raise SessionError("Session history projection failed; Agent loop not started") from None
 
     async def run_agent(
         self,
@@ -374,18 +452,41 @@ class SessionManager:
         *,
         run_id: str | None = None,
         include_history: bool = True,
+        record_inputs: bool = False,
+        input_recorder: SessionInputRecorder | None = None,
+        history_policy: SessionHistoryPolicy | AsyncSessionHistoryPolicy | None = None,
         scope: ScopePath | None = None,
         cancellation: CancellationToken | None = None,
         tool_context: ToolExecutionContext | None = None,
         metadata: Mapping[str, Any] | None = None,
         event_callback: RunEventCallback | None = None,
     ) -> RunResult:
+        if type(record_inputs) is not bool:
+            raise ValueError("record_inputs must be a boolean")
+        if input_recorder is not None and (
+            not record_inputs or not callable(getattr(input_recorder, "record", None))
+        ):
+            raise ValueError("per-call recorder requires record_inputs=True and a record method")
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         current = tuple(messages)
         if not current:
             raise ValueError("session run needs at least one current message")
         session = await self._active(session_id)
-        history = await self.conversation(session_id) if include_history else ()
         resolved_run_id = run_id or f"run-{uuid4().hex}"
+        # Validate and freeze recording before an async history callback can
+        # perform host-authorized external I/O or incur preparation charges.
+        recorded = self._prepare_inputs(current, resolved_run_id, recorder=input_recorder) if record_inputs else None
+        history = await self.conversation(
+            session_id, history_policy=history_policy,
+            **({"cancellation": cancellation} if cancellation is not None else {}),
+        ) if include_history else ()
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
+        if include_history and await self.get(session_id) != session:
+            raise SessionError("Session changed during history preparation; Agent loop not started")
+        if cancellation is not None:
+            cancellation.raise_if_cancelled()
         context = RunContext(
             resolved_run_id,
             (*history, *current),
@@ -404,8 +505,33 @@ class SessionManager:
             )
         if result.run_id != resolved_run_id:
             raise SessionError("agent returned a different run id")
-        await self._record(session, definition, current, result, append_input=True)
+        await self._record(session, definition, current, result, append_input=True, recorded_inputs=recorded)
         return result
+
+    def _prepare_inputs(
+        self, messages: tuple[ModelMessage, ...], run_id: str, *, recorder: SessionInputRecorder | None = None,
+    ) -> tuple[SessionMessage, ...]:
+        try:
+            if len(messages) > self.max_recorded_messages:
+                raise ValueError("too many input messages")
+            projected = []
+            size = 0
+            selected_recorder = self.input_recorder if recorder is None else recorder
+            for message in messages:
+                encoded = selected_recorder.record(message)
+                text = "".join(block.text for block in message.content if isinstance(block, TextContent))
+                if encoded is not None:
+                    encoded = freeze_session_input(encoded)
+                # Bound both duplicated text and recorded JSON before calling the Agent.
+                payload = {"text": text, "recorded_input": session_input_to_dict(encoded) if encoded is not None else None}
+                size += len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+                if size > self.max_recorded_batch_bytes:
+                    raise ValueError("input batch too large")
+                if text or encoded is not None:
+                    projected.append(SessionMessage(message.role, text, run_id, recorded_input=encoded))
+            return tuple(projected)
+        except Exception:
+            raise SessionInputRecordingError("Session input preparation failed; Agent not started") from None
 
     async def resume_agent(
         self,
@@ -465,12 +591,13 @@ class SessionManager:
         result: RunResult,
         *,
         append_input: bool,
+        recorded_inputs: tuple[SessionMessage, ...] | None = None,
     ) -> None:
         async with self._lock:
             latest = await self.get(session.session_id)
             messages = list(latest.messages)
             if append_input:
-                messages.extend(_project_messages(current, result.run_id))
+                messages.extend(recorded_inputs if recorded_inputs is not None else _project_messages(current, result.run_id))
             existing = next((item for item in latest.runs if item.run_id == result.run_id), None)
             if result.output and (existing is None or existing.output != result.output):
                 messages.append(
@@ -503,6 +630,7 @@ class SessionManager:
                 replace(
                     latest,
                     messages=tuple(messages),
+                    schema_version=2 if any(message.recorded_input is not None for message in messages) else latest.schema_version,
                     runs=runs,
                     updated_at=now,
                 )
@@ -584,6 +712,7 @@ def _session_to_data(session: SessionRecord) -> dict[str, Any]:
                 "text": item.text,
                 "run_id": item.run_id,
                 "created_at": item.created_at.isoformat(),
+                **({"recorded_input": session_input_to_dict(item.recorded_input)} if item.recorded_input is not None else {}),
             }
             for item in session.messages
         ],
@@ -618,6 +747,11 @@ def _session_to_data(session: SessionRecord) -> dict[str, Any]:
 
 
 def _session_from_data(data: Mapping[str, Any]) -> SessionRecord:
+    schema = data["schema_version"]
+    if type(schema) is not int or schema not in {1, 2}:
+        raise ValueError("unsupported session schema version")
+    if schema == 1 and any("recorded_input" in item for item in data.get("messages", ())):
+        raise ValueError("recorded Session inputs require schema version 2")
     return SessionRecord(
         session_id=str(data["session_id"]),
         title=str(data["title"]),
@@ -628,6 +762,7 @@ def _session_from_data(data: Mapping[str, Any]) -> SessionRecord:
                 str(item["text"]),
                 str(item["run_id"]),
                 datetime.fromisoformat(str(item["created_at"])),
+                recorded_input=item.get("recorded_input"),
             )
             for item in data.get("messages", ())
         ),
@@ -635,7 +770,7 @@ def _session_from_data(data: Mapping[str, Any]) -> SessionRecord:
         metadata=data.get("metadata", {}),
         created_at=datetime.fromisoformat(str(data["created_at"])),
         updated_at=datetime.fromisoformat(str(data["updated_at"])),
-        schema_version=int(data["schema_version"]),
+        schema_version=schema,
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from .types import (
@@ -35,6 +36,25 @@ class StreamRecoveryStrategy(Protocol):
     def start(
         self, request: ModelRequest, visible_events: tuple[StreamEvent, ...]
     ) -> StreamReplayFilter: ...
+
+
+@dataclass(frozen=True, slots=True)
+class NativeCursorRecovery:
+    """Opt into provider-native continuation, never a fresh request replay.
+
+    The provider is responsible for exact after-event cursors bound to the
+    original generation. Each resume is separately recorded as an attempt.
+    """
+
+    max_resumes: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_resumes, bool)
+            or not isinstance(self.max_resumes, int)
+            or self.max_resumes < 1
+        ):
+            raise ValueError("native cursor max_resumes must be a positive integer")
 
 
 class VerifiedTextPrefixRecovery:

@@ -2,7 +2,7 @@
 
 [English](./plugin-system.en.md) | 简体中文
 
-状态：微内核插件 API 在 `2.0.0a1` 为 `Implemented`。当前 main（未发布）另外提供不导入代码的 YAML 预览、显式确认后的批量加载与 TUI 卸载控制；第三方包安装仍为 `Planned`。
+状态：微内核插件 API 在 `2.0.0a1` 为 `Implemented`。`2.0.0a4`提供不导入代码的 YAML 预览、显式确认后的批量加载与 TUI 卸载控制。基于宿主锁目录的 Sandbox 包安装和独立加载确认已包含于 `2.0.0a4`。在线来源发现、自动锁定和自动更新仍为 `Planned`。
 
 ## 目标
 
@@ -52,7 +52,7 @@ plugins:
     enabled: false
 ```
 
-当前 main 的安全操作顺序为：
+`2.0.0a4` 的安全操作顺序为：
 
 ```text
 wagent plugin inspect --config .wagent/plugins.yml
@@ -64,6 +64,30 @@ wagent plugin validate-load --config .wagent/plugins.yml --confirm-plugin-code
 TUI Plugins 页使用同一 `PluginManager` 和加载 API。输入一次性 `LOAD PLUGINS` 后，插件在当前 TUI 进程中保持活跃；卸载要求输入与插件名绑定的 `UNLOAD <name>`，并先卸载依赖该 Provider 的活跃插件。配置值会传给插件，但预览和生命周期投影只显示配置键，不显示值。
 
 同一批次中任一导入或加载失败时，本批次先前加载的插件按逆序卸载。已在 Manager 中活跃、但不属于本批次的插件不参与该回滚。重复引用会在导入前被拒绝，`enabled: false` 的引用不会被导入。
+
+### 取消与清理
+
+加载批次被取消时也会回滚。清理一旦开始，调用方的重复取消会延后到该清理任务完成，再向调用方传播 `CancelledError`，不会静默视为成功。quiesce/unload/disposer 自身抛出取消，也不会跳过剩余归属 effect。部分加载回滚收敛到 `FAILED`，卸载收敛到 `DISPOSED`，并移除注册和监听器。并发关闭 effect scope 会等待同一个清理任务；Manager 关闭时，即使某个插件清理报错或取消，也会尝试清理其余插件。
+
+替换操作在旧版本清理边界被取消后，不再启动新 setup；若已加载但尚未向调用方交付 handle 时，生命周期通知被取消，也会卸载刚加载的记录。这些保证针对框架归属注册和清理完成，不表示插件外部副作用被回滚。受信清理 hook 必须自行限制 I/O 并最终返回；框架不会超时遗弃清理任务或强制终止 Python 代码。专属取消及相邻插件回归已通过，不涉及网络或包安装。
+
+## 锁定安装与加载
+
+安装链路与生命周期链路使用不同协议和授权：
+
+```text
+CompositionPlan + PluginInstallCatalog
+  → plan_plugin_installations()（离线、无导入）
+  → 用户确认精确 request digest、网络与包代码执行
+  → PackageInstaller / SandboxPipPackageInstaller
+  → PluginInstallResult（内容树摘要 + 本地站点 + entry）
+  → 用户再次确认插件代码加载
+  → load_installed_plugin_references() → PluginManager
+```
+
+`PackageInstaller` 是开放协议，应用可替换 pip、包格式、内部 Registry 或远程构建器。默认实现只接受完整 SHA-256 wheel 闭包，禁止 sdist 和隐式依赖解析，并使用调用者选择的 `SandboxProvider`。离线计划显示 Index 来源的协议、主机和端口，供用户确认网络目标。Docker 是 CLI/TUI 默认选项；默认安装器只向 Docker 挂载每次新建的空白暂存目录，关闭沙箱并复验暂存树后才复制到最终站点，避免把整个本地状态目录暴露给包安装代码；`UnsafeLocalSandboxProvider` 只在用户明确确认宿主访问后可用，不能靠暂存目录实现隔离。安装目录在进入 `PluginManager` 前重新计算内容树摘要；校验会拒绝软链接、预编译字节码与 `__pycache__`，而不是忽略可能被 Python 执行的文件。导入已安装插件后、执行 setup 前，还会确认入口模块文件处于已验证站点内、插件名称和版本与锁定记录一致；这不取消插件导入本身执行代码的风险，所以仍需独立加载授权。路径租约随已安装插件批次卸载而释放。若插件入口模块已在进程的 `sys.modules` 中，加载会失败关闭，避免误用别处缓存的代码；普通 Python 导入不能保证模块完全反加载，也可能在使用期间生成字节码缓存，因此再次加载或切换同名版本可能需要新进程或重新安装，热迁移仍不是现有能力。
+
+默认 pip 命令使用 `--isolated`，忽略 pip 环境变量和用户配置；镜像内全局/站点配置及网络代理仍由宿主负责，因此来源预览不保证网络只访问一个目标。私有源认证需由宿主提供自定义 `PackageInstaller`。
 
 ## 清单
 
@@ -104,9 +128,11 @@ ACTIVE → QUIESCING → UNLOADING → DISPOSED
 
 ## 依赖变化与更新
 
+同名本地替换已有 TUI 替换控件及当前进程常驻 `wagent plugin session` 命令；均先无导入检查配置，再独立批准导入，最后输入精确替换/静止短语，参见[本地替换入口](./plugin-replacement.md#cli-与-tui-入口)。这些控件不会更新其他进程或已安装包。
+
 通过 `PluginManager` 卸载 Provider 时，Manager 会先级联卸载依赖它的活跃 Consumer。直接撤销任意 Provider 注册后的自动卸载、依赖恢复后的自动重新加载为 `Planned`。可选依赖在使用点显式查询，不触发隐式强依赖。
 
-Registry 允许同一 Provider 名称的多个版本并按版本约束解析，也可以创建不可变快照。当前 `PluginManager` 同一时间只允许一个同名活跃插件；协调版本替换、Run 绑定和静默点迁移为 `Planned`。
+Registry 允许同一 Provider 名称的多个版本并按版本约束解析，也可以创建不可变快照。`PluginManager` 同一时间只允许一个同名活跃插件。当前工作区新增[显式本地替换](./plugin-replacement.md)：预览新实例及受影响消费者，明确确认宿主已停止相关任务，再在生命周期锁内停用与替换。消费者不自动重启，外部副作用不承诺回滚；Run 绑定、自动排空任务与状态迁移仍为 `Planned`。
 
 ## 作用域
 
@@ -123,7 +149,7 @@ Application → Workspace → Session → Agent → Run → Step
 - 配置非法：解析阶段失败。
 - 部分加载失败：回滚本次 effect scope。
 - 清理失败：记录错误并继续清理其他资源，最终报告不完整清理。
-- 未知插件代码：只有用户明确确认加载后才执行；安装是另一条尚未实现的确认边界。
+- 未知包与插件代码：安装和加载分别要求独立确认；成功安装不会自动导入、注册或授予能力。
 
 ## 与工程装配的关系
 
@@ -134,5 +160,6 @@ Application → Workspace → Session → Agent → Run → Step
 - `PluginManager` 内同名插件不能同时处于活跃状态。
 - Registry 快照固定解析结果，但尚未拥有 Provider 生命周期租约。
 - 依赖恢复不会自动重新加载 Consumer。
-- YAML 只加载严格的 `module:attribute` 引用和配置，不安装第三方包。
+- YAML 只加载严格的 `module:attribute` 引用和配置；包安装使用独立的锁目录和授权协议，不从 YAML 隐式触发。
 - CLI `validate-load` 只做短生命周期验证；需要持久进程内插件状态时使用 Python API 或 TUI。
+- 当前不在线发现来源、不生成锁文件、不自动升级，也不执行同名插件的静默热迁移。

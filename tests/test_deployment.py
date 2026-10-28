@@ -1,4 +1,5 @@
 import importlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +14,10 @@ async def test_fastapi_default_agent_chain():
 
 async def test_serverless_default_agent_chain(tmp_path, monkeypatch):
     monkeypatch.setenv("W_AGENT_SNAPSHOT_PATH", str(tmp_path / "factory.snapshot"))
-    import serverless.lambda_handler as handler
+    # The deployable example is shipped in the sdist, not as a library package.
+    # Keep the repository root off sys.path so wheel validation stays isolated.
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "serverless"))
+    handler = importlib.import_module("lambda_handler")
 
     handler.bean_factory = None
     response = await handler.handle_request(

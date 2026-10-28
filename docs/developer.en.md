@@ -1,12 +1,20 @@
 # W-Agent developer guide
 
+> Applies to 2.0.0. `Experimental` APIs remain experimental; `Planned` / `Reserved` does not mean implemented. See [release verification](./acceptance-2026-10-01-stable-release.en.md).
+
 English | [简体中文](./developer.md)
+
+> Release scope: the new framework core described here is included in 2.1.0. Earlier “unpublished” labels and candidate 2.0.0 metadata below record pre-release stages, not the 2.1.0 package status. See [2.1.0 notes](./releases/2.1.0.en.md); upload status is on [PyPI](https://pypi.org/project/wagent-framework/2.1.0/).
+
+Start with [Develop your own Harness](./harness-development.en.md): explicit custom assembly, annotated support and configured coding. These use the unpublished framework core. [Contexts](./application-assembly.en.md), [decorators](./annotation-development.en.md), [aspects](./application-aspects.en.md) and [default recipes](./default-assembly.en.md) share one plan and lifecycle. Delivery evidence and remaining boundaries live in [M5 acceptance](./harness-acceptance.en.md). Released component extensions remain below.
+
+Available in 2.0.0: [durable Run/Session usage links](./service-usage-links.en.md), [structural/overlapping splitting](./knowledge-splitting.en.md) and [raw-archive CLI entries](./knowledge-archive-entries.en.md). Links precede preparation, default splitting preserves v1, and export only creates new files. All are Experimental features included in 2.0.0; see [acceptance and remaining modules](./acceptance-2026-10-01-links-splitting-archives.en.md).
 
 ## 1. Development baseline
 
-Package metadata and the latest alpha are both `2.0.0a3`; main now carries subsequent unpublished changes. The Phase 1 microkernel, Phase 2 model foundation, Phase 3 agent/tool foundation, and Phase 4 local-workflow foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives both a release-boundary note and a status label.
+This guide targets the published `2.0.0` release. See the [release record](./acceptance-2026-10-01-stable-release.en.md) for verification evidence, the [stable baseline](./stable-release-baseline.en.md) for basic scope, and the [roadmap](./roadmap.en.md) for capability status. Historical alpha records cover only their corresponding versions. The Phase 1 microkernel, Phase 2 model foundation, Phase 3 agent/tool foundation, and Phase 4 local-workflow foundation are implemented, while 1.x APIs remain available. Every new capability updates both Chinese and English documentation and receives both a release-boundary note and a status label.
 
-Next-generation targets:
+Development constraints:
 
 - Python 3.11+.
 - An asynchronous kernel with synchronous convenience only at user boundaries.
@@ -20,6 +28,8 @@ Status: `Implemented`.
 
 ```text
 w_agent/
+├── application/     # Unified assembly, context, decorators, aspects and execution
+├── local_application.py # Optional default Runtime/Workflow recipes
 ├── aop/             # Pointcuts, advice, and proxies
 ├── agents/          # Run contracts and replaceable ReAct loop
 ├── config/          # Dynamic configuration
@@ -41,7 +51,7 @@ w_agent/
 └── workflows/       # DAG, state graph, Python workflow, stores, and local engine
 ```
 
-The new ReAct runtime and local workflow engine are implemented independently of `BaseAgent.arun()`. Durable sessions and composition adapters continue to build on public contracts.
+The ReAct runtime and local workflow engine are independent of `BaseAgent.arun()`. Implemented durable sessions and composition adapters also build on public contracts.
 
 ## 3. Plugin design rules
 
@@ -102,6 +112,8 @@ Four entry styles produce the same `PluginSpec`:
 
 Configuration does not evaluate arbitrary Python expressions. Secrets enter through environment variables or credential references and never appear in composition codes.
 
+When distributing plugins, a manifest declares portable constraints only. A separate host lock catalog pins the plugin version, `module:attribute`, complete wheel dependency closure, and artifact SHA-256 values. Custom source resolution implements `CompositionDependencyResolver`; a custom package format or installation backend implements `PackageInstaller`. Offline planning, package installation, and plugin loading remain three independent stages. A resolver or configuration parser must never access the network or execute code implicitly.
+
 ## 6. Types and extension fields
 
 Stable protocols use dataclasses, Protocols, Enums, and Pydantic boundary models. Trusted in-process values are not redundantly parsed; file, network, plugin-configuration, persistence, and model-output boundaries are validated.
@@ -134,6 +146,7 @@ A plugin cannot modify another plugin's namespace. Core fields change only throu
 - A composition import cannot carry or grant local-execution permission.
 - Sandboxes fail closed when unavailable.
 - Plugin installation, upgrade, and first execution require explicit actions.
+- Default package installation accepts only exact versions, a complete hashed wheel closure, and an explicit source. Install authorization binds the request digest and cannot replace plugin-load authorization.
 - Logs, events, and exported manifests contain no credentials.
 
 ## 9. Test requirements

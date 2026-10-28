@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -64,8 +65,14 @@ class ToolExecutionContext:
     approved_call_ids: frozenset[str] = frozenset()
     cancellation: CancellationToken | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    invocation: ToolCall | None = None
+    agent_run_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.agent_run_id is not None and (
+            not isinstance(self.agent_run_id, str) or not self.agent_run_id.strip()
+        ):
+            raise ValueError("agent run id must be a non-empty string")
         object.__setattr__(self, "permissions", frozenset(self.permissions))
         object.__setattr__(
             self,
@@ -78,6 +85,50 @@ class ToolExecutionContext:
 ToolHandler = Callable[[Mapping[str, Any], ToolExecutionContext], Awaitable[Any]]
 
 
+class ToolContinuationError(RuntimeError):
+    """A suspended tool cannot be continued safely; never retry its start handler."""
+
+
+@dataclass(frozen=True, slots=True)
+class ToolContinuation:
+    """Versioned JSON reference for explicit tool continuation, not authority.
+
+    Keep payloads free of secrets and executable objects. A binding owns the
+    meaning and validation of its kind/version/payload. Stores remain trusted.
+    """
+
+    kind: str
+    payload: Mapping[str, Any]
+    version: int = 1
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not self.kind.strip():
+            raise ValueError("continuation kind is required")
+        if type(self.version) is not int or self.version < 1:
+            raise ValueError("continuation version must be a positive integer")
+        if not isinstance(self.payload, Mapping):
+            raise ValueError("continuation payload must be a JSON object")
+        try:
+            payload = json.loads(json.dumps(dict(self.payload), allow_nan=False))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("continuation payload must be finite JSON data") from None
+        object.__setattr__(self, "payload", MappingProxyType(payload))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "version": self.version, "payload": dict(self.payload)}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ToolContinuation:
+        if not isinstance(value, Mapping) or set(value) != {"kind", "version", "payload"}:
+            raise ValueError("invalid tool continuation envelope")
+        return cls(value["kind"], value["payload"], value["version"])
+
+
+ToolResumeHandler = Callable[
+    [Mapping[str, Any], ToolContinuation, ToolExecutionContext], Awaitable[Any]
+]
+
+
 @dataclass(frozen=True, slots=True)
 class ToolBinding:
     """A public definition bound to one replaceable execution handler."""
@@ -87,8 +138,11 @@ class ToolBinding:
     side_effect: ToolSideEffect = ToolSideEffect.READ
     required_permissions: frozenset[str] = frozenset()
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    resume_handler: ToolResumeHandler | None = None
 
     def __post_init__(self) -> None:
+        if self.resume_handler is not None and not callable(self.resume_handler):
+            raise ValueError("tool resume handler must be callable")
         object.__setattr__(
             self,
             "required_permissions",
@@ -130,6 +184,14 @@ class ToolResult:
     data: Any = None
     failure: ToolFailure | None = None
     policy_decision: ToolPolicyDecision | None = None
+    continuation: ToolContinuation | None = None
+
+    def __post_init__(self) -> None:
+        if self.continuation is not None and (
+            not isinstance(self.continuation, ToolContinuation)
+            or self.outcome != ToolOutcome.NEEDS_APPROVAL
+        ):
+            raise ValueError("continuation results must await approval")
 
     @property
     def is_error(self) -> bool:
@@ -142,6 +204,15 @@ class ToolExecutorProtocol(Protocol):
     async def execute(
         self,
         call: ToolCall,
+        context: ToolExecutionContext | None = None,
+    ) -> ToolResult: ...
+
+
+class ResumableToolExecutorProtocol(ToolExecutorProtocol, Protocol):
+    """Optional extension; a continuation must never fall back to execute()."""
+
+    async def resume(
+        self, call: ToolCall, continuation: ToolContinuation,
         context: ToolExecutionContext | None = None,
     ) -> ToolResult: ...
 
